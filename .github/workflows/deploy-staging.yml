@@ -25,7 +25,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
-          password: ${{ secrets.GHCR_PAT }}
+          password: ${{ github.token }}
 
       - name: Build and push staging image
         uses: docker/build-push-action@v6
@@ -45,7 +45,7 @@ jobs:
           PORT: "8082"
           DOMAIN: clubdue-staging.michelindigitalmedia.com
           GHCR_USER: ${{ github.repository_owner }}
-          GHCR_TOKEN: ${{ secrets.GHCR_PAT }}
+          GHCR_TOKEN: ${{ github.token }}
         with:
           host: ${{ secrets.DROPLET_HOST }}
           username: root
