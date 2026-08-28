@@ -1,0 +1,35 @@
+{{ define "renewal.html" }}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Renew your plan — ClubDue</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main class="page">
+    <header class="header">
+      <div>
+        <p class="eyebrow">{{ .Renewal.ShopName }}</p>
+        <h1 class="title">Renew your maintenance plan</h1>
+        <p class="subtitle">Hi {{ .Renewal.CustomerName }}, review your plan and payment below.</p>
+      </div>
+    </header>
+    <section class="form-panel renewal-card">
+      <h2 class="section-title">{{ .Renewal.PlanName }}</h2>
+      <p><strong>Renewal date:</strong> {{ .AnniversaryFmt }}</p>
+      <p><strong>Annual price:</strong> {{ .PriceFmt }}</p>
+      {{ if .Paid }}
+      <p class="success-banner">Test payment acknowledged. No card was charged.</p>
+      {{ else }}
+      <p class="empty-note">Payment is in test-stub mode. Stripe Checkout and its webhook will be connected before live use; this action never charges a card.</p>
+      <form method="post">
+        <button type="submit" class="primary-btn">Continue to test payment</button>
+      </form>
+      {{ end }}
+    </section>
+  </main>
+</body>
+</html>
+{{ end }}

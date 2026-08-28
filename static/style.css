@@ -118,6 +118,17 @@ body {
   color: var(--overdue);
 }
 
+.renewal-link {
+  margin: 1rem 1.25rem;
+  overflow-wrap: anywhere;
+}
+
+.success-banner {
+  color: var(--paid);
+  font-weight: 600;
+  margin-top: 1rem;
+}
+
 .table-section {
   background: var(--surface);
   border: 1px solid var(--border);

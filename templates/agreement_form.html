@@ -67,4 +67,17 @@
 
   <button type="submit" class="primary-btn">{{ if .IsEdit }}Save changes{{ else }}Create agreement{{ end }}</button>
 </form>
+
+{{ if .IsEdit }}
+<section class="panel">
+  <h3 class="section-title">Homeowner renewal link</h3>
+  <p class="empty-note">Creates a 30-day link to the customer-facing test payment page. Stripe checkout is intentionally stubbed.</p>
+  <form method="post" action="/agreements/{{ .Form.ID }}/renewal-link">
+    <button type="submit" class="secondary-btn">Create renewal link</button>
+  </form>
+  {{ if .Form.RenewalURL }}
+  <p class="renewal-link"><a href="{{ .Form.RenewalURL }}" target="_blank" rel="noopener">{{ .Form.RenewalURL }}</a></p>
+  {{ end }}
+</section>
+{{ end }}
 {{ end }}

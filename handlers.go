@@ -266,6 +266,7 @@ func (s *Server) handleAgreementEdit(w http.ResponseWriter, r *http.Request) {
 		VisitsUsed:      a.VisitsUsed,
 		PriceCents:      a.PriceCents,
 		Notes:           a.Notes,
+		RenewalURL:      renewalURL(r.URL.Query().Get("renewal_token")),
 	})
 }
 
@@ -280,6 +281,7 @@ type agreementFormData struct {
 	PriceCents      int
 	Notes           string
 	Error           string
+	RenewalURL      string
 }
 
 func (s *Server) renderAgreementForm(w http.ResponseWriter, r *http.Request, user *User, form agreementFormData) {
@@ -307,6 +309,13 @@ func (s *Server) renderAgreementForm(w http.ResponseWriter, r *http.Request, use
 		"Plans":     plans,
 		"IsEdit":    form.ID != "",
 	})
+}
+
+func renewalURL(token string) string {
+	if token == "" {
+		return ""
+	}
+	return "/renew/" + token
 }
 
 func (s *Server) handleAgreementCreate(w http.ResponseWriter, r *http.Request) {

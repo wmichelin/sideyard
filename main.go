@@ -68,6 +68,8 @@ func main() {
 	mux.HandleFunc("GET /signup", srv.handleSignupGet)
 	mux.HandleFunc("POST /signup", srv.handleSignupPost)
 	mux.HandleFunc("POST /logout", srv.handleLogout)
+	mux.HandleFunc("GET /renew/{token}", srv.handleHomeownerRenewal)
+	mux.HandleFunc("POST /renew/{token}", srv.handleHomeownerRenewalPayment)
 	if devRoutesEnabled() && !srv.demo {
 		mux.HandleFunc("POST /dev/seed", srv.handleDevSeed)
 		log.Print("Dev routes enabled: POST /dev/seed")
@@ -87,6 +89,7 @@ func main() {
 	mux.HandleFunc("POST /agreements", auth(srv.handleAgreementCreate))
 	mux.HandleFunc("GET /agreements/{id}", auth(srv.handleAgreementEdit))
 	mux.HandleFunc("POST /agreements/{id}", auth(srv.handleAgreementUpdate))
+	mux.HandleFunc("POST /agreements/{id}/renewal-link", auth(srv.handleAgreementRenewalLink))
 	mux.HandleFunc("GET /renewals", auth(srv.handleRenewals))
 	mux.HandleFunc("GET /customers", auth(srv.handleCustomers))
 	mux.HandleFunc("POST /customers", auth(srv.handleCustomers))
