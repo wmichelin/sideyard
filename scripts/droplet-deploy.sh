@@ -52,7 +52,7 @@ NGINX
   rm -f /etc/nginx/sites-enabled/default
   nginx -t && systemctl reload nginx
   if ! certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "$EMAIL" --redirect; then
-    echo "WARNING: certbot failed — add Namecheap A record ${DOMAIN%%.*} → droplet IP, then re-run." >&2
+    echo "WARNING: certbot failed — add DNS A record for ${DOMAIN} → droplet IP, then re-run." >&2
   fi
 else
   if ! grep -q "127.0.0.1:${PORT}" "/etc/nginx/sites-available/${DOMAIN}" 2>/dev/null; then
