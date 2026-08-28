@@ -277,6 +277,42 @@ func TestQueueRenewalDigestsIsDailyAndIdempotent(t *testing.T) {
 	}
 }
 
+func TestCompletedVisitCannotExceedAgreementEntitlement(t *testing.T) {
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("DATABASE_URL is required for Postgres integration tests")
+	}
+	ctx := context.Background()
+	db, err := openDB(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	store := &Store{db: db}
+	stamp := time.Now().UTC().Format("20060102150405.000000000")
+	shopID := createTestShop(t, ctx, db, "visit-"+stamp)
+	customerID := createTestCustomer(t, ctx, db, shopID, "Visit Customer")
+	planID := createTestPlan(t, ctx, db, shopID, "Visit Plan")
+	agreementID, err := store.CreateAgreement(ctx, shopID, CreateAgreementInput{CustomerID: customerID, PlanTemplateID: planID, Status: AgreementActive, AnniversaryDate: time.Now().UTC().AddDate(0, 1, 0), VisitsEntitled: 1, VisitsUsed: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var visitID string
+	if err := db.Pool.QueryRow(ctx, `INSERT INTO visit_dues (shop_id, agreement_id, season, due_year) VALUES ($1, $2, 'spring', 2033) RETURNING id`, shopID, agreementID).Scan(&visitID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.BulkUpdateVisitStatus(ctx, shopID, []string{visitID}, "completed"); err == nil {
+		t.Fatal("expected exhausted agreement completion to be rejected")
+	}
+	var status string
+	if err := db.Pool.QueryRow(ctx, `SELECT status FROM visit_dues WHERE id = $1`, visitID).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != "due" {
+		t.Fatalf("rejected completion changed due status to %q", status)
+	}
+}
+
 func withAgreementField(in CreateAgreementInput, update func(*CreateAgreementInput)) CreateAgreementInput {
 	update(&in)
 	return in

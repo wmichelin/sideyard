@@ -11,9 +11,9 @@ import (
 type VisitStatus string
 
 const (
-	VisitDue        VisitStatus = "due"
-	VisitScheduled  VisitStatus = "scheduled"
-	VisitCompleted  VisitStatus = "completed"
+	VisitDue       VisitStatus = "due"
+	VisitScheduled VisitStatus = "scheduled"
+	VisitCompleted VisitStatus = "completed"
 )
 
 type VisitDueRow struct {
@@ -218,10 +218,14 @@ func (s *Store) BulkUpdateVisitStatus(ctx context.Context, shopID string, visitI
 	for _, visitID := range visitIDs {
 		var agreementID string
 		var currentStatus string
+		var visitsUsed, visitsEntitled int
 		err := tx.QueryRow(ctx, `
-			SELECT agreement_id, status FROM visit_dues
-			WHERE shop_id = $1 AND id = $2`, shopID, visitID,
-		).Scan(&agreementID, &currentStatus)
+			SELECT v.agreement_id, v.status, a.visits_used, a.visits_entitled
+			FROM visit_dues v
+			JOIN agreements a ON a.id = v.agreement_id AND a.shop_id = v.shop_id
+			WHERE v.shop_id = $1 AND v.id = $2
+			FOR UPDATE OF v, a`, shopID, visitID,
+		).Scan(&agreementID, &currentStatus, &visitsUsed, &visitsEntitled)
 		if err != nil {
 			continue
 		}
@@ -237,6 +241,9 @@ func (s *Store) BulkUpdateVisitStatus(ctx context.Context, shopID string, visitI
 			if currentStatus == string(VisitCompleted) {
 				continue
 			}
+			if visitsUsed >= visitsEntitled {
+				return fmt.Errorf("agreement visit entitlement is exhausted")
+			}
 			_, err = tx.Exec(ctx, `
 				UPDATE visit_dues SET status = 'completed', completed_at = $3
 				WHERE shop_id = $1 AND id = $2`,
@@ -245,11 +252,14 @@ func (s *Store) BulkUpdateVisitStatus(ctx context.Context, shopID string, visitI
 			if err != nil {
 				return err
 			}
-			_, err = tx.Exec(ctx, `
+			tag, err := tx.Exec(ctx, `
 				UPDATE agreements SET visits_used = visits_used + 1, updated_at = now()
 				WHERE shop_id = $1 AND id = $2 AND visits_used < visits_entitled`,
 				shopID, agreementID,
 			)
+			if err == nil && tag.RowsAffected() != 1 {
+				return fmt.Errorf("agreement visit entitlement is exhausted")
+			}
 		default:
 			return fmt.Errorf("unknown action: %s", action)
 		}
