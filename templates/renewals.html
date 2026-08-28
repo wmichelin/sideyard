@@ -1,0 +1,44 @@
+{{ define "renewals_content" }}
+<header class="page-header">
+  <div>
+    <h2 class="page-title">Renewal queue</h2>
+    <p class="page-subtitle">{{ .Total }} active agreements renewing in the next 90 days.</p>
+  </div>
+</header>
+
+{{ range .Buckets }}
+<section class="panel">
+  <h3 class="section-title">Within {{ .Label }}</h3>
+  {{ if .Items }}
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Customer</th>
+          <th>Property</th>
+          <th>Plan</th>
+          <th>Anniversary</th>
+          <th>Days</th>
+          <th>Price</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{ range .Items }}
+        <tr>
+          <td class="name-cell">{{ .CustomerName }}</td>
+          <td class="muted">{{ .PropertyAddress }}</td>
+          <td>{{ .PlanName }}</td>
+          <td>{{ .AnniversaryFmt }}</td>
+          <td>{{ .DaysUntil }}</td>
+          <td>{{ .PriceFmt }}</td>
+        </tr>
+        {{ end }}
+      </tbody>
+    </table>
+  </div>
+  {{ else }}
+  <p class="empty-note">None in this window.</p>
+  {{ end }}
+</section>
+{{ end }}
+{{ end }}

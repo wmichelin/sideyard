@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Create shop — ClubDue</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="auth-page">
+  <div class="auth-card">
+    <p class="eyebrow">Maintenance agreements</p>
+    <h1 class="title">Create your shop</h1>
+    <p class="subtitle">One shop account per HVAC/home-services business.</p>
+    {{ if .Error }}<p class="error-banner">{{ .Error }}</p>{{ end }}
+    <form method="post" action="/signup" class="form-stack">
+      <label>
+        <span>Shop name</span>
+        <input type="text" name="shop_name" value="{{ .ShopName }}" required autocomplete="organization">
+      </label>
+      <label>
+        <span>Email</span>
+        <input type="email" name="email" value="{{ .Email }}" required autocomplete="username">
+      </label>
+      <label>
+        <span>Password</span>
+        <input type="password" name="password" required minlength="8" autocomplete="new-password">
+      </label>
+      <button type="submit" class="primary-btn full-width">Create shop</button>
+    </form>
+    <p class="auth-footer"><a href="/login">Already have an account? Sign in</a></p>
+  </div>
+</body>
+</html>

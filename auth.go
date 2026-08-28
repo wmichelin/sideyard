@@ -1,0 +1,244 @@
+package main
+
+import (
+	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+
+	"golang.org/x/crypto/bcrypt"
+)
+
+const (
+	sessionCookieName = "clubdue_session"
+	sessionTTL        = 14 * 24 * time.Hour
+)
+
+type User struct {
+	ID       string
+	ShopID   string
+	Email    string
+	Role     string
+	ShopName string
+}
+
+type Auth struct {
+	db            *DB
+	sessionSecret []byte
+}
+
+func newAuth(db *DB) *Auth {
+	secret := os.Getenv("SESSION_SECRET")
+	if secret == "" {
+		secret = "dev-insecure-change-me"
+	}
+	return &Auth{db: db, sessionSecret: []byte(secret)}
+}
+
+func bcryptGenerate(password string) (string, error) {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
+	return string(hash), nil
+}
+
+func (a *Auth) bootstrapShop(ctx context.Context) error {
+	email := strings.TrimSpace(os.Getenv("BOOTSTRAP_EMAIL"))
+	password := os.Getenv("BOOTSTRAP_PASSWORD")
+	shopName := strings.TrimSpace(os.Getenv("SHOP_NAME"))
+	if email == "" || password == "" {
+		return nil
+	}
+	if shopName == "" {
+		shopName = "Demo Shop"
+	}
+
+	var count int
+	if err := a.db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM users`).Scan(&count); err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+
+	_, err := a.signup(ctx, shopName, email, password)
+	return err
+}
+
+func (a *Auth) signup(ctx context.Context, shopName, email, password string) (string, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	shopName = strings.TrimSpace(shopName)
+	if shopName == "" || email == "" || password == "" {
+		return "", errors.New("shop name, email, and password are required")
+	}
+	if len(password) < 8 {
+		return "", errors.New("password must be at least 8 characters")
+	}
+
+	hash, err := bcryptGenerate(password)
+	if err != nil {
+		return "", err
+	}
+
+	slug := slugify(shopName)
+	tx, err := a.db.Pool.Begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback(ctx)
+
+	var shopID string
+	if err := tx.QueryRow(ctx,
+		`INSERT INTO shops (name, slug) VALUES ($1, $2) RETURNING id`,
+		shopName, slug,
+	).Scan(&shopID); err != nil {
+		if strings.Contains(err.Error(), "duplicate") {
+			return "", errors.New("shop name already taken")
+		}
+		return "", err
+	}
+
+	var userID string
+	if err := tx.QueryRow(ctx, `
+		INSERT INTO users (shop_id, email, password_hash, role)
+		VALUES ($1, $2, $3, 'owner')
+		RETURNING id`, shopID, email, hash,
+	).Scan(&userID); err != nil {
+		if strings.Contains(err.Error(), "duplicate") {
+			return "", errors.New("email already registered")
+		}
+		return "", err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return "", err
+	}
+
+	return a.createSession(ctx, userID)
+}
+
+func (a *Auth) login(ctx context.Context, email, password string) (string, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	var userID, hash string
+	err := a.db.Pool.QueryRow(ctx, `
+		SELECT u.id, u.password_hash
+		FROM users u
+		WHERE u.email = $1
+		LIMIT 1`, email).Scan(&userID, &hash)
+	if err != nil {
+		return "", errors.New("invalid email or password")
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)); err != nil {
+		return "", errors.New("invalid email or password")
+	}
+	return a.createSession(ctx, userID)
+}
+
+func (a *Auth) createSession(ctx context.Context, userID string) (string, error) {
+	token, err := randomToken(32)
+	if err != nil {
+		return "", err
+	}
+	tokenHash := hashToken(token, a.sessionSecret)
+	expires := time.Now().UTC().Add(sessionTTL)
+
+	_, err = a.db.Pool.Exec(ctx, `
+		INSERT INTO sessions (user_id, token_hash, expires_at) VALUES ($1, $2, $3)`,
+		userID, tokenHash, expires,
+	)
+	if err != nil {
+		return "", fmt.Errorf("create session: %w", err)
+	}
+	return token, nil
+}
+
+func (a *Auth) logout(ctx context.Context, token string) {
+	if token == "" {
+		return
+	}
+	tokenHash := hashToken(token, a.sessionSecret)
+	_, _ = a.db.Pool.Exec(ctx, `DELETE FROM sessions WHERE token_hash = $1`, tokenHash)
+}
+
+func (a *Auth) userFromRequest(ctx context.Context, r *http.Request) (*User, error) {
+	cookie, err := r.Cookie(sessionCookieName)
+	if err != nil || cookie.Value == "" {
+		return nil, errors.New("unauthenticated")
+	}
+	tokenHash := hashToken(cookie.Value, a.sessionSecret)
+
+	var u User
+	err = a.db.Pool.QueryRow(ctx, `
+		SELECT u.id, u.shop_id, u.email, u.role, s.name
+		FROM sessions sess
+		JOIN users u ON u.id = sess.user_id
+		JOIN shops s ON s.id = u.shop_id
+		WHERE sess.token_hash = $1 AND sess.expires_at > now()
+	`, tokenHash).Scan(&u.ID, &u.ShopID, &u.Email, &u.Role, &u.ShopName)
+	if err != nil {
+		return nil, errors.New("unauthenticated")
+	}
+	return &u, nil
+}
+
+func (a *Auth) setSessionCookie(w http.ResponseWriter, token string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   int(sessionTTL.Seconds()),
+	})
+}
+
+func (a *Auth) clearSessionCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		MaxAge:   -1,
+	})
+}
+
+func randomToken(n int) (string, error) {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}
+
+func hashToken(token string, secret []byte) string {
+	h := sha256.Sum256(append(secret, []byte(token)...))
+	return hex.EncodeToString(h[:])
+}
+
+func slugify(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	var b strings.Builder
+	lastDash := false
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+			lastDash = false
+		case !lastDash && b.Len() > 0:
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+	out := strings.Trim(b.String(), "-")
+	if out == "" {
+		return "shop"
+	}
+	return out
+}

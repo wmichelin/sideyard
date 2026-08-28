@@ -1,0 +1,14 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: clubdue
+      POSTGRES_PASSWORD: clubdue
+      POSTGRES_DB: clubdue
+    ports:
+      - "5433:5432"
+    volumes:
+      - clubdue_pg:/var/lib/postgresql/data
+
+volumes:
+  clubdue_pg:

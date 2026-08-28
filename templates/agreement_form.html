@@ -1,0 +1,70 @@
+{{ define "agreement_form_content" }}
+<header class="page-header">
+  <div>
+    <h2 class="page-title">{{ if .IsEdit }}Edit agreement{{ else }}New agreement{{ end }}</h2>
+    <p class="page-subtitle">Track anniversary, visits, and renewal status.</p>
+  </div>
+  <a href="/agreements" class="secondary-btn">Back to list</a>
+</header>
+
+{{ if .Form.Error }}<p class="error-banner">{{ .Form.Error }}</p>{{ end }}
+
+<form method="post" action="{{ if .IsEdit }}/agreements/{{ .Form.ID }}{{ else }}/agreements{{ end }}" class="form-panel">
+  <label>
+    <span>Customer</span>
+    <select name="customer_id" required>
+      <option value="">Select customer…</option>
+      {{ range .Customers }}
+      <option value="{{ .ID }}"{{ if eq $.Form.CustomerID .ID }} selected{{ end }}>{{ .Name }}</option>
+      {{ end }}
+    </select>
+  </label>
+
+  <label>
+    <span>Plan template</span>
+    <select name="plan_template_id">
+      <option value="">Custom / none</option>
+      {{ range .Plans }}
+      <option value="{{ .ID }}"{{ if eq $.Form.PlanTemplateID .ID }} selected{{ end }}>{{ .Name }}</option>
+      {{ end }}
+    </select>
+  </label>
+
+  <label>
+    <span>Status</span>
+    <select name="status">
+      <option value="active"{{ if eq .Form.Status "active" }} selected{{ end }}>Active</option>
+      <option value="pending_renewal"{{ if eq .Form.Status "pending_renewal" }} selected{{ end }}>Pending renewal</option>
+      <option value="lapsed"{{ if eq .Form.Status "lapsed" }} selected{{ end }}>Lapsed</option>
+      <option value="cancelled"{{ if eq .Form.Status "cancelled" }} selected{{ end }}>Cancelled</option>
+    </select>
+  </label>
+
+  <label>
+    <span>Anniversary date</span>
+    <input type="date" name="anniversary_date" value="{{ .Form.AnniversaryDate }}" required>
+  </label>
+
+  <div class="form-row">
+    <label>
+      <span>Visits entitled</span>
+      <input type="number" name="visits_entitled" min="0" value="{{ .Form.VisitsEntitled }}">
+    </label>
+    <label>
+      <span>Visits used</span>
+      <input type="number" name="visits_used" min="0" value="{{ .Form.VisitsUsed }}">
+    </label>
+    <label>
+      <span>Price (cents)</span>
+      <input type="number" name="price_cents" min="0" value="{{ .Form.PriceCents }}">
+    </label>
+  </div>
+
+  <label>
+    <span>Notes</span>
+    <textarea name="notes" rows="3">{{ .Form.Notes }}</textarea>
+  </label>
+
+  <button type="submit" class="primary-btn">{{ if .IsEdit }}Save changes{{ else }}Create agreement{{ end }}</button>
+</form>
+{{ end }}

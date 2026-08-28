@@ -1,0 +1,35 @@
+{{ define "layout.html" }}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ .Title }}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <p class="eyebrow">Maintenance agreements</p>
+        <h1 class="title">ClubDue</h1>
+        {{ if .Nav.User }}<p class="shop-name">{{ .Nav.User.ShopName }}</p>{{ end }}
+      </div>
+      <nav class="nav">
+        <a href="/dashboard" class="nav-link{{ if eq .Nav.Active "dashboard" }} active{{ end }}">Dashboard</a>
+        <a href="/agreements" class="nav-link{{ if eq .Nav.Active "agreements" }} active{{ end }}">Agreements</a>
+        <a href="/renewals" class="nav-link{{ if eq .Nav.Active "renewals" }} active{{ end }}">Renewals</a>
+        <a href="/customers" class="nav-link{{ if eq .Nav.Active "customers" }} active{{ end }}">Customers</a>
+        <a href="/plan-templates" class="nav-link{{ if eq .Nav.Active "plans" }} active{{ end }}">Plan templates</a>
+      </nav>
+      <form method="post" action="/logout" class="logout-form">
+        <button type="submit" class="ghost-btn">Sign out</button>
+      </form>
+    </aside>
+    <main class="main">
+      {{ .Body }}
+    </main>
+  </div>
+</body>
+</html>
+{{ end }}

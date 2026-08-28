@@ -1,0 +1,60 @@
+{{ define "plan_templates_content" }}
+<header class="page-header">
+  <div>
+    <h2 class="page-title">Plan templates</h2>
+    <p class="page-subtitle">Reusable maintenance plans (annual price, visit count).</p>
+  </div>
+</header>
+
+<section class="panel">
+  <h3 class="section-title">Add plan template</h3>
+  <form method="post" action="/plan-templates" class="form-stack">
+    <div class="form-row">
+      <label>
+        <span>Name</span>
+        <input type="text" name="name" required placeholder="Gold HVAC Plan">
+      </label>
+      <label>
+        <span>Annual price (cents)</span>
+        <input type="number" name="price_cents" min="0" placeholder="24900">
+      </label>
+      <label>
+        <span>Visits per year</span>
+        <input type="number" name="visits_per_year" min="1" value="2">
+      </label>
+    </div>
+    <label>
+      <span>Description</span>
+      <input type="text" name="description" placeholder="Spring + fall tune-ups">
+    </label>
+    <button type="submit" class="primary-btn">Add plan</button>
+  </form>
+</section>
+
+<section class="table-section">
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Description</th>
+          <th>Price</th>
+          <th>Visits/yr</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{ range .Plans }}
+        <tr>
+          <td class="name-cell">{{ .Name }}</td>
+          <td class="muted">{{ .Description }}</td>
+          <td>{{ .PriceFmt }}</td>
+          <td>{{ .VisitsPerYear }}</td>
+        </tr>
+        {{ else }}
+        <tr><td colspan="4" class="empty-cell">No plan templates yet.</td></tr>
+        {{ end }}
+      </tbody>
+    </table>
+  </div>
+</section>
+{{ end }}

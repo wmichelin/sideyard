@@ -1,0 +1,52 @@
+{{ define "customers_content" }}
+<header class="page-header">
+  <div>
+    <h2 class="page-title">Customers</h2>
+    <p class="page-subtitle">Homeowners on maintenance plans.</p>
+  </div>
+</header>
+
+<section class="panel">
+  <h3 class="section-title">Add customer</h3>
+  <form method="post" action="/customers" class="form-row">
+    <label>
+      <span>Name</span>
+      <input type="text" name="name" required>
+    </label>
+    <label>
+      <span>Email</span>
+      <input type="email" name="email">
+    </label>
+    <label>
+      <span>Phone</span>
+      <input type="tel" name="phone">
+    </label>
+    <button type="submit" class="primary-btn">Add</button>
+  </form>
+</section>
+
+<section class="table-section">
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Phone</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{ range .Customers }}
+        <tr>
+          <td class="name-cell">{{ .Name }}</td>
+          <td class="muted">{{ .Email }}</td>
+          <td class="muted">{{ .Phone }}</td>
+        </tr>
+        {{ else }}
+        <tr><td colspan="3" class="empty-cell">No customers yet.</td></tr>
+        {{ end }}
+      </tbody>
+    </table>
+  </div>
+</section>
+{{ end }}

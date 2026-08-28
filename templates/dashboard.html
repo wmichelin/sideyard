@@ -1,0 +1,36 @@
+{{ define "dashboard_content" }}
+<header class="page-header">
+  <div>
+    <h2 class="page-title">Monday dashboard</h2>
+    <p class="page-subtitle">Active agreements, renewals due, and MRR at a glance.</p>
+  </div>
+  <a href="/agreements/new" class="primary-btn">+ New agreement</a>
+</header>
+
+<section class="stats">
+  <div class="stat-card">
+    <span class="stat-label">Active agreements</span>
+    <span class="stat-value">{{ .Stats.ActiveCount }}</span>
+    <span class="stat-meta">{{ .Stats.LapsedCount }} lapsed</span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">MRR</span>
+    <span class="stat-value">{{ .Stats.MRRFmt }}</span>
+    <span class="stat-meta">from active plans</span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Renewals due</span>
+    <span class="stat-value">{{ .Stats.RenewalsDue30 }}</span>
+    <span class="stat-meta">{{ .Stats.RenewalsDue90 }} in 90 days</span>
+  </div>
+</section>
+
+<section class="panel">
+  <h3 class="section-title">Quick links</h3>
+  <div class="link-row">
+    <a href="/renewals" class="secondary-btn">Renewal queue</a>
+    <a href="/agreements" class="secondary-btn">All agreements</a>
+    <a href="/customers" class="secondary-btn">Customers</a>
+  </div>
+</section>
+{{ end }}
