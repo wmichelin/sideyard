@@ -122,6 +122,58 @@ func TestAgreementKeepsPlanTermsSnapshotAfterTemplateEdit(t *testing.T) {
 	}
 }
 
+func TestGenerateRenewalTasksCreatesCycleAwareMilestonesIdempotently(t *testing.T) {
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("DATABASE_URL is required for Postgres integration tests")
+	}
+
+	ctx := context.Background()
+	db, err := openDB(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	store := &Store{db: db}
+	stamp := time.Now().UTC().Format("20060102150405.000000000")
+	shopID := createTestShop(t, ctx, db, "renewal-"+stamp)
+	customerID := createTestCustomer(t, ctx, db, shopID, "Renewal Customer")
+	planID := createTestPlan(t, ctx, db, shopID, "Renewal Plan")
+	asOf := time.Date(2030, time.June, 1, 12, 0, 0, 0, time.UTC)
+	agreementID, err := store.CreateAgreement(ctx, shopID, CreateAgreementInput{
+		CustomerID: customerID, PlanTemplateID: planID, Status: AgreementActive,
+		AnniversaryDate: asOf.AddDate(0, 0, 30), VisitsEntitled: 2, PriceCents: 19900,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.GenerateRenewalTasks(ctx, shopID, asOf); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.GenerateRenewalTasks(ctx, shopID, asOf); err != nil {
+		t.Fatal(err)
+	}
+
+	var count int
+	if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM renewal_tasks WHERE shop_id = $1 AND agreement_id = $2`, shopID, agreementID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 5 {
+		t.Fatalf("expected one task for each milestone after repeated runs, got %d", count)
+	}
+
+	var cycleStart, dueAt time.Time
+	if err := db.Pool.QueryRow(ctx, `SELECT cycle_start_date, due_at FROM renewal_tasks WHERE agreement_id = $1 AND milestone_days = 30`, agreementID).Scan(&cycleStart, &dueAt); err != nil {
+		t.Fatal(err)
+	}
+	expectedCycleStart := time.Date(2030, time.July, 1, 0, 0, 0, 0, time.UTC)
+	expectedDueAt := time.Date(2030, time.June, 1, 0, 0, 0, 0, time.UTC)
+	if !cycleStart.Equal(expectedCycleStart) || !dueAt.Equal(expectedDueAt) {
+		t.Fatalf("unexpected cycle timing: cycle=%s due=%s", cycleStart, dueAt)
+	}
+}
+
 func withAgreementField(in CreateAgreementInput, update func(*CreateAgreementInput)) CreateAgreementInput {
 	update(&in)
 	return in

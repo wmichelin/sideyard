@@ -8,15 +8,76 @@ import (
 
 type RenewalTask struct {
 	ID, CustomerName, PlanName, Status, Notes string
-	Anniversary                               time.Time
+	Anniversary, DueAt                        time.Time
 	Milestone, Days                           int
 }
 
-func (s *Store) ListRenewalTasks(ctx context.Context, shopID string) ([]RenewalTask, error) {
-	if _, err := s.db.Pool.Exec(ctx, `INSERT INTO renewal_tasks (shop_id,agreement_id,milestone_days) SELECT a.shop_id,a.id,m.days FROM agreements a CROSS JOIN (VALUES (90),(60),(30),(14),(7)) m(days) WHERE a.shop_id=$1 AND a.status='active' AND a.anniversary_date BETWEEN CURRENT_DATE AND CURRENT_DATE+90 AND (a.anniversary_date-CURRENT_DATE)<=m.days ON CONFLICT DO NOTHING`, shopID); err != nil {
-		return nil, err
+func (s *Store) GenerateRenewalTasks(ctx context.Context, shopID string, asOf time.Time) error {
+	rows, err := s.db.Pool.Query(ctx, `
+		SELECT id, anniversary_date, plan_snapshot_term_months
+		FROM agreements
+		WHERE shop_id = $1 AND status = 'active'`, shopID)
+	if err != nil {
+		return err
 	}
-	rows, err := s.db.Pool.Query(ctx, `SELECT t.id,c.name,a.plan_snapshot_name,a.anniversary_date,t.milestone_days,(a.anniversary_date-CURRENT_DATE)::int,t.status,COALESCE(t.notes,'') FROM renewal_tasks t JOIN agreements a ON a.id=t.agreement_id JOIN customers c ON c.id=a.customer_id WHERE t.shop_id=$1 ORDER BY a.anniversary_date,t.milestone_days DESC`, shopID)
+	defer rows.Close()
+
+	today := time.Date(asOf.UTC().Year(), asOf.UTC().Month(), asOf.UTC().Day(), 0, 0, 0, 0, time.UTC)
+	latestStart := today.AddDate(0, 0, 90)
+	for rows.Next() {
+		var agreementID string
+		var cycleStart time.Time
+		var termMonths int
+		if err := rows.Scan(&agreementID, &cycleStart, &termMonths); err != nil {
+			return err
+		}
+		for cycleStart.Before(today) {
+			cycleStart = cycleStart.AddDate(0, termMonths, 0)
+		}
+		if cycleStart.After(latestStart) {
+			continue
+		}
+		for _, milestone := range []int{90, 60, 30, 14, 7} {
+			if _, err := s.db.Pool.Exec(ctx, `
+				INSERT INTO renewal_tasks (shop_id, agreement_id, cycle_start_date, due_at, milestone_days)
+				VALUES ($1, $2, $3, $4, $5)
+				ON CONFLICT (shop_id, agreement_id, cycle_start_date, milestone_days) DO NOTHING`,
+				shopID, agreementID, cycleStart, cycleStart.AddDate(0, 0, -milestone), milestone,
+			); err != nil {
+				return err
+			}
+		}
+	}
+	return rows.Err()
+}
+
+func (s *Store) GenerateAllRenewalTasks(ctx context.Context, asOf time.Time) error {
+	rows, err := s.db.Pool.Query(ctx, `SELECT id FROM shops`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var shopID string
+		if err := rows.Scan(&shopID); err != nil {
+			return err
+		}
+		if err := s.GenerateRenewalTasks(ctx, shopID, asOf); err != nil {
+			return err
+		}
+	}
+	return rows.Err()
+}
+
+func (s *Store) ListRenewalTasks(ctx context.Context, shopID string) ([]RenewalTask, error) {
+	rows, err := s.db.Pool.Query(ctx, `
+		SELECT t.id, c.name, a.plan_snapshot_name, a.anniversary_date, t.due_at,
+			t.milestone_days, (a.anniversary_date-CURRENT_DATE)::int, t.status, COALESCE(t.notes, '')
+		FROM renewal_tasks t
+		JOIN agreements a ON a.id = t.agreement_id
+		JOIN customers c ON c.id = a.customer_id
+		WHERE t.shop_id = $1 AND (t.due_at <= CURRENT_DATE OR t.status <> 'open')
+		ORDER BY t.due_at, a.anniversary_date, t.milestone_days DESC`, shopID)
 	if err != nil {
 		return nil, err
 	}
@@ -24,7 +85,7 @@ func (s *Store) ListRenewalTasks(ctx context.Context, shopID string) ([]RenewalT
 	var out []RenewalTask
 	for rows.Next() {
 		var t RenewalTask
-		if err := rows.Scan(&t.ID, &t.CustomerName, &t.PlanName, &t.Anniversary, &t.Milestone, &t.Days, &t.Status, &t.Notes); err != nil {
+		if err := rows.Scan(&t.ID, &t.CustomerName, &t.PlanName, &t.Anniversary, &t.DueAt, &t.Milestone, &t.Days, &t.Status, &t.Notes); err != nil {
 			return nil, err
 		}
 		out = append(out, t)

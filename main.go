@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 )
 
 //go:embed templates/*
@@ -55,6 +56,10 @@ func main() {
 		if err := srv.store.SyncAllVisitDues(ctx); err != nil {
 			log.Printf("sync visit dues: %v", err)
 		}
+		if err := srv.store.GenerateAllRenewalTasks(ctx, time.Now()); err != nil {
+			log.Printf("generate renewal tasks: %v", err)
+		}
+		go runDailyRenewalGeneration(srv.store)
 		log.Print("ClubDue running with Postgres")
 	} else {
 		log.Print("ClubDue running in demo mode (set DATABASE_URL for Postgres)")
@@ -112,5 +117,15 @@ func main() {
 	log.Printf("ClubDue listening on %s", addr)
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Fatal(err)
+	}
+}
+
+func runDailyRenewalGeneration(store *Store) {
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+	for range ticker.C {
+		if err := store.GenerateAllRenewalTasks(context.Background(), time.Now()); err != nil {
+			log.Printf("generate renewal tasks: %v", err)
+		}
 	}
 }
