@@ -1,0 +1,53 @@
+name: Bug report
+description: Report something that is broken in ClubDue
+title: "[Bug] "
+labels:
+  - bug
+  - agent-ready
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Include enough detail for the team to reproduce this without a follow-up.
+  - type: input
+    id: area
+    attributes:
+      label: Area
+      placeholder: Login, agreements, renewals, visits, import, deployment
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: Numbered steps, including the URL and account context
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Include screenshots, exact error text, timestamps, or relevant request IDs. Do not include passwords or tokens.
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - P0 - blocks use or risks data/security
+        - P1 - major workflow is broken
+        - P2 - degraded workflow or workaround exists
+        - P3 - cosmetic or minor
+    validations:
+      required: true
