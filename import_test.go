@@ -1,10 +1,32 @@
 package main
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestSampleImportFixture(t *testing.T) {
+	f, err := os.Open("testdata/sample-import.csv")
+	if err != nil {
+		t.Fatalf("open sample fixture: %v", err)
+	}
+	defer f.Close()
+
+	rows, err := parseImportCSV(f)
+	if err != nil {
+		t.Fatalf("parse sample fixture: %v", err)
+	}
+	if len(rows) != 5 {
+		t.Fatalf("sample rows: got %d want 5", len(rows))
+	}
+	for _, row := range rows {
+		if row.Error != "" || row.ExternalID == "" {
+			t.Fatalf("invalid sample row: %+v", row)
+		}
+	}
+}
 
 func TestParseImportCSV(t *testing.T) {
 	csv := `external_id,customer_name,email,phone,address_line1,city,state,postal_code,plan_name,anniversary_date,status,price_cents
