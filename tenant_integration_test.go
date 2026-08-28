@@ -234,6 +234,49 @@ func TestRenewedTaskRollsAgreementAndRetiresCycle(t *testing.T) {
 	}
 }
 
+func TestQueueRenewalDigestsIsDailyAndIdempotent(t *testing.T) {
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("DATABASE_URL is required for Postgres integration tests")
+	}
+	ctx := context.Background()
+	db, err := openDB(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	store := &Store{db: db}
+	stamp := time.Now().UTC().Format("20060102150405.000000000")
+	shopID := createTestShop(t, ctx, db, "digest-"+stamp)
+	customerID := createTestCustomer(t, ctx, db, shopID, "Digest Customer")
+	planID := createTestPlan(t, ctx, db, shopID, "Digest Plan")
+	asOf := time.Date(2032, time.August, 1, 0, 0, 0, 0, time.UTC)
+	_, err = store.CreateAgreement(ctx, shopID, CreateAgreementInput{
+		CustomerID: customerID, PlanTemplateID: planID, Status: AgreementActive,
+		AnniversaryDate: asOf.AddDate(0, 0, 30), VisitsEntitled: 2, PriceCents: 19900,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.GenerateRenewalTasks(ctx, shopID, asOf); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.QueueRenewalDigests(ctx, asOf); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.QueueRenewalDigests(ctx, asOf); err != nil {
+		t.Fatal(err)
+	}
+
+	var count, taskCount int
+	if err := db.Pool.QueryRow(ctx, `SELECT count(*), cardinality(task_ids) FROM renewal_digest_outbox WHERE shop_id = $1 GROUP BY task_ids`, shopID).Scan(&count, &taskCount); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 || taskCount != 3 {
+		t.Fatalf("expected one digest containing the 90/60/30-day tasks, got rows=%d tasks=%d", count, taskCount)
+	}
+}
+
 func withAgreementField(in CreateAgreementInput, update func(*CreateAgreementInput)) CreateAgreementInput {
 	update(&in)
 	return in

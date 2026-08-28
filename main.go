@@ -59,6 +59,9 @@ func main() {
 		if err := srv.store.GenerateAllRenewalTasks(ctx, time.Now()); err != nil {
 			log.Printf("generate renewal tasks: %v", err)
 		}
+		if err := srv.store.QueueRenewalDigests(ctx, time.Now()); err != nil {
+			log.Printf("queue renewal digests: %v", err)
+		}
 		go runDailyRenewalGeneration(srv.store)
 		log.Print("ClubDue running with Postgres")
 	} else {
@@ -126,6 +129,9 @@ func runDailyRenewalGeneration(store *Store) {
 	for range ticker.C {
 		if err := store.GenerateAllRenewalTasks(context.Background(), time.Now()); err != nil {
 			log.Printf("generate renewal tasks: %v", err)
+		}
+		if err := store.QueueRenewalDigests(context.Background(), time.Now()); err != nil {
+			log.Printf("queue renewal digests: %v", err)
 		}
 	}
 }

@@ -69,6 +69,21 @@ func (s *Store) GenerateAllRenewalTasks(ctx context.Context, asOf time.Time) err
 	return rows.Err()
 }
 
+// QueueRenewalDigests snapshots the due, actionable task IDs once per shop and
+// day. It intentionally does not send anything; a configured delivery worker
+// can later claim the durable outbox record.
+func (s *Store) QueueRenewalDigests(ctx context.Context, asOf time.Time) error {
+	digestDate := time.Date(asOf.UTC().Year(), asOf.UTC().Month(), asOf.UTC().Day(), 0, 0, 0, 0, time.UTC)
+	_, err := s.db.Pool.Exec(ctx, `
+		INSERT INTO renewal_digest_outbox (shop_id, digest_date, task_ids)
+		SELECT t.shop_id, $1::date, ARRAY_AGG(t.id ORDER BY t.due_at, t.id)
+		FROM renewal_tasks t
+		WHERE t.due_at <= $1::date AND t.status IN ('open', 'contacted')
+		GROUP BY t.shop_id
+		ON CONFLICT (shop_id, digest_date) DO NOTHING`, digestDate)
+	return err
+}
+
 func (s *Store) ListRenewalTasks(ctx context.Context, shopID string) ([]RenewalTask, error) {
 	rows, err := s.db.Pool.Query(ctx, `
 		SELECT t.id, c.name, a.plan_snapshot_name, a.anniversary_date, t.due_at,
