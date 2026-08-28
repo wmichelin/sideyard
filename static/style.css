@@ -418,6 +418,52 @@ a.primary-btn {
   display: inline;
 }
 
+.filter-row {
+  margin-bottom: 1.5rem;
+}
+
+.active-filter {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.bulk-actions {
+  margin-top: 1rem;
+}
+
+.overdue-row {
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.badge.due {
+  background: var(--partial-soft);
+  color: var(--partial);
+}
+
+.badge.scheduled {
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--accent);
+}
+
+.badge.completed {
+  background: var(--paid-soft);
+  color: var(--paid);
+}
+
+.badge.overdue {
+  background: var(--overdue-soft);
+  color: var(--overdue);
+}
+
+.stat-meta a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.stat-meta a:hover {
+  text-decoration: underline;
+}
+
 @media (max-width: 768px) {
   .app {
     grid-template-columns: 1fr;

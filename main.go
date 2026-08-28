@@ -52,6 +52,9 @@ func main() {
 
 		srv.auth = auth
 		srv.store = &Store{db: db}
+		if err := srv.store.SyncAllVisitDues(ctx); err != nil {
+			log.Printf("sync visit dues: %v", err)
+		}
 		log.Print("ClubDue running with Postgres")
 	} else {
 		log.Print("ClubDue running in demo mode (set DATABASE_URL for Postgres)")
@@ -89,6 +92,9 @@ func main() {
 	mux.HandleFunc("POST /customers", auth(srv.handleCustomers))
 	mux.HandleFunc("GET /import", auth(srv.handleImport))
 	mux.HandleFunc("POST /import", auth(srv.handleImport))
+	mux.HandleFunc("GET /visits/export.csv", auth(srv.handleVisitsExport))
+	mux.HandleFunc("GET /visits", auth(srv.handleVisits))
+	mux.HandleFunc("POST /visits", auth(srv.handleVisits))
 	mux.HandleFunc("GET /plan-templates", auth(srv.handlePlanTemplates))
 	mux.HandleFunc("POST /plan-templates", auth(srv.handlePlanTemplates))
 

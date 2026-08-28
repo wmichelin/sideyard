@@ -1,0 +1,62 @@
+{{ define "visits_content" }}
+<header class="page-header">
+  <div>
+    <h2 class="page-title">Visit due-list</h2>
+    <p class="page-subtitle">Seasonal tune-ups to schedule in Jobber.</p>
+  </div>
+  <a href="/visits/export.csv{{ if not .DueOnly }}?filter=all{{ end }}" class="secondary-btn">Export CSV</a>
+</header>
+
+<div class="link-row filter-row">
+  <a href="/visits?filter=due" class="secondary-btn{{ if .DueOnly }} active-filter{{ end }}">Due only</a>
+  <a href="/visits?filter=all" class="secondary-btn{{ if not .DueOnly }} active-filter{{ end }}">All</a>
+</div>
+
+<form method="post" action="/visits?filter={{ if .DueOnly }}due{{ else }}all{{ end }}">
+  <input type="hidden" name="filter" value="{{ if .DueOnly }}due{{ else }}all{{ end }}">
+
+  <section class="table-section">
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th><input type="checkbox" id="select-all" title="Select all"></th>
+            <th>Customer</th>
+            <th>Property</th>
+            <th>Season</th>
+            <th>Due window</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ range .Visits }}
+          <tr{{ if .IsOverdue }} class="overdue-row"{{ end }}>
+            <td><input type="checkbox" name="visit_id" value="{{ .ID }}" class="visit-check"></td>
+            <td class="name-cell">{{ .CustomerName }}</td>
+            <td class="muted">{{ .PropertyAddress }}</td>
+            <td>{{ .Season }}</td>
+            <td>{{ .WindowLabel }}</td>
+            <td><span class="badge {{ .Status }}{{ if .IsOverdue }} overdue{{ end }}">{{ .StatusLabel }}{{ if .IsOverdue }} (overdue){{ end }}</span></td>
+          </tr>
+          {{ else }}
+          <tr><td colspan="6" class="empty-cell">No visits in this view.</td></tr>
+          {{ end }}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  {{ if .Visits }}
+  <div class="link-row bulk-actions">
+    <button type="submit" name="action" value="scheduled" class="secondary-btn">Mark scheduled</button>
+    <button type="submit" name="action" value="completed" class="primary-btn">Mark completed</button>
+  </div>
+  {{ end }}
+</form>
+
+<script>
+document.getElementById('select-all')?.addEventListener('change', function(e) {
+  document.querySelectorAll('.visit-check').forEach(cb => cb.checked = e.target.checked);
+});
+</script>
+{{ end }}

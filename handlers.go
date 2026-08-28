@@ -196,11 +196,12 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	s.renderLayout(w, "Dashboard — ClubDue", "dashboard_content", map[string]any{
 		"Nav": NavData{Active: "dashboard", User: user},
 		"Stats": map[string]any{
-			"ActiveCount":   stats.ActiveCount,
-			"RenewalsDue30": stats.RenewalsDue30,
-			"RenewalsDue90": stats.RenewalsDue90,
-			"LapsedCount":   stats.LapsedCount,
-			"MRRFmt":        formatCents(stats.MRRCents),
+			"ActiveCount":    stats.ActiveCount,
+			"RenewalsDue30":  stats.RenewalsDue30,
+			"RenewalsDue90":  stats.RenewalsDue90,
+			"LapsedCount":    stats.LapsedCount,
+			"MRRFmt":         formatCents(stats.MRRCents),
+			"VisitsOverdue":  stats.VisitsOverdue,
 		},
 	})
 }

@@ -23,12 +23,18 @@
     <span class="stat-value">{{ .Stats.RenewalsDue30 }}</span>
     <span class="stat-meta">{{ .Stats.RenewalsDue90 }} in 90 days</span>
   </div>
+  <div class="stat-card">
+    <span class="stat-label">Visits overdue</span>
+    <span class="stat-value{{ if gt .Stats.VisitsOverdue 0 }} outstanding{{ end }}">{{ .Stats.VisitsOverdue }}</span>
+    <span class="stat-meta"><a href="/visits">View due-list</a></span>
+  </div>
 </section>
 
 <section class="panel">
   <h3 class="section-title">Quick links</h3>
   <div class="link-row">
     <a href="/renewals" class="secondary-btn">Renewal queue</a>
+    <a href="/visits" class="secondary-btn">Visit due-list</a>
     <a href="/agreements" class="secondary-btn">All agreements</a>
     <a href="/customers" class="secondary-btn">Customers</a>
   </div>

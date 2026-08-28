@@ -319,6 +319,10 @@ func (s *Store) DashboardStats(ctx context.Context, shopID string) (DashboardSta
 		&stats.LapsedCount,
 		&stats.MRRCents,
 	)
+	if err != nil {
+		return stats, err
+	}
+	stats.VisitsOverdue, err = s.CountVisitsOverdue(ctx, shopID)
 	return stats, err
 }
 

@@ -55,11 +55,14 @@ func (s *Store) SeedDemo(ctx context.Context) (SeedResult, error) {
 	var agreementCount int
 	_ = s.db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM agreements WHERE shop_id = $1`, shopID).Scan(&agreementCount)
 	if agreementCount >= 3 {
+		if err := s.SyncVisitDues(ctx, shopID); err != nil {
+			return SeedResult{}, err
+		}
 		return SeedResult{
 			ShopID:   shopID,
 			Email:    email,
 			Password: password,
-			Message:  "demo data already present",
+			Message:  "demo data already present (visit dues synced)",
 		}, nil
 	}
 
@@ -97,11 +100,15 @@ func (s *Store) SeedDemo(ctx context.Context) (SeedResult, error) {
 		}
 	}
 
+	if err := s.SyncVisitDues(ctx, shopID); err != nil {
+		return SeedResult{}, err
+	}
+
 	return SeedResult{
 		ShopID:   shopID,
 		Email:    email,
 		Password: password,
-		Message:  "seeded demo shop with 2 customers and 3 agreements",
+		Message:  "seeded demo shop with 2 customers, 3 agreements, and visit dues",
 	}, nil
 }
 
