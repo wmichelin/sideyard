@@ -222,20 +222,31 @@ func (s *Server) handleAgreementsList(w http.ResponseWriter, r *http.Request) {
 		AnniversaryFmt string
 		VisitsLabel    string
 	}
-	rows := make([]row, len(agreements))
-	for i, a := range agreements {
-		rows[i] = row{
+	filter, days := r.URL.Query().Get("filter"), 0
+	if raw := r.URL.Query().Get("renew_days"); raw != "" {
+		days, _ = strconv.Atoi(raw)
+	}
+	rows := make([]row, 0, len(agreements))
+	for _, a := range agreements {
+		if filter == "active" && a.Status != AgreementActive {
+			continue
+		}
+		if days > 0 && (a.Status != AgreementActive || a.AnniversaryDate.Before(time.Now().UTC()) || a.AnniversaryDate.After(time.Now().UTC().AddDate(0, 0, days))) {
+			continue
+		}
+		rows = append(rows, row{
 			Agreement:      a,
 			StatusLabel:    agreementStatusLabel(a.Status),
 			PriceFmt:       formatCents(a.PriceCents),
 			AnniversaryFmt: a.AnniversaryDate.Format("Jan 2, 2006"),
 			VisitsLabel:    strconv.Itoa(a.VisitsUsed) + " / " + strconv.Itoa(a.VisitsEntitled),
-		}
+		})
 	}
 
 	s.renderLayout(w, "Agreements — ClubDue", "agreements_content", map[string]any{
 		"Nav":        NavData{Active: "agreements", User: user},
 		"Agreements": rows,
+		"Filter":     filter, "RenewDays": days,
 	})
 }
 
@@ -259,6 +270,7 @@ func (s *Server) handleAgreementEdit(w http.ResponseWriter, r *http.Request) {
 	s.renderAgreementForm(w, r, user, agreementFormData{
 		ID:              a.ID,
 		CustomerID:      a.CustomerID,
+		PropertyID:      a.PropertyID,
 		PlanTemplateID:  a.PlanTemplateID,
 		Status:          string(a.Status),
 		AnniversaryDate: a.AnniversaryDate.Format("2006-01-02"),
@@ -273,6 +285,7 @@ func (s *Server) handleAgreementEdit(w http.ResponseWriter, r *http.Request) {
 type agreementFormData struct {
 	ID              string
 	CustomerID      string
+	PropertyID      string
 	PlanTemplateID  string
 	Status          string
 	AnniversaryDate string
@@ -297,17 +310,23 @@ func (s *Server) renderAgreementForm(w http.ResponseWriter, r *http.Request, use
 		http.Error(w, "server error", http.StatusInternalServerError)
 		return
 	}
+	properties, err := s.store.ListAllProperties(r.Context(), user.ShopID)
+	if err != nil {
+		http.Error(w, "server error", http.StatusInternalServerError)
+		return
+	}
 
 	title := "New agreement — ClubDue"
 	if form.ID != "" {
 		title = "Edit agreement — ClubDue"
 	}
 	s.renderLayout(w, title, "agreement_form_content", map[string]any{
-		"Nav":       NavData{Active: "agreements", User: user},
-		"Form":      form,
-		"Customers": customers,
-		"Plans":     plans,
-		"IsEdit":    form.ID != "",
+		"Nav":        NavData{Active: "agreements", User: user},
+		"Form":       form,
+		"Customers":  customers,
+		"Plans":      plans,
+		"Properties": properties,
+		"IsEdit":     form.ID != "",
 	})
 }
 
@@ -357,6 +376,7 @@ func (s *Server) parseAgreementForm(w http.ResponseWriter, r *http.Request, user
 	form := agreementFormData{
 		ID:              id,
 		CustomerID:      r.FormValue("customer_id"),
+		PropertyID:      r.FormValue("property_id"),
 		PlanTemplateID:  r.FormValue("plan_template_id"),
 		Status:          r.FormValue("status"),
 		AnniversaryDate: r.FormValue("anniversary_date"),
@@ -386,6 +406,7 @@ func (s *Server) parseAgreementForm(w http.ResponseWriter, r *http.Request, user
 
 	input := CreateAgreementInput{
 		CustomerID:      form.CustomerID,
+		PropertyID:      form.PropertyID,
 		PlanTemplateID:  form.PlanTemplateID,
 		Status:          status,
 		AnniversaryDate: anniversary,

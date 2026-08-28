@@ -21,6 +21,11 @@
   </label>
 
   <label>
+    <span>Property</span>
+    <select name="property_id"><option value="">No linked property</option>{{ range .Properties }}<option value="{{ .ID }}"{{ if eq $.Form.PropertyID .ID }} selected{{ end }}>{{ .AddressLine1 }}, {{ .City }}, {{ .State }}</option>{{ end }}</select>
+  </label>
+
+  <label>
     <span>Plan template</span>
     <select name="plan_template_id">
       <option value="">Custom / none</option>
@@ -34,6 +39,7 @@
     <span>Status</span>
     <select name="status">
       <option value="active"{{ if eq .Form.Status "active" }} selected{{ end }}>Active</option>
+      <option value="past_due"{{ if eq .Form.Status "past_due" }} selected{{ end }}>Past due</option>
       <option value="pending_renewal"{{ if eq .Form.Status "pending_renewal" }} selected{{ end }}>Pending renewal</option>
       <option value="lapsed"{{ if eq .Form.Status "lapsed" }} selected{{ end }}>Lapsed</option>
       <option value="cancelled"{{ if eq .Form.Status "cancelled" }} selected{{ end }}>Cancelled</option>

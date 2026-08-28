@@ -10,6 +10,7 @@ type AgreementStatus string
 
 const (
 	AgreementActive         AgreementStatus = "active"
+	AgreementPastDue        AgreementStatus = "past_due"
 	AgreementLapsed         AgreementStatus = "lapsed"
 	AgreementCancelled      AgreementStatus = "cancelled"
 	AgreementPendingRenewal AgreementStatus = "pending_renewal"
@@ -190,6 +191,25 @@ func (s *Store) ListProperties(ctx context.Context, shopID, customerID string) (
 		properties = append(properties, p)
 	}
 	return properties, rows.Err()
+}
+
+func (s *Store) ListAllProperties(ctx context.Context, shopID string) ([]Property, error) {
+	rows, err := s.db.Pool.Query(ctx, `
+		SELECT id, customer_id, address_line1, COALESCE(address_line2, ''), city, state, postal_code
+		FROM properties WHERE shop_id = $1 ORDER BY address_line1`, shopID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Property
+	for rows.Next() {
+		var p Property
+		if err := rows.Scan(&p.ID, &p.CustomerID, &p.AddressLine1, &p.AddressLine2, &p.City, &p.State, &p.PostalCode); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) CreateProperty(ctx context.Context, shopID, customerID, address1, address2, city, state, postal string) (string, error) {
@@ -394,6 +414,7 @@ func scanAgreements(rows agreementRows) ([]Agreement, error) {
 
 type CreateAgreementInput struct {
 	CustomerID      string
+	PropertyID      string
 	PlanTemplateID  string
 	ExternalID      string
 	Status          AgreementStatus
@@ -410,13 +431,17 @@ func (s *Store) CreateAgreement(ctx context.Context, shopID string, in CreateAgr
 	if in.PlanTemplateID != "" {
 		planID = &in.PlanTemplateID
 	}
+	var propertyID *string
+	if in.PropertyID != "" {
+		propertyID = &in.PropertyID
+	}
 	err := s.db.Pool.QueryRow(ctx, `
 		INSERT INTO agreements (
-			shop_id, customer_id, plan_template_id, external_id, status,
+			shop_id, customer_id, property_id, plan_template_id, external_id, status,
 			anniversary_date, visits_entitled, visits_used, price_cents, notes
-		) VALUES ($1, $2, $3, NULLIF($4, ''), $5, $6, $7, $8, $9, NULLIF($10, ''))
+		) VALUES ($1, $2, $3, $4, NULLIF($5, ''), $6, $7, $8, $9, $10, NULLIF($11, ''))
 		RETURNING id`,
-		shopID, in.CustomerID, planID, in.ExternalID, string(in.Status),
+		shopID, in.CustomerID, propertyID, planID, in.ExternalID, string(in.Status),
 		in.AnniversaryDate, in.VisitsEntitled, in.VisitsUsed, in.PriceCents, in.Notes,
 	).Scan(&id)
 	return id, err
@@ -427,19 +452,24 @@ func (s *Store) UpdateAgreement(ctx context.Context, shopID, agreementID string,
 	if in.PlanTemplateID != "" {
 		planID = &in.PlanTemplateID
 	}
+	var propertyID *string
+	if in.PropertyID != "" {
+		propertyID = &in.PropertyID
+	}
 	tag, err := s.db.Pool.Exec(ctx, `
 		UPDATE agreements SET
 			customer_id = $3,
-			plan_template_id = $4,
-			status = $5,
-			anniversary_date = $6,
-			visits_entitled = $7,
-			visits_used = $8,
-			price_cents = $9,
-			notes = NULLIF($10, ''),
+			property_id = $4,
+			plan_template_id = $5,
+			status = $6,
+			anniversary_date = $7,
+			visits_entitled = $8,
+			visits_used = $9,
+			price_cents = $10,
+			notes = NULLIF($11, ''),
 			updated_at = now()
 		WHERE shop_id = $1 AND id = $2`,
-		shopID, agreementID, in.CustomerID, planID, string(in.Status),
+		shopID, agreementID, in.CustomerID, propertyID, planID, string(in.Status),
 		in.AnniversaryDate, in.VisitsEntitled, in.VisitsUsed, in.PriceCents, in.Notes,
 	)
 	if err != nil {
@@ -554,6 +584,8 @@ func agreementStatusLabel(s AgreementStatus) string {
 	switch s {
 	case AgreementActive:
 		return "Active"
+	case AgreementPastDue:
+		return "Past due"
 	case AgreementLapsed:
 		return "Lapsed"
 	case AgreementCancelled:
