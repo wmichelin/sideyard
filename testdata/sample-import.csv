@@ -1,0 +1,6 @@
+external_id,customer_name,email,phone,address_line1,city,state,postal_code,plan_name,anniversary_date,status,price_cents
+csv-1001,Morgan Walsh,morgan@example.com,555-0201,142 Oak Lane,Denver,CO,80202,Gold HVAC Plan,2026-09-15,active,24900
+csv-1002,Sam Chen,sam@example.com,555-0202,88 Pine Street,Boulder,CO,80301,Gold HVAC Plan,2026-10-01,active,24900
+csv-1003,Taylor Brooks,taylor@example.com,555-0203,2100 Elm Drive,Aurora,CO,80012,Gold HVAC Plan,2026-11-20,pending_renewal,24900
+csv-1004,Casey Nguyen,casey@example.com,555-0204,55 Maple Court,Fort Collins,CO,80521,Gold HVAC Plan,2026-04-01,active,24900
+csv-1005,Riley Patel,riley@example.com,555-0205,901 Cedar Blvd,Colorado Springs,CO,80903,Gold HVAC Plan,2025-12-01,lapsed,24900

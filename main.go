@@ -87,6 +87,8 @@ func main() {
 	mux.HandleFunc("GET /renewals", auth(srv.handleRenewals))
 	mux.HandleFunc("GET /customers", auth(srv.handleCustomers))
 	mux.HandleFunc("POST /customers", auth(srv.handleCustomers))
+	mux.HandleFunc("GET /import", auth(srv.handleImport))
+	mux.HandleFunc("POST /import", auth(srv.handleImport))
 	mux.HandleFunc("GET /plan-templates", auth(srv.handlePlanTemplates))
 	mux.HandleFunc("POST /plan-templates", auth(srv.handlePlanTemplates))
 

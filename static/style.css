@@ -408,6 +408,16 @@ a.primary-btn {
   color: var(--accent);
 }
 
+.import-columns {
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+  word-break: break-word;
+}
+
+.inline-form {
+  display: inline;
+}
+
 @media (max-width: 768px) {
   .app {
     grid-template-columns: 1fr;

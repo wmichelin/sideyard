@@ -1,0 +1,108 @@
+{{ define "import_content" }}
+<header class="page-header">
+  <div>
+    <h2 class="page-title">CSV import</h2>
+    <p class="page-subtitle">Upload maintenance agreements from a spreadsheet export.</p>
+  </div>
+</header>
+
+{{ if eq .Step "upload" }}
+{{ if .Error }}<p class="error-banner">{{ .Error }}</p>{{ end }}
+
+<section class="panel">
+  <h3 class="section-title">Required columns</h3>
+  <p class="muted import-columns">external_id, customer_name, email, phone, address_line1, city, state, postal_code, plan_name, anniversary_date (YYYY-MM-DD), status, price_cents</p>
+</section>
+
+<section class="panel">
+  <h3 class="section-title">Upload file</h3>
+  <form method="post" action="/import" enctype="multipart/form-data" class="form-stack">
+    <input type="hidden" name="step" value="dry_run">
+    <label>
+      <span>CSV file</span>
+      <input type="file" name="csv" accept=".csv,text/csv" required>
+    </label>
+    <button type="submit" class="primary-btn">Preview import</button>
+  </form>
+</section>
+
+{{ else if eq .Step "preview" }}
+<section class="stats">
+  <div class="stat-card">
+    <span class="stat-label">New customers</span>
+    <span class="stat-value">{{ .Summary.NewCustomers }}</span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Updated customers</span>
+    <span class="stat-value">{{ .Summary.UpdatedCustomers }}</span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">New agreements</span>
+    <span class="stat-value">{{ .Summary.NewAgreements }}</span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Updated agreements</span>
+    <span class="stat-value">{{ .Summary.UpdatedAgreements }}</span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Errors</span>
+    <span class="stat-value{{ if gt .Summary.Errors 0 }} outstanding{{ end }}">{{ .Summary.Errors }}</span>
+    <span class="stat-meta">{{ .Summary.Skipped }} skipped</span>
+  </div>
+</section>
+
+<section class="table-section">
+  <h3 class="section-title">Preview (first {{ len .Preview }} of {{ .TotalRows }} rows)</h3>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Line</th>
+          <th>External ID</th>
+          <th>Customer</th>
+          <th>Address</th>
+          <th>Plan</th>
+          <th>Anniversary</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{ range .Preview }}
+        <tr>
+          <td>{{ .LineNum }}</td>
+          <td>{{ .ExternalID }}</td>
+          <td class="name-cell">{{ .CustomerName }}</td>
+          <td class="muted">{{ .AddressLine1 }}, {{ .City }}</td>
+          <td>{{ .PlanName }}</td>
+          <td>{{ if .AnniversaryDate.IsZero }}{{ else }}{{ .AnniversaryDate.Format "2006-01-02" }}{{ end }}</td>
+          <td>{{ if .Error }}<span class="badge cancelled">{{ .Error }}</span>{{ else }}{{ .Action }}{{ end }}</td>
+        </tr>
+        {{ end }}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<div class="link-row">
+  <a href="/import" class="secondary-btn">Upload different file</a>
+  {{ if .CanCommit }}
+  <form method="post" action="/import" class="inline-form">
+    <input type="hidden" name="step" value="commit">
+    <input type="hidden" name="csv_data" value="{{ .CSVData }}">
+    <button type="submit" class="primary-btn">Commit import</button>
+  </form>
+  {{ end }}
+</div>
+
+{{ else if eq .Step "done" }}
+<section class="panel">
+  <h3 class="section-title">Import complete</h3>
+  <p>{{ .Summary.NewCustomers }} new customers, {{ .Summary.UpdatedCustomers }} updated customers.</p>
+  <p>{{ .Summary.NewAgreements }} new agreements, {{ .Summary.UpdatedAgreements }} updated agreements.</p>
+  <div class="link-row">
+    <a href="/agreements" class="primary-btn">View agreements</a>
+    <a href="/import" class="secondary-btn">Import another file</a>
+  </div>
+</section>
+{{ end }}
+{{ end }}
