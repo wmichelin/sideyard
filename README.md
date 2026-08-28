@@ -24,8 +24,8 @@ Staging and production on the pantry DO droplet (Pantry/Headscale untouched):
 
 | Env | URL |
 |-----|-----|
-| Staging | https://clubdue-staging.waltermichelin.com |
-| Production | https://clubdue.waltermichelin.com |
+| Staging | https://clubdue-staging.michelindigitalmedia.com |
+| Production | https://clubdue.michelindigitalmedia.com |
 
 Push to `main` → staging auto-deploy. Production is manual after review.
 

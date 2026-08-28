@@ -4,7 +4,7 @@
 
 ClubDue uses **staging → review → production**:
 
-1. Push to `main` → staging auto-deploys to https://clubdue-staging.waltermichelin.com
+1. Push to `main` → staging auto-deploys to https://clubdue-staging.michelindigitalmedia.com
 2. Run `./scripts/smoke-test.sh staging` and verify the change
 3. Show the user the staging URL and results; **wait for explicit approval**
 4. Only then: `gh workflow run deploy-production.yml`

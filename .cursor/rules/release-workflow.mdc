@@ -9,8 +9,8 @@ alwaysApply: true
 
 | Env | URL | Deploy |
 |-----|-----|--------|
-| **Staging** | https://clubdue-staging.waltermichelin.com | Auto on push to `main` |
-| **Production** | https://clubdue.waltermichelin.com | Manual only, after user approval |
+| **Staging** | https://clubdue-staging.michelindigitalmedia.com | Auto on push to `main` |
+| **Production** | https://clubdue.michelindigitalmedia.com | Manual only, after user approval |
 
 Droplet layout (do not touch Pantry `:8080` or Headscale `:8081`):
 

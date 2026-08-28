@@ -46,7 +46,7 @@ jobs:
           CONTAINER: clubdue
           IMAGE: ghcr.io/wmichelin/clubdue:latest
           PORT: "8083"
-          DOMAIN: clubdue.waltermichelin.com
+          DOMAIN: clubdue.michelindigitalmedia.com
           GHCR_USER: ${{ github.repository_owner }}
           GHCR_TOKEN: ${{ secrets.GHCR_PAT }}
         with:

@@ -4,8 +4,8 @@ Follow this when making ClubDue changes that should reach users.
 
 ## Environments
 
-- **Staging** — https://clubdue-staging.waltermichelin.com — auto-deploys on every push to `main`. Experiment freely here.
-- **Production** — https://clubdue.waltermichelin.com — deploy only after the user approves staging.
+- **Staging** — https://clubdue-staging.michelindigitalmedia.com — auto-deploys on every push to `main`. Experiment freely here.
+- **Production** — https://clubdue.michelindigitalmedia.com — deploy only after the user approves staging.
 
 ## Agent checklist
 
@@ -22,14 +22,14 @@ After pushing to `main`:
 ./scripts/smoke-test.sh staging
 ```
 
-Also open https://clubdue-staging.waltermichelin.com and confirm the change visually when UI-related.
+Also open https://clubdue-staging.michelindigitalmedia.com and confirm the change visually when UI-related.
 
 ### 3. Show the user
 
 Report:
 
 - What changed (brief)
-- Staging URL: https://clubdue-staging.waltermichelin.com
+- Staging URL: https://clubdue-staging.michelindigitalmedia.com
 - CI / Deploy Staging run status (link if available)
 - Smoke test result
 

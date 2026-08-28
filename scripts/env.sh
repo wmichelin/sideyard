@@ -11,7 +11,7 @@ clubdue_env() {
       export CLUBDUE_CONTAINER=clubdue-staging
       export CLUBDUE_IMAGE=ghcr.io/wmichelin/clubdue:staging
       export CLUBDUE_PORT=8082
-      export CLUBDUE_DOMAIN=clubdue-staging.waltermichelin.com
+      export CLUBDUE_DOMAIN=clubdue-staging.michelindigitalmedia.com
       export CLUBDUE_URL="https://${CLUBDUE_DOMAIN}"
       ;;
     production|prod)
@@ -19,7 +19,7 @@ clubdue_env() {
       export CLUBDUE_CONTAINER=clubdue
       export CLUBDUE_IMAGE=ghcr.io/wmichelin/clubdue:latest
       export CLUBDUE_PORT=8083
-      export CLUBDUE_DOMAIN=clubdue.waltermichelin.com
+      export CLUBDUE_DOMAIN=clubdue.michelindigitalmedia.com
       export CLUBDUE_URL="https://${CLUBDUE_DOMAIN}"
       ;;
     *)
