@@ -70,6 +70,58 @@ func TestAgreementReferencesStayWithinShopAndCustomer(t *testing.T) {
 	}
 }
 
+func TestAgreementKeepsPlanTermsSnapshotAfterTemplateEdit(t *testing.T) {
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("DATABASE_URL is required for Postgres integration tests")
+	}
+
+	ctx := context.Background()
+	db, err := openDB(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	store := &Store{db: db}
+	stamp := time.Now().UTC().Format("20060102150405.000000000")
+	shopID := createTestShop(t, ctx, db, "snapshot-"+stamp)
+	customerID := createTestCustomer(t, ctx, db, shopID, "Snapshot Customer")
+	planID, err := store.CreatePlanTemplate(ctx, shopID, "Gold 2026", "Two precision tune-ups", 29900, 12, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agreementID, err := store.CreateAgreement(ctx, shopID, CreateAgreementInput{
+		CustomerID: customerID, PlanTemplateID: planID, Status: AgreementActive,
+		AnniversaryDate: time.Now().UTC().AddDate(1, 0, 0), VisitsEntitled: 2, PriceCents: 29900,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdatePlanTemplate(ctx, shopID, planID, "Gold 2027", "One annual check", 39900, 24, 1); err != nil {
+		t.Fatal(err)
+	}
+
+	var name, description, billingInterval string
+	var termMonths, visitsPerYear int
+	if err := db.Pool.QueryRow(ctx, `
+		SELECT plan_snapshot_name, plan_snapshot_description, plan_snapshot_billing_interval,
+			plan_snapshot_term_months, plan_snapshot_visits_per_year
+		FROM agreements WHERE id = $1`, agreementID,
+	).Scan(&name, &description, &billingInterval, &termMonths, &visitsPerYear); err != nil {
+		t.Fatal(err)
+	}
+	if name != "Gold 2026" || description != "Two precision tune-ups" || billingInterval != "annual" || termMonths != 12 || visitsPerYear != 2 {
+		t.Fatalf("agreement snapshot changed or was incomplete: name=%q description=%q interval=%q term=%d visits=%d", name, description, billingInterval, termMonths, visitsPerYear)
+	}
+	agreement, err := store.GetAgreement(ctx, shopID, agreementID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if agreement.PlanName != "Gold 2026" {
+		t.Fatalf("agreement list/detail used live template name %q", agreement.PlanName)
+	}
+}
+
 func withAgreementField(in CreateAgreementInput, update func(*CreateAgreementInput)) CreateAgreementInput {
 	update(&in)
 	return in

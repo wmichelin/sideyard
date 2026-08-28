@@ -16,7 +16,7 @@ func (s *Store) ListRenewalTasks(ctx context.Context, shopID string) ([]RenewalT
 	if _, err := s.db.Pool.Exec(ctx, `INSERT INTO renewal_tasks (shop_id,agreement_id,milestone_days) SELECT a.shop_id,a.id,m.days FROM agreements a CROSS JOIN (VALUES (90),(60),(30),(14),(7)) m(days) WHERE a.shop_id=$1 AND a.status='active' AND a.anniversary_date BETWEEN CURRENT_DATE AND CURRENT_DATE+90 AND (a.anniversary_date-CURRENT_DATE)<=m.days ON CONFLICT DO NOTHING`, shopID); err != nil {
 		return nil, err
 	}
-	rows, err := s.db.Pool.Query(ctx, `SELECT t.id,c.name,COALESCE(p.name,'Custom plan'),a.anniversary_date,t.milestone_days,(a.anniversary_date-CURRENT_DATE)::int,t.status,COALESCE(t.notes,'') FROM renewal_tasks t JOIN agreements a ON a.id=t.agreement_id JOIN customers c ON c.id=a.customer_id LEFT JOIN plan_templates p ON p.id=a.plan_template_id WHERE t.shop_id=$1 ORDER BY a.anniversary_date,t.milestone_days DESC`, shopID)
+	rows, err := s.db.Pool.Query(ctx, `SELECT t.id,c.name,a.plan_snapshot_name,a.anniversary_date,t.milestone_days,(a.anniversary_date-CURRENT_DATE)::int,t.status,COALESCE(t.notes,'') FROM renewal_tasks t JOIN agreements a ON a.id=t.agreement_id JOIN customers c ON c.id=a.customer_id WHERE t.shop_id=$1 ORDER BY a.anniversary_date,t.milestone_days DESC`, shopID)
 	if err != nil {
 		return nil, err
 	}

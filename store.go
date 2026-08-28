@@ -325,7 +325,7 @@ func (s *Store) ListAgreements(ctx context.Context, shopID string) ([]Agreement,
 			COALESCE(a.property_id::text, ''),
 			COALESCE(p.address_line1 || ', ' || p.city || ', ' || p.state, ''),
 			COALESCE(a.plan_template_id::text, ''),
-			COALESCE(pt.name, ''),
+			a.plan_snapshot_name,
 			COALESCE(a.external_id, ''),
 			a.status,
 			a.anniversary_date,
@@ -336,7 +336,6 @@ func (s *Store) ListAgreements(ctx context.Context, shopID string) ([]Agreement,
 		FROM agreements a
 		JOIN customers c ON c.id = a.customer_id
 		LEFT JOIN properties p ON p.id = a.property_id
-		LEFT JOIN plan_templates pt ON pt.id = a.plan_template_id
 		WHERE a.shop_id = $1
 		ORDER BY a.anniversary_date`, shopID)
 	if err != nil {
@@ -358,7 +357,7 @@ func (s *Store) GetAgreement(ctx context.Context, shopID, agreementID string) (*
 			COALESCE(a.property_id::text, ''),
 			COALESCE(p.address_line1 || ', ' || p.city || ', ' || p.state, ''),
 			COALESCE(a.plan_template_id::text, ''),
-			COALESCE(pt.name, ''),
+			a.plan_snapshot_name,
 			COALESCE(a.external_id, ''),
 			a.status,
 			a.anniversary_date,
@@ -369,7 +368,6 @@ func (s *Store) GetAgreement(ctx context.Context, shopID, agreementID string) (*
 		FROM agreements a
 		JOIN customers c ON c.id = a.customer_id
 		LEFT JOIN properties p ON p.id = a.property_id
-		LEFT JOIN plan_templates pt ON pt.id = a.plan_template_id
 		WHERE a.shop_id = $1 AND a.id = $2`, shopID, agreementID).Scan(
 		&a.ID, &a.CustomerID, &a.CustomerName,
 		&a.PropertyID, &a.PropertyAddress,
@@ -438,8 +436,16 @@ func (s *Store) CreateAgreement(ctx context.Context, shopID string, in CreateAgr
 	err := s.db.Pool.QueryRow(ctx, `
 		INSERT INTO agreements (
 			shop_id, customer_id, property_id, plan_template_id, external_id, status,
-			anniversary_date, visits_entitled, visits_used, price_cents, notes
-		) VALUES ($1, $2, $3, $4, NULLIF($5, ''), $6, $7, $8, $9, $10, NULLIF($11, ''))
+			anniversary_date, visits_entitled, visits_used, price_cents, notes,
+			plan_snapshot_name, plan_snapshot_description, plan_snapshot_billing_interval,
+			plan_snapshot_term_months, plan_snapshot_visits_per_year, plan_snapshot_visit_windows
+		)
+		SELECT $1, $2, $3, $4, NULLIF($5, ''), $6, $7, $8, $9, $10, NULLIF($11, ''),
+			COALESCE(pt.name, 'Custom plan'), COALESCE(pt.description, ''),
+			COALESCE(pt.billing_interval, 'annual'), COALESCE(pt.term_months, 12),
+			COALESCE(pt.visits_per_year, $8), COALESCE(pt.visit_windows, '{spring,fall}')
+		FROM (SELECT $4::uuid AS plan_id) selected
+		LEFT JOIN plan_templates pt ON pt.id = selected.plan_id AND pt.shop_id = $1
 		RETURNING id`,
 		shopID, in.CustomerID, propertyID, planID, in.ExternalID, string(in.Status),
 		in.AnniversaryDate, in.VisitsEntitled, in.VisitsUsed, in.PriceCents, in.Notes,
@@ -460,7 +466,6 @@ func (s *Store) UpdateAgreement(ctx context.Context, shopID, agreementID string,
 		UPDATE agreements SET
 			customer_id = $3,
 			property_id = $4,
-			plan_template_id = $5,
 			status = $6,
 			anniversary_date = $7,
 			visits_entitled = $8,
@@ -468,7 +473,8 @@ func (s *Store) UpdateAgreement(ctx context.Context, shopID, agreementID string,
 			price_cents = $10,
 			notes = NULLIF($11, ''),
 			updated_at = now()
-		WHERE shop_id = $1 AND id = $2`,
+		WHERE shop_id = $1 AND id = $2
+		  AND plan_template_id IS NOT DISTINCT FROM $5`,
 		shopID, agreementID, in.CustomerID, propertyID, planID, string(in.Status),
 		in.AnniversaryDate, in.VisitsEntitled, in.VisitsUsed, in.PriceCents, in.Notes,
 	)
@@ -495,11 +501,10 @@ func (s *Store) DashboardStats(ctx context.Context, shopID string) (DashboardSta
 				AND a.updated_at >= date_trunc('month', CURRENT_DATE)),
 			COALESCE(SUM(
 				CASE WHEN a.status = 'active' THEN
-					CASE WHEN pt.billing_interval = 'monthly' THEN a.price_cents ELSE a.price_cents / 12 END
+					CASE WHEN a.plan_snapshot_billing_interval = 'monthly' THEN a.price_cents ELSE a.price_cents / 12 END
 				ELSE 0 END
 			), 0)
 		FROM agreements a
-		LEFT JOIN plan_templates pt ON pt.id = a.plan_template_id
 		WHERE a.shop_id = $1`, shopID).Scan(
 		&stats.ActiveCount,
 		&stats.RenewalsDueMonth,
@@ -520,14 +525,13 @@ func (s *Store) RenewalQueue(ctx context.Context, shopID string) ([]RenewalBucke
 			a.id,
 			c.name,
 			COALESCE(p.address_line1 || ', ' || p.city || ', ' || p.state, ''),
-			COALESCE(pt.name, 'Custom plan'),
+			a.plan_snapshot_name,
 			a.anniversary_date,
 			(a.anniversary_date - CURRENT_DATE)::int,
 			a.price_cents
 		FROM agreements a
 		JOIN customers c ON c.id = a.customer_id
 		LEFT JOIN properties p ON p.id = a.property_id
-		LEFT JOIN plan_templates pt ON pt.id = a.plan_template_id
 		WHERE a.shop_id = $1
 		  AND a.status = 'active'
 		  AND a.anniversary_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 90

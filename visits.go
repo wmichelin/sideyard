@@ -73,9 +73,8 @@ func isVisitOverdue(season string, year int, status VisitStatus, now time.Time) 
 func (s *Store) SyncVisitDues(ctx context.Context, shopID string) error {
 	year := time.Now().UTC().Year()
 	rows, err := s.db.Pool.Query(ctx, `
-		SELECT a.id, COALESCE(pt.visit_windows, '{spring,fall}')
+		SELECT a.id, a.plan_snapshot_visit_windows
 		FROM agreements a
-		LEFT JOIN plan_templates pt ON pt.id = a.plan_template_id
 		WHERE a.shop_id = $1
 		  AND a.status = 'active'
 		  AND a.visits_used < a.visits_entitled`, shopID)

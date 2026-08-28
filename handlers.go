@@ -272,6 +272,7 @@ func (s *Server) handleAgreementEdit(w http.ResponseWriter, r *http.Request) {
 		CustomerID:      a.CustomerID,
 		PropertyID:      a.PropertyID,
 		PlanTemplateID:  a.PlanTemplateID,
+		PlanName:        a.PlanName,
 		Status:          string(a.Status),
 		AnniversaryDate: a.AnniversaryDate.Format("2006-01-02"),
 		VisitsEntitled:  a.VisitsEntitled,
@@ -287,6 +288,7 @@ type agreementFormData struct {
 	CustomerID      string
 	PropertyID      string
 	PlanTemplateID  string
+	PlanName        string
 	Status          string
 	AnniversaryDate string
 	VisitsEntitled  int

@@ -33,13 +33,12 @@ func (s *Store) CreateRenewalLink(ctx context.Context, shopID, agreementID, toke
 func (s *Store) GetHomeownerRenewal(ctx context.Context, tokenHash string) (*HomeownerRenewal, error) {
 	var renewal HomeownerRenewal
 	err := s.db.Pool.QueryRow(ctx, `
-		SELECT c.name, COALESCE(pt.name, 'Maintenance agreement'), a.anniversary_date,
+		SELECT c.name, a.plan_snapshot_name, a.anniversary_date,
 			a.price_cents, sh.name
 		FROM renewal_links rl
 		JOIN agreements a ON a.id = rl.agreement_id AND a.shop_id = rl.shop_id
 		JOIN customers c ON c.id = a.customer_id
 		JOIN shops sh ON sh.id = rl.shop_id
-		LEFT JOIN plan_templates pt ON pt.id = a.plan_template_id
 		WHERE rl.token_hash = $1 AND rl.expires_at > now()
 		LIMIT 1`, tokenHash,
 	).Scan(&renewal.CustomerName, &renewal.PlanName, &renewal.AnniversaryDate,

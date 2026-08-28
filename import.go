@@ -486,12 +486,19 @@ func (s *Store) upsertImportAgreement(
 	err := tx.QueryRow(ctx, `
 		INSERT INTO agreements (
 			shop_id, customer_id, property_id, plan_template_id, external_id,
-			status, anniversary_date, visits_entitled, price_cents
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			status, anniversary_date, visits_entitled, price_cents,
+			plan_snapshot_name, plan_snapshot_description, plan_snapshot_billing_interval,
+			plan_snapshot_term_months, plan_snapshot_visits_per_year, plan_snapshot_visit_windows
+		)
+		SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9,
+			COALESCE(pt.name, 'Custom plan'), COALESCE(pt.description, ''),
+			COALESCE(pt.billing_interval, 'annual'), COALESCE(pt.term_months, 12),
+			COALESCE(pt.visits_per_year, $8), COALESCE(pt.visit_windows, '{spring,fall}')
+		FROM (SELECT $4::uuid AS plan_id) selected
+		LEFT JOIN plan_templates pt ON pt.id = selected.plan_id AND pt.shop_id = $1
 		ON CONFLICT (shop_id, external_id) DO UPDATE SET
 			customer_id = EXCLUDED.customer_id,
 			property_id = EXCLUDED.property_id,
-			plan_template_id = EXCLUDED.plan_template_id,
 			status = EXCLUDED.status,
 			anniversary_date = EXCLUDED.anniversary_date,
 			visits_entitled = EXCLUDED.visits_entitled,

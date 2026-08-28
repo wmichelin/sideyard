@@ -27,12 +27,17 @@
 
   <label>
     <span>Plan template</span>
+    {{ if .IsEdit }}
+    <input type="hidden" name="plan_template_id" value="{{ .Form.PlanTemplateID }}">
+    <input type="text" value="{{ .Form.PlanName }} (terms captured at creation)" disabled>
+    {{ else }}
     <select name="plan_template_id">
       <option value="">Custom / none</option>
       {{ range .Plans }}
       <option value="{{ .ID }}"{{ if eq $.Form.PlanTemplateID .ID }} selected{{ end }}>{{ .Name }}</option>
       {{ end }}
     </select>
+    {{ end }}
   </label>
 
   <label>
