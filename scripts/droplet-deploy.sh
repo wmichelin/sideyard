@@ -58,7 +58,8 @@ else
   if ! grep -q "127.0.0.1:${PORT}" "/etc/nginx/sites-available/${DOMAIN}" 2>/dev/null; then
     echo "WARNING: nginx site exists but may not proxy to 127.0.0.1:${PORT} — check manually." >&2
   fi
-  nginx -t && systemctl reload nginx
+  # Existing TLS vhosts already proxy this stable local port. Deploying a new
+  # container image does not change nginx configuration, so no reload is needed.
 fi
 
 for attempt in $(seq 1 15); do
