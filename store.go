@@ -23,6 +23,26 @@ type Customer struct {
 	Phone      string
 }
 
+type Property struct {
+	ID           string
+	CustomerID   string
+	AddressLine1 string
+	AddressLine2 string
+	City         string
+	State        string
+	PostalCode   string
+	Equipment    []Equipment
+}
+
+type Equipment struct {
+	ID           string
+	PropertyID   string
+	Kind         string
+	Make         string
+	Model        string
+	SerialNumber string
+}
+
 type PlanTemplate struct {
 	ID              string
 	Name            string
@@ -110,6 +130,111 @@ func (s *Store) CreateCustomer(ctx context.Context, shopID, name, email, phone s
 		VALUES ($1, $2, NULLIF($3, ''), NULLIF($4, ''))
 		RETURNING id`, shopID, name, email, phone).Scan(&id)
 	return id, err
+}
+
+func (s *Store) GetCustomer(ctx context.Context, shopID, customerID string) (*Customer, error) {
+	var c Customer
+	err := s.db.Pool.QueryRow(ctx, `
+		SELECT id, COALESCE(external_id, ''), name, COALESCE(email, ''), COALESCE(phone, '')
+		FROM customers WHERE shop_id = $1 AND id = $2`, shopID, customerID,
+	).Scan(&c.ID, &c.ExternalID, &c.Name, &c.Email, &c.Phone)
+	if err != nil {
+		return nil, fmt.Errorf("customer not found")
+	}
+	return &c, nil
+}
+
+func (s *Store) UpdateCustomer(ctx context.Context, shopID, customerID, name, email, phone string) error {
+	tag, err := s.db.Pool.Exec(ctx, `
+		UPDATE customers SET name = $3, email = NULLIF($4, ''), phone = NULLIF($5, ''), updated_at = now()
+		WHERE shop_id = $1 AND id = $2`, shopID, customerID, name, email, phone)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("customer not found")
+	}
+	return nil
+}
+
+func (s *Store) DeleteCustomer(ctx context.Context, shopID, customerID string) error {
+	tag, err := s.db.Pool.Exec(ctx, `DELETE FROM customers WHERE shop_id = $1 AND id = $2`, shopID, customerID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("customer not found")
+	}
+	return nil
+}
+
+func (s *Store) ListProperties(ctx context.Context, shopID, customerID string) ([]Property, error) {
+	rows, err := s.db.Pool.Query(ctx, `
+		SELECT id, customer_id, address_line1, COALESCE(address_line2, ''), city, state, postal_code
+		FROM properties WHERE shop_id = $1 AND customer_id = $2 ORDER BY address_line1`, shopID, customerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var properties []Property
+	for rows.Next() {
+		var p Property
+		if err := rows.Scan(&p.ID, &p.CustomerID, &p.AddressLine1, &p.AddressLine2, &p.City, &p.State, &p.PostalCode); err != nil {
+			return nil, err
+		}
+		equipment, err := s.ListEquipment(ctx, shopID, p.ID)
+		if err != nil {
+			return nil, err
+		}
+		p.Equipment = equipment
+		properties = append(properties, p)
+	}
+	return properties, rows.Err()
+}
+
+func (s *Store) CreateProperty(ctx context.Context, shopID, customerID, address1, address2, city, state, postal string) (string, error) {
+	var id string
+	err := s.db.Pool.QueryRow(ctx, `
+		INSERT INTO properties (shop_id, customer_id, address_line1, address_line2, city, state, postal_code)
+		SELECT $1, id, $3, NULLIF($4, ''), $5, $6, $7 FROM customers WHERE shop_id = $1 AND id = $2
+		RETURNING id`, shopID, customerID, address1, address2, city, state, postal).Scan(&id)
+	if err != nil {
+		return "", fmt.Errorf("create property: %w", err)
+	}
+	return id, nil
+}
+
+func (s *Store) ListEquipment(ctx context.Context, shopID, propertyID string) ([]Equipment, error) {
+	rows, err := s.db.Pool.Query(ctx, `
+		SELECT id, property_id, kind, COALESCE(make, ''), COALESCE(model, ''), COALESCE(serial_number, '')
+		FROM equipment WHERE shop_id = $1 AND property_id = $2 ORDER BY kind`, shopID, propertyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var equipment []Equipment
+	for rows.Next() {
+		var e Equipment
+		if err := rows.Scan(&e.ID, &e.PropertyID, &e.Kind, &e.Make, &e.Model, &e.SerialNumber); err != nil {
+			return nil, err
+		}
+		equipment = append(equipment, e)
+	}
+	return equipment, rows.Err()
+}
+
+func (s *Store) CreateEquipment(ctx context.Context, shopID, propertyID, kind, make, model, serial string) error {
+	tag, err := s.db.Pool.Exec(ctx, `
+		INSERT INTO equipment (shop_id, property_id, kind, make, model, serial_number)
+		SELECT $1, id, $3, NULLIF($4, ''), NULLIF($5, ''), NULLIF($6, '')
+		FROM properties WHERE shop_id = $1 AND id = $2`, shopID, propertyID, kind, make, model, serial)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("property not found")
+	}
+	return nil
 }
 
 func (s *Store) ListPlanTemplates(ctx context.Context, shopID string) ([]PlanTemplate, error) {

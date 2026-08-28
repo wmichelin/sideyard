@@ -123,6 +123,9 @@ body {
   overflow-wrap: anywhere;
 }
 
+.delete-form { margin: 1rem 1.25rem; }
+.equipment-list { margin: 1rem 2rem; color: var(--text-muted); }
+
 .success-banner {
   color: var(--paid);
   font-weight: 600;
