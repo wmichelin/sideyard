@@ -3,6 +3,7 @@ description: Report something that is broken in ClubDue
 title: "[Bug] "
 labels:
   - bug
+  - team-review
   - agent-ready
 body:
   - type: markdown

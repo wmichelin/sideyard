@@ -1,0 +1,60 @@
+name: Feature request
+description: Propose a product capability or workflow improvement
+title: "[Feature] "
+labels:
+  - feature
+  - team-review
+  - agent-ready
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The team will review this request across product, architecture, testing, engineering, DevOps, and QA before implementation.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Who has this problem, and what is difficult or impossible today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the workflow from the user's perspective.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: What measurable result would make this successful?
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List observable conditions that must be true when complete.
+      placeholder: |
+        - Given ...
+        - When ...
+        - Then ...
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - P0 - essential or blocks the product
+        - P1 - major customer/workflow value
+        - P2 - useful improvement
+        - P3 - nice to have
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints and context
+      description: Include screenshots, integrations, deadlines, or relevant roadmap context. Do not include passwords or tokens.
