@@ -1,0 +1,38 @@
+---
+description: ClubDue staging/production deploy and release approval workflow
+alwaysApply: true
+---
+
+# ClubDue release workflow
+
+## Environments
+
+| Env | URL | Deploy |
+|-----|-----|--------|
+| **Staging** | https://clubdue-staging.waltermichelin.com | Auto on push to `main` |
+| **Production** | https://clubdue.waltermichelin.com | Manual only, after user approval |
+
+Droplet layout (do not touch Pantry `:8080` or Headscale `:8081`):
+
+- `clubdue-staging` → `127.0.0.1:8082` → `:staging` image
+- `clubdue` → `127.0.0.1:8083` → `:latest` image
+
+## Agent rules
+
+1. **Develop on `main`** — merges auto-deploy to staging. Iterate aggressively there.
+2. **After pushing**, wait for **Deploy Staging** to finish, then run `./scripts/smoke-test.sh staging`.
+3. **Show the user** what changed, the staging URL, and test results. Do not ship to prod yet.
+4. **Production only after explicit user OK** in chat (e.g. "ship it", "looks good", "deploy prod").
+5. When approved, run: `gh workflow run deploy-production.yml` (promotes `:staging` → `:latest`).
+6. Confirm with `./scripts/smoke-test.sh production`.
+
+## Never
+
+- Skip staging for user-visible changes
+- Trigger **Deploy Production** without explicit user approval
+- Modify Pantry, Headscale, or their nginx configs on the droplet
+
+## Reference
+
+- [docs/RELEASE-WORKFLOW.md](../docs/RELEASE-WORKFLOW.md)
+- [docs/DEPLOY.md](../docs/DEPLOY.md)
