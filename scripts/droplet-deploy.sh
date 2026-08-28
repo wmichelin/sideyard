@@ -61,5 +61,13 @@ else
   nginx -t && systemctl reload nginx
 fi
 
-curl -fsS "http://127.0.0.1:${PORT}/healthz" >/dev/null
-echo "==> Healthy at http://127.0.0.1:${PORT}/healthz"
+for attempt in $(seq 1 15); do
+  if curl -fsS "http://127.0.0.1:${PORT}/healthz" >/dev/null; then
+    echo "==> Healthy at http://127.0.0.1:${PORT}/healthz"
+    exit 0
+  fi
+  sleep 1
+done
+
+echo "ERROR: ${CONTAINER} did not become healthy within 15 seconds" >&2
+exit 1
