@@ -9,10 +9,10 @@ import (
 type AgreementStatus string
 
 const (
-	AgreementActive          AgreementStatus = "active"
-	AgreementLapsed          AgreementStatus = "lapsed"
-	AgreementCancelled       AgreementStatus = "cancelled"
-	AgreementPendingRenewal  AgreementStatus = "pending_renewal"
+	AgreementActive         AgreementStatus = "active"
+	AgreementLapsed         AgreementStatus = "lapsed"
+	AgreementCancelled      AgreementStatus = "cancelled"
+	AgreementPendingRenewal AgreementStatus = "pending_renewal"
 )
 
 type Customer struct {
@@ -51,9 +51,9 @@ type Agreement struct {
 
 type DashboardStats struct {
 	ActiveCount      int
-	RenewalsDue30    int
+	RenewalsDueMonth int
 	RenewalsDue90    int
-	LapsedCount      int
+	LapsedMTD        int
 	MRRCents         int
 	VisitsOverdue    int
 }
@@ -302,9 +302,13 @@ func (s *Store) DashboardStats(ctx context.Context, shopID string) (DashboardSta
 	err := s.db.Pool.QueryRow(ctx, `
 		SELECT
 			COUNT(*) FILTER (WHERE a.status = 'active'),
-			COUNT(*) FILTER (WHERE a.status = 'active' AND a.anniversary_date <= CURRENT_DATE + 30),
-			COUNT(*) FILTER (WHERE a.status = 'active' AND a.anniversary_date <= CURRENT_DATE + 90),
-			COUNT(*) FILTER (WHERE a.status = 'lapsed'),
+			COUNT(*) FILTER (WHERE a.status = 'active'
+				AND a.anniversary_date >= CURRENT_DATE
+				AND a.anniversary_date < date_trunc('month', CURRENT_DATE) + INTERVAL '1 month'),
+			COUNT(*) FILTER (WHERE a.status = 'active'
+				AND a.anniversary_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 90),
+			COUNT(*) FILTER (WHERE a.status = 'lapsed'
+				AND a.updated_at >= date_trunc('month', CURRENT_DATE)),
 			COALESCE(SUM(
 				CASE WHEN a.status = 'active' THEN
 					CASE WHEN pt.billing_interval = 'monthly' THEN a.price_cents ELSE a.price_cents / 12 END
@@ -314,9 +318,9 @@ func (s *Store) DashboardStats(ctx context.Context, shopID string) (DashboardSta
 		LEFT JOIN plan_templates pt ON pt.id = a.plan_template_id
 		WHERE a.shop_id = $1`, shopID).Scan(
 		&stats.ActiveCount,
-		&stats.RenewalsDue30,
+		&stats.RenewalsDueMonth,
 		&stats.RenewalsDue90,
-		&stats.LapsedCount,
+		&stats.LapsedMTD,
 		&stats.MRRCents,
 	)
 	if err != nil {

@@ -13,10 +13,10 @@ import (
 )
 
 type Server struct {
-	tmpl    *template.Template
-	auth    *Auth
-	store   *Store
-	demo    bool
+	tmpl  *template.Template
+	auth  *Auth
+	store *Store
+	demo  bool
 }
 
 type NavData struct {
@@ -71,9 +71,9 @@ func (s *Server) handleSignupGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.render(w, "signup.html", map[string]any{
-		"Error":     "",
-		"ShopName":  "",
-		"Email":     "",
+		"Error":    "",
+		"ShopName": "",
+		"Email":    "",
 	})
 }
 
@@ -196,12 +196,12 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	s.renderLayout(w, "Dashboard — ClubDue", "dashboard_content", map[string]any{
 		"Nav": NavData{Active: "dashboard", User: user},
 		"Stats": map[string]any{
-			"ActiveCount":    stats.ActiveCount,
-			"RenewalsDue30":  stats.RenewalsDue30,
-			"RenewalsDue90":  stats.RenewalsDue90,
-			"LapsedCount":    stats.LapsedCount,
-			"MRRFmt":         formatCents(stats.MRRCents),
-			"VisitsOverdue":  stats.VisitsOverdue,
+			"ActiveCount":      stats.ActiveCount,
+			"RenewalsDueMonth": stats.RenewalsDueMonth,
+			"RenewalsDue90":    stats.RenewalsDue90,
+			"LapsedMTD":        stats.LapsedMTD,
+			"MRRFmt":           formatCents(stats.MRRCents),
+			"VisitsOverdue":    stats.VisitsOverdue,
 		},
 	})
 }
@@ -217,10 +217,10 @@ func (s *Server) handleAgreementsList(w http.ResponseWriter, r *http.Request) {
 
 	type row struct {
 		Agreement
-		StatusLabel   string
-		PriceFmt      string
+		StatusLabel    string
+		PriceFmt       string
 		AnniversaryFmt string
-		VisitsLabel   string
+		VisitsLabel    string
 	}
 	rows := make([]row, len(agreements))
 	for i, a := range agreements {
@@ -242,9 +242,9 @@ func (s *Server) handleAgreementsList(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAgreementNew(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r.Context())
 	s.renderAgreementForm(w, r, user, agreementFormData{
-		Status:         string(AgreementActive),
+		Status:          string(AgreementActive),
 		AnniversaryDate: time.Now().UTC().Format("2006-01-02"),
-		VisitsEntitled: 2,
+		VisitsEntitled:  2,
 	})
 }
 

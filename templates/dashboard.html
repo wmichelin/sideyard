@@ -11,7 +11,7 @@
   <div class="stat-card">
     <span class="stat-label">Active agreements</span>
     <span class="stat-value">{{ .Stats.ActiveCount }}</span>
-    <span class="stat-meta">{{ .Stats.LapsedCount }} lapsed</span>
+    <span class="stat-meta">{{ .Stats.LapsedMTD }} lapsed MTD</span>
   </div>
   <div class="stat-card">
     <span class="stat-label">MRR</span>
@@ -19,9 +19,9 @@
     <span class="stat-meta">from active plans</span>
   </div>
   <div class="stat-card">
-    <span class="stat-label">Renewals due</span>
-    <span class="stat-value">{{ .Stats.RenewalsDue30 }}</span>
-    <span class="stat-meta">{{ .Stats.RenewalsDue90 }} in 90 days</span>
+    <span class="stat-label">Renewals due this month</span>
+    <span class="stat-value">{{ .Stats.RenewalsDueMonth }}</span>
+    <span class="stat-meta"><a href="/renewals">{{ .Stats.RenewalsDue90 }} in the next 90 days</a></span>
   </div>
   <div class="stat-card">
     <span class="stat-label">Visits overdue</span>
