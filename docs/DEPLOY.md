@@ -11,9 +11,9 @@ Pantry (`:8080`) and Headscale (`127.0.0.1:8081`) are untouched.
 
 ## One-time setup
 
-### 1. DNS (NS1 — michelindigitalmedia.com uses `nsone.net` nameservers)
+### 1. DNS (Namecheap)
 
-Add A records pointing at the pantry droplet IP (`45.55.214.46`):
+In Namecheap → **Domain List → michelindigitalmedia.com → Advanced DNS**, add A records pointing at the pantry droplet IP (`45.55.214.46`):
 
 | Host | Value |
 |------|-------|
