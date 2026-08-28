@@ -31,6 +31,21 @@ docker run -d \
   -p "127.0.0.1:${PORT}:8080" \
   "$IMAGE"
 
+if [ "$CONTAINER" = "clubdue-staging" ]; then
+  # Staging already has a provisioned TLS vhost. Keep this remote step focused
+  # on replacing the isolated container; the workflow's next step smoke-tests
+  # the public staging URL.
+  for attempt in $(seq 1 15); do
+    if curl -fsS "http://127.0.0.1:${PORT}/healthz" >/dev/null; then
+      echo "==> Staging container healthy at http://127.0.0.1:${PORT}/healthz"
+      exit 0
+    fi
+    sleep 1
+  done
+  echo "ERROR: ${CONTAINER} did not become healthy within 15 seconds" >&2
+  exit 1
+fi
+
 # Status output is diagnostic only; Docker may report a transient non-zero while
 # the newly created container is still being registered. The health probe below
 # is the deploy gate.
