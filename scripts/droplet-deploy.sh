@@ -24,12 +24,47 @@ fi
 
 echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
 docker pull "$IMAGE"
+
+if [ "$CONTAINER" = "clubdue-staging" ]; then
+  STAGING_NETWORK="clubdue-staging-net"
+  STAGING_DB="clubdue-staging-db"
+  STAGING_VOLUME="clubdue-staging-pgdata"
+  STAGING_ENV_DIR="/opt/clubdue"
+  STAGING_ENV_FILE="${STAGING_ENV_DIR}/staging-db.env"
+
+  docker network create "$STAGING_NETWORK" >/dev/null 2>&1 || true
+  docker volume create "$STAGING_VOLUME" >/dev/null
+  mkdir -p "$STAGING_ENV_DIR"
+  if [ ! -f "$STAGING_ENV_FILE" ]; then
+    umask 077
+    db_password="$(openssl rand -hex 24)"
+    session_secret="$(openssl rand -hex 32)"
+    {
+      printf 'POSTGRES_PASSWORD=%s\n' "$db_password"
+      printf 'SESSION_SECRET=%s\n' "$session_secret"
+    } > "$STAGING_ENV_FILE"
+  fi
+  # shellcheck disable=SC1090
+  set -a; . "$STAGING_ENV_FILE"; set +a
+
+  docker rm -f "$STAGING_DB" >/dev/null 2>&1 || true
+  docker run -d --name "$STAGING_DB" --restart always --network "$STAGING_NETWORK" \
+    -e POSTGRES_USER=clubdue -e POSTGRES_DB=clubdue -e POSTGRES_PASSWORD \
+    -v "${STAGING_VOLUME}:/var/lib/postgresql/data" postgres:16-alpine >/dev/null
+  for attempt in $(seq 1 30); do
+    if docker exec "$STAGING_DB" pg_isready -U clubdue -d clubdue >/dev/null 2>&1; then break; fi
+    sleep 1
+  done
+  docker exec "$STAGING_DB" pg_isready -U clubdue -d clubdue >/dev/null
+fi
+
 docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
-docker run -d \
-  --name "$CONTAINER" \
-  --restart always \
-  -p "127.0.0.1:${PORT}:8080" \
-  "$IMAGE"
+app_args=(docker run -d --name "$CONTAINER" --restart always -p "127.0.0.1:${PORT}:8080")
+if [ "$CONTAINER" = "clubdue-staging" ]; then
+  app_args+=(--network clubdue-staging-net -e "DATABASE_URL=postgres://clubdue:${POSTGRES_PASSWORD}@clubdue-staging-db:5432/clubdue?sslmode=disable" -e "SESSION_SECRET=${SESSION_SECRET}" -e ENABLE_DEV_ROUTES=1)
+fi
+"${app_args[@]}" \
+  "$IMAGE" >/dev/null
 
 if [ "$CONTAINER" = "clubdue-staging" ]; then
   # Staging already has a provisioned TLS vhost. Keep this remote step focused

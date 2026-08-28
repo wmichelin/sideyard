@@ -9,6 +9,19 @@ ClubDue runs on the **same DigitalOcean droplet as Pantry**, in isolated contain
 
 Pantry (`:8080`) and Headscale (`127.0.0.1:8081`) are untouched.
 
+## Staging database and demo access
+
+Staging automatically provisions an isolated `clubdue-staging-db` Postgres container, the `clubdue-staging-pgdata` persistent volume, and the `clubdue-staging-net` network. Its generated database password and session secret stay in a root-only droplet file and are never committed or logged. Production is unchanged.
+
+After staging deploys, use the real application login at [https://clubdue-staging.michelindigitalmedia.com/login](https://clubdue-staging.michelindigitalmedia.com/login):
+
+```text
+owner@demo.local
+demo1234
+```
+
+The staging smoke test idempotently seeds this demonstration shop through the staging-only dev route.
+
 ## One-time setup
 
 ### 1. DNS (Namecheap)
