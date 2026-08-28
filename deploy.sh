@@ -29,11 +29,16 @@ fi
 
 echo "Building ${CLUBDUE_IMAGE} for linux/amd64..."
 echo "$GITHUB_TOKEN" | docker login ghcr.io -u wmichelin --password-stdin
-docker buildx build \
-  --platform linux/amd64 \
-  -t "${CLUBDUE_IMAGE}" \
-  --push \
-  "${ROOT}"
+if docker buildx version >/dev/null 2>&1; then
+  docker buildx build \
+    --platform linux/amd64 \
+    -t "${CLUBDUE_IMAGE}" \
+    --push \
+    "${ROOT}"
+else
+  docker build -t "${CLUBDUE_IMAGE}" "${ROOT}"
+  docker push "${CLUBDUE_IMAGE}"
+fi
 
 echo "Deploying to root@${DROPLET_HOST} (${CLUBDUE_DOMAIN})..."
 ssh -o StrictHostKeyChecking=accept-new "root@${DROPLET_HOST}" \
