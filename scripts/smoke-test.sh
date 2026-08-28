@@ -28,10 +28,20 @@ fi
 echo "$HTML" | grep -q 'ClubDue'
 echo "  ✓ dashboard title"
 
-echo "$HTML" | grep -q 'Alex Rivera'
-echo "  ✓ sample member row"
-
-echo "$HTML" | grep -q 'Collected'
-echo "  ✓ summary stats"
+if [ "$TARGET" = "staging" ]; then
+  echo "$HTML" | grep -q 'Active agreements'
+  echo "  ✓ dashboard metrics"
+  curl -fsS -b "$COOKIE_JAR" "${CLUBDUE_URL}/agreements" | grep -q 'Alex Rivera'
+  echo "  ✓ seeded agreement book"
+  curl -fsS -b "$COOKIE_JAR" "${CLUBDUE_URL}/renewals" | grep -q 'Renewal queue'
+  echo "  ✓ renewal queue"
+  curl -fsS -b "$COOKIE_JAR" "${CLUBDUE_URL}/visits/export.csv" | head -1 | grep -q 'customer_name'
+  echo "  ✓ visit CSV export"
+else
+  echo "$HTML" | grep -q 'Alex Rivera'
+  echo "  ✓ sample member row"
+  echo "$HTML" | grep -q 'Collected'
+  echo "  ✓ summary stats"
+fi
 
 echo "All checks passed for ${CLUBDUE_URL}"
