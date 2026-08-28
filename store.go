@@ -29,6 +29,7 @@ type PlanTemplate struct {
 	Description     string
 	PriceCents      int
 	BillingInterval string
+	TermMonths      int
 	VisitsPerYear   int
 }
 
@@ -113,7 +114,7 @@ func (s *Store) CreateCustomer(ctx context.Context, shopID, name, email, phone s
 
 func (s *Store) ListPlanTemplates(ctx context.Context, shopID string) ([]PlanTemplate, error) {
 	rows, err := s.db.Pool.Query(ctx, `
-		SELECT id, name, COALESCE(description, ''), price_cents, billing_interval, visits_per_year
+		SELECT id, name, COALESCE(description, ''), price_cents, billing_interval, term_months, visits_per_year
 		FROM plan_templates
 		WHERE shop_id = $1
 		ORDER BY name`, shopID)
@@ -125,7 +126,7 @@ func (s *Store) ListPlanTemplates(ctx context.Context, shopID string) ([]PlanTem
 	var out []PlanTemplate
 	for rows.Next() {
 		var p PlanTemplate
-		if err := rows.Scan(&p.ID, &p.Name, &p.Description, &p.PriceCents, &p.BillingInterval, &p.VisitsPerYear); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.Description, &p.PriceCents, &p.BillingInterval, &p.TermMonths, &p.VisitsPerYear); err != nil {
 			return nil, err
 		}
 		out = append(out, p)
@@ -133,13 +134,41 @@ func (s *Store) ListPlanTemplates(ctx context.Context, shopID string) ([]PlanTem
 	return out, rows.Err()
 }
 
-func (s *Store) CreatePlanTemplate(ctx context.Context, shopID, name, description string, priceCents, visitsPerYear int) (string, error) {
+func (s *Store) CreatePlanTemplate(ctx context.Context, shopID, name, description string, priceCents, termMonths, visitsPerYear int) (string, error) {
 	var id string
 	err := s.db.Pool.QueryRow(ctx, `
-		INSERT INTO plan_templates (shop_id, name, description, price_cents, visits_per_year)
-		VALUES ($1, $2, NULLIF($3, ''), $4, $5)
-		RETURNING id`, shopID, name, description, priceCents, visitsPerYear).Scan(&id)
+		INSERT INTO plan_templates (shop_id, name, description, price_cents, term_months, visits_per_year)
+		VALUES ($1, $2, NULLIF($3, ''), $4, $5, $6)
+		RETURNING id`, shopID, name, description, priceCents, termMonths, visitsPerYear).Scan(&id)
 	return id, err
+}
+
+func (s *Store) GetPlanTemplate(ctx context.Context, shopID, planID string) (*PlanTemplate, error) {
+	var p PlanTemplate
+	err := s.db.Pool.QueryRow(ctx, `
+		SELECT id, name, COALESCE(description, ''), price_cents, billing_interval, term_months, visits_per_year
+		FROM plan_templates WHERE shop_id = $1 AND id = $2`, shopID, planID,
+	).Scan(&p.ID, &p.Name, &p.Description, &p.PriceCents, &p.BillingInterval, &p.TermMonths, &p.VisitsPerYear)
+	if err != nil {
+		return nil, fmt.Errorf("plan template not found")
+	}
+	return &p, nil
+}
+
+func (s *Store) UpdatePlanTemplate(ctx context.Context, shopID, planID, name, description string, priceCents, termMonths, visitsPerYear int) error {
+	tag, err := s.db.Pool.Exec(ctx, `
+		UPDATE plan_templates
+		SET name = $3, description = NULLIF($4, ''), price_cents = $5, term_months = $6, visits_per_year = $7
+		WHERE shop_id = $1 AND id = $2`,
+		shopID, planID, name, description, priceCents, termMonths, visitsPerYear,
+	)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("plan template not found")
+	}
+	return nil
 }
 
 func (s *Store) ListAgreements(ctx context.Context, shopID string) ([]Agreement, error) {

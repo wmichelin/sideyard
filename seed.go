@@ -82,12 +82,12 @@ func (s *Store) SeedDemo(ctx context.Context) (SeedResult, error) {
 
 	now := time.Now().UTC()
 	agreements := []struct {
-		extID      string
-		customerID string
-		status     AgreementStatus
+		extID       string
+		customerID  string
+		status      AgreementStatus
 		anniversary time.Time
-		visitsUsed int
-		price      int
+		visitsUsed  int
+		price       int
 	}{
 		{"seed-agreement-1", c1, AgreementActive, now.AddDate(0, 0, 14), 1, 24900},
 		{"seed-agreement-2", c2, AgreementActive, now.AddDate(0, 1, 0), 0, 24900},
@@ -120,7 +120,7 @@ func (s *Store) ensurePlanTemplate(ctx context.Context, shopID, name, desc strin
 	if err == nil {
 		return id, nil
 	}
-	return s.CreatePlanTemplate(ctx, shopID, name, desc, priceCents, visits)
+	return s.CreatePlanTemplate(ctx, shopID, name, desc, priceCents, 12, visits)
 }
 
 func (s *Store) ensureCustomer(ctx context.Context, shopID, extID, name, email, phone string) (string, error) {

@@ -1,0 +1,37 @@
+{{ define "plan_template_form_content" }}
+<header class="page-header">
+  <div>
+    <h2 class="page-title">Edit plan template</h2>
+    <p class="page-subtitle">Changes apply to this reusable plan going forward.</p>
+  </div>
+  <a href="/plan-templates" class="secondary-btn">Back to plans</a>
+</header>
+
+{{ if .Error }}<p class="error-banner">Enter a name, non-negative price, and positive term and visit count.</p>{{ end }}
+
+<form method="post" class="form-panel">
+  <div class="form-row">
+    <label>
+      <span>Name</span>
+      <input type="text" name="name" required value="{{ .Plan.Name }}">
+    </label>
+    <label>
+      <span>Price (cents)</span>
+      <input type="number" name="price_cents" min="0" value="{{ .Plan.PriceCents }}">
+    </label>
+    <label>
+      <span>Term (months)</span>
+      <input type="number" name="term_months" min="1" value="{{ .Plan.TermMonths }}">
+    </label>
+    <label>
+      <span>Visits per year</span>
+      <input type="number" name="visits_per_year" min="1" value="{{ .Plan.VisitsPerYear }}">
+    </label>
+  </div>
+  <label>
+    <span>Description</span>
+    <input type="text" name="description" value="{{ .Plan.Description }}">
+  </label>
+  <button type="submit" class="primary-btn">Save plan</button>
+</form>
+{{ end }}

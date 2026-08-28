@@ -464,8 +464,12 @@ func (s *Server) handlePlanTemplates(w http.ResponseWriter, r *http.Request) {
 			if visits == 0 {
 				visits = 2
 			}
+			termMonths, _ := strconv.Atoi(r.FormValue("term_months"))
+			if termMonths <= 0 {
+				termMonths = 12
+			}
 			_, err := s.store.CreatePlanTemplate(r.Context(), user.ShopID, name,
-				r.FormValue("description"), price, visits)
+				r.FormValue("description"), price, termMonths, visits)
 			if err != nil {
 				log.Printf("create plan: %v", err)
 			}
@@ -493,6 +497,42 @@ func (s *Server) handlePlanTemplates(w http.ResponseWriter, r *http.Request) {
 	s.renderLayout(w, "Plan templates — ClubDue", "plan_templates_content", map[string]any{
 		"Nav":   NavData{Active: "plans", User: user},
 		"Plans": rows,
+	})
+}
+
+func (s *Server) handlePlanTemplateEdit(w http.ResponseWriter, r *http.Request) {
+	user := userFromContext(r.Context())
+	id := r.PathValue("id")
+	plan, err := s.store.GetPlanTemplate(r.Context(), user.ShopID, id)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	if r.Method == http.MethodPost {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "bad form", http.StatusBadRequest)
+			return
+		}
+		name := strings.TrimSpace(r.FormValue("name"))
+		price, _ := strconv.Atoi(r.FormValue("price_cents"))
+		termMonths, _ := strconv.Atoi(r.FormValue("term_months"))
+		visits, _ := strconv.Atoi(r.FormValue("visits_per_year"))
+		if name != "" && price >= 0 && termMonths > 0 && visits > 0 {
+			err = s.store.UpdatePlanTemplate(r.Context(), user.ShopID, id, name,
+				r.FormValue("description"), price, termMonths, visits)
+			if err == nil {
+				http.Redirect(w, r, "/plan-templates", http.StatusSeeOther)
+				return
+			}
+		}
+		plan = &PlanTemplate{ID: id, Name: name, Description: r.FormValue("description"), PriceCents: price, TermMonths: termMonths, VisitsPerYear: visits}
+	}
+
+	s.renderLayout(w, "Edit plan template — ClubDue", "plan_template_form_content", map[string]any{
+		"Nav":   NavData{Active: "plans", User: user},
+		"Plan":  plan,
+		"Error": err != nil || r.Method == http.MethodPost,
 	})
 }
 

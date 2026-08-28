@@ -2,7 +2,7 @@
 <header class="page-header">
   <div>
     <h2 class="page-title">Plan templates</h2>
-    <p class="page-subtitle">Reusable maintenance plans (annual price, visit count).</p>
+    <p class="page-subtitle">Reusable maintenance plans (price, term, and visit count).</p>
   </div>
 </header>
 
@@ -15,8 +15,12 @@
         <input type="text" name="name" required placeholder="Gold HVAC Plan">
       </label>
       <label>
-        <span>Annual price (cents)</span>
+        <span>Price (cents)</span>
         <input type="number" name="price_cents" min="0" placeholder="24900">
+      </label>
+      <label>
+        <span>Term (months)</span>
+        <input type="number" name="term_months" min="1" value="12">
       </label>
       <label>
         <span>Visits per year</span>
@@ -39,7 +43,9 @@
           <th>Name</th>
           <th>Description</th>
           <th>Price</th>
+          <th>Term</th>
           <th>Visits/yr</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
@@ -48,10 +54,12 @@
           <td class="name-cell">{{ .Name }}</td>
           <td class="muted">{{ .Description }}</td>
           <td>{{ .PriceFmt }}</td>
+          <td>{{ .TermMonths }} mo</td>
           <td>{{ .VisitsPerYear }}</td>
+          <td><a href="/plan-templates/{{ .ID }}" class="secondary-btn">Edit</a></td>
         </tr>
         {{ else }}
-        <tr><td colspan="4" class="empty-cell">No plan templates yet.</td></tr>
+        <tr><td colspan="6" class="empty-cell">No plan templates yet.</td></tr>
         {{ end }}
       </tbody>
     </table>

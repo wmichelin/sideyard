@@ -100,6 +100,8 @@ func main() {
 	mux.HandleFunc("POST /visits", auth(srv.handleVisits))
 	mux.HandleFunc("GET /plan-templates", auth(srv.handlePlanTemplates))
 	mux.HandleFunc("POST /plan-templates", auth(srv.handlePlanTemplates))
+	mux.HandleFunc("GET /plan-templates/{id}", auth(srv.handlePlanTemplateEdit))
+	mux.HandleFunc("POST /plan-templates/{id}", auth(srv.handlePlanTemplateEdit))
 
 	log.Printf("ClubDue listening on %s", addr)
 	if err := http.ListenAndServe(addr, mux); err != nil {
