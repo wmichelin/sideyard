@@ -1,0 +1,124 @@
+package main
+
+import (
+	"context"
+	"os"
+	"testing"
+	"time"
+)
+
+// This test intentionally uses the same migrations as the application. Set
+// DATABASE_URL to a disposable Postgres database to run it locally or in CI.
+func TestAgreementReferencesStayWithinShopAndCustomer(t *testing.T) {
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("DATABASE_URL is required for Postgres integration tests")
+	}
+
+	ctx := context.Background()
+	db, err := openDB(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	store := &Store{db: db}
+
+	stamp := time.Now().UTC().Format("20060102150405.000000000")
+	shopOne := createTestShop(t, ctx, db, "one-"+stamp)
+	shopTwo := createTestShop(t, ctx, db, "two-"+stamp)
+	customerOne := createTestCustomer(t, ctx, db, shopOne, "Customer One")
+	customerOneOther := createTestCustomer(t, ctx, db, shopOne, "Customer One Other")
+	customerTwo := createTestCustomer(t, ctx, db, shopTwo, "Customer Two")
+	propertyOne := createTestProperty(t, ctx, db, shopOne, customerOne, "1 First St")
+	propertyTwo := createTestProperty(t, ctx, db, shopTwo, customerTwo, "2 Second St")
+	planOne := createTestPlan(t, ctx, db, shopOne, "Plan One")
+	planTwo := createTestPlan(t, ctx, db, shopTwo, "Plan Two")
+
+	valid := CreateAgreementInput{
+		CustomerID: customerOne, PropertyID: propertyOne, PlanTemplateID: planOne,
+		Status: AgreementActive, AnniversaryDate: time.Now().UTC().AddDate(1, 0, 0),
+		VisitsEntitled: 2, PriceCents: 19900,
+	}
+	agreementID, err := store.CreateAgreement(ctx, shopOne, valid)
+	if err != nil {
+		t.Fatalf("create valid agreement: %v", err)
+	}
+
+	for _, tc := range []struct {
+		name string
+		in   CreateAgreementInput
+	}{
+		{"foreign customer", withAgreementField(valid, func(in *CreateAgreementInput) { in.CustomerID = customerTwo })},
+		{"foreign property", withAgreementField(valid, func(in *CreateAgreementInput) { in.PropertyID = propertyTwo })},
+		{"foreign template", withAgreementField(valid, func(in *CreateAgreementInput) { in.PlanTemplateID = planTwo })},
+		{"property for another customer", withAgreementField(valid, func(in *CreateAgreementInput) { in.CustomerID = customerOneOther })},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := store.CreateAgreement(ctx, shopOne, tc.in); err == nil {
+				t.Fatal("expected cross-tenant or cross-customer reference to be rejected")
+			}
+		})
+	}
+	if err := store.UpdateAgreement(ctx, shopOne, agreementID,
+		withAgreementField(valid, func(in *CreateAgreementInput) { in.PlanTemplateID = planTwo })); err == nil {
+		t.Fatal("expected update with a foreign plan template to be rejected")
+	}
+
+	createTestUser(t, ctx, db, shopOne, "owner-"+stamp+"@example.test")
+	if err := insertTestUser(ctx, db, shopTwo, "owner-"+stamp+"@example.test"); err == nil {
+		t.Fatal("expected duplicate email across shops to be rejected")
+	}
+}
+
+func withAgreementField(in CreateAgreementInput, update func(*CreateAgreementInput)) CreateAgreementInput {
+	update(&in)
+	return in
+}
+
+func createTestShop(t *testing.T, ctx context.Context, db *DB, suffix string) string {
+	t.Helper()
+	var id string
+	if err := db.Pool.QueryRow(ctx, `INSERT INTO shops (name, slug) VALUES ($1, $2) RETURNING id`, suffix, suffix).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+func createTestCustomer(t *testing.T, ctx context.Context, db *DB, shopID, name string) string {
+	t.Helper()
+	var id string
+	if err := db.Pool.QueryRow(ctx, `INSERT INTO customers (shop_id, name) VALUES ($1, $2) RETURNING id`, shopID, name).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+func createTestProperty(t *testing.T, ctx context.Context, db *DB, shopID, customerID, address string) string {
+	t.Helper()
+	var id string
+	if err := db.Pool.QueryRow(ctx, `INSERT INTO properties (shop_id, customer_id, address_line1, city, state, postal_code) VALUES ($1, $2, $3, 'Cary', 'NC', '27511') RETURNING id`, shopID, customerID, address).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+func createTestPlan(t *testing.T, ctx context.Context, db *DB, shopID, name string) string {
+	t.Helper()
+	var id string
+	if err := db.Pool.QueryRow(ctx, `INSERT INTO plan_templates (shop_id, name) VALUES ($1, $2) RETURNING id`, shopID, name).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+func createTestUser(t *testing.T, ctx context.Context, db *DB, shopID, email string) {
+	t.Helper()
+	if err := insertTestUser(ctx, db, shopID, email); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func insertTestUser(ctx context.Context, db *DB, shopID, email string) error {
+	_, err := db.Pool.Exec(ctx, `INSERT INTO users (shop_id, email, password_hash) VALUES ($1, $2, 'test')`, shopID, email)
+	return err
+}
