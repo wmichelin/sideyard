@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ClubDue — Membership Dues</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="page">
+    <header class="header">
+      <div>
+        <p class="eyebrow">Spring 2026</p>
+        <h1 class="title">ClubDue</h1>
+        <p class="subtitle">Membership dues dashboard — sample data to get you started.</p>
+      </div>
+      <button class="primary-btn" type="button">+ Add member</button>
+    </header>
+
+    <section class="stats">
+      <div class="stat-card">
+        <span class="stat-label">Collected</span>
+        <span class="stat-value">{{ .Summary.CollectedFmt }}</span>
+        <span class="stat-meta">of {{ .Summary.ExpectedFmt }} expected</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Outstanding</span>
+        <span class="stat-value outstanding">{{ .Summary.OutstandingFmt }}</span>
+        <span class="stat-meta">{{ .Summary.CollectionRate }}% collected</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Members paid</span>
+        <span class="stat-value">{{ .Summary.PaidCount }}</span>
+        <span class="stat-meta">{{ .Summary.OverdueCount }} overdue</span>
+      </div>
+    </section>
+
+    <section class="table-section">
+      <h2 class="section-title">Members</h2>
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Due</th>
+              <th>Paid</th>
+              <th>Balance</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{ range .Members }}
+            <tr>
+              <td class="name-cell">{{ .Name }}</td>
+              <td class="muted">{{ .Email }}</td>
+              <td>{{ .DuesFormatted }}</td>
+              <td>{{ .PaidFormatted }}</td>
+              <td{{ if .BalanceDue }} class="balance-due"{{ end }}>{{ .BalFormatted }}</td>
+              <td><span class="badge {{ .Status }}">{{ .StatusLabel }}</span></td>
+            </tr>
+            {{ end }}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</body>
+</html>
