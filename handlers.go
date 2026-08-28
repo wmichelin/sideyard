@@ -420,22 +420,22 @@ func (s *Server) parseAgreementForm(w http.ResponseWriter, r *http.Request, user
 
 func (s *Server) handleRenewals(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r.Context())
-	buckets, err := s.store.RenewalQueue(r.Context(), user.ShopID)
+	if r.Method == http.MethodPost {
+		if err := r.ParseForm(); err == nil {
+			_ = s.store.UpdateRenewalTask(r.Context(), user.ShopID, r.FormValue("task_id"), r.FormValue("status"), r.FormValue("notes"))
+		}
+		http.Redirect(w, r, "/renewals", http.StatusSeeOther)
+		return
+	}
+	tasks, err := s.store.ListRenewalTasks(r.Context(), user.ShopID)
 	if err != nil {
 		log.Printf("renewal queue: %v", err)
 		http.Error(w, "server error", http.StatusInternalServerError)
 		return
 	}
 
-	total := 0
-	for _, b := range buckets {
-		total += len(b.Items)
-	}
-
 	s.renderLayout(w, "Renewals — ClubDue", "renewals_content", map[string]any{
-		"Nav":     NavData{Active: "renewals", User: user},
-		"Buckets": buckets,
-		"Total":   total,
+		"Nav": NavData{Active: "renewals", User: user}, "Tasks": tasks,
 	})
 }
 

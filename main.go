@@ -91,6 +91,7 @@ func main() {
 	mux.HandleFunc("POST /agreements/{id}", auth(srv.handleAgreementUpdate))
 	mux.HandleFunc("POST /agreements/{id}/renewal-link", auth(srv.handleAgreementRenewalLink))
 	mux.HandleFunc("GET /renewals", auth(srv.handleRenewals))
+	mux.HandleFunc("POST /renewals", auth(srv.handleRenewals))
 	mux.HandleFunc("GET /customers", auth(srv.handleCustomers))
 	mux.HandleFunc("POST /customers", auth(srv.handleCustomers))
 	mux.HandleFunc("GET /customers/{id}", auth(srv.handleCustomerEdit))
