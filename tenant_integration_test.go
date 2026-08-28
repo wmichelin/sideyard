@@ -174,6 +174,66 @@ func TestGenerateRenewalTasksCreatesCycleAwareMilestonesIdempotently(t *testing.
 	}
 }
 
+func TestRenewedTaskRollsAgreementAndRetiresCycle(t *testing.T) {
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("DATABASE_URL is required for Postgres integration tests")
+	}
+	ctx := context.Background()
+	db, err := openDB(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	store := &Store{db: db}
+	stamp := time.Now().UTC().Format("20060102150405.000000000")
+	shopID := createTestShop(t, ctx, db, "rollover-"+stamp)
+	customerID := createTestCustomer(t, ctx, db, shopID, "Rollover Customer")
+	planID := createTestPlan(t, ctx, db, shopID, "Rollover Plan")
+	asOf := time.Date(2031, time.March, 1, 0, 0, 0, 0, time.UTC)
+	cycleStart := asOf.AddDate(0, 0, 30)
+	agreementID, err := store.CreateAgreement(ctx, shopID, CreateAgreementInput{
+		CustomerID: customerID, PlanTemplateID: planID, Status: AgreementActive,
+		AnniversaryDate: cycleStart, VisitsEntitled: 2, VisitsUsed: 2, PriceCents: 19900,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.GenerateRenewalTasks(ctx, shopID, asOf); err != nil {
+		t.Fatal(err)
+	}
+	var taskID string
+	if err := db.Pool.QueryRow(ctx, `SELECT id FROM renewal_tasks WHERE agreement_id = $1 AND milestone_days = 30`, agreementID).Scan(&taskID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateRenewalTask(ctx, shopID, taskID, "renewed", "confirmed"); err != nil {
+		t.Fatal(err)
+	}
+
+	var anniversary time.Time
+	var visitsUsed int
+	if err := db.Pool.QueryRow(ctx, `SELECT anniversary_date, visits_used FROM agreements WHERE id = $1`, agreementID).Scan(&anniversary, &visitsUsed); err != nil {
+		t.Fatal(err)
+	}
+	if !anniversary.Equal(time.Date(2032, time.March, 31, 0, 0, 0, 0, time.UTC)) || visitsUsed != 0 {
+		t.Fatalf("renewal did not advance term/reset visits: anniversary=%s visits=%d", anniversary, visitsUsed)
+	}
+	var staleOpen int
+	if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM renewal_tasks WHERE agreement_id = $1 AND cycle_start_date = $2 AND status IN ('open', 'contacted')`, agreementID, cycleStart).Scan(&staleOpen); err != nil {
+		t.Fatal(err)
+	}
+	if staleOpen != 0 {
+		t.Fatalf("expected no open tasks in renewed cycle, got %d", staleOpen)
+	}
+	var nextCycleTasks int
+	if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM renewal_tasks WHERE agreement_id = $1 AND cycle_start_date = $2`, agreementID, anniversary).Scan(&nextCycleTasks); err != nil {
+		t.Fatal(err)
+	}
+	if nextCycleTasks != 5 {
+		t.Fatalf("expected next cycle tasks after renewal, got %d", nextCycleTasks)
+	}
+}
+
 func withAgreementField(in CreateAgreementInput, update func(*CreateAgreementInput)) CreateAgreementInput {
 	update(&in)
 	return in

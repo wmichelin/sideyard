@@ -96,12 +96,75 @@ func (s *Store) UpdateRenewalTask(ctx context.Context, shopID, id, status, notes
 	if status != "open" && status != "contacted" && status != "renewed" && status != "lost" {
 		return fmt.Errorf("invalid status")
 	}
-	tag, err := s.db.Pool.Exec(ctx, `UPDATE renewal_tasks SET status=$3,notes=NULLIF($4,''),updated_at=now() WHERE shop_id=$1 AND id=$2`, shopID, id, status, notes)
+	tx, err := s.db.Pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	if tag.RowsAffected() == 0 {
+	defer tx.Rollback(ctx)
+
+	var agreementID, currentStatus string
+	var cycleStart time.Time
+	var termMonths int
+	err = tx.QueryRow(ctx, `
+		SELECT t.agreement_id, t.cycle_start_date, t.status, a.plan_snapshot_term_months
+		FROM renewal_tasks t
+		JOIN agreements a ON a.id = t.agreement_id AND a.shop_id = t.shop_id
+		WHERE t.shop_id = $1 AND t.id = $2
+		FOR UPDATE`, shopID, id,
+	).Scan(&agreementID, &cycleStart, &currentStatus, &termMonths)
+	if err != nil {
 		return fmt.Errorf("task not found")
 	}
-	return nil
+	if currentStatus == "renewed" || currentStatus == "lost" {
+		if currentStatus == status {
+			return tx.Commit(ctx)
+		}
+		return fmt.Errorf("task outcome is already final")
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE renewal_tasks SET status = $3, notes = NULLIF($4, ''), updated_at = now()
+		WHERE shop_id = $1 AND id = $2`, shopID, id, status, notes); err != nil {
+		return err
+	}
+
+	switch status {
+	case "renewed":
+		if _, err := tx.Exec(ctx, `
+			UPDATE agreements
+			SET anniversary_date = $3, visits_used = 0, status = 'active', updated_at = now()
+			WHERE shop_id = $1 AND id = $2`, shopID, agreementID, cycleStart.AddDate(0, termMonths, 0)); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `
+			UPDATE renewal_tasks SET status = 'renewed', updated_at = now()
+			WHERE shop_id = $1 AND agreement_id = $2 AND cycle_start_date = $3
+			  AND id <> $4 AND status IN ('open', 'contacted')`, shopID, agreementID, cycleStart, id); err != nil {
+			return err
+		}
+		nextCycleStart := cycleStart.AddDate(0, termMonths, 0)
+		for _, milestone := range []int{90, 60, 30, 14, 7} {
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO renewal_tasks (shop_id, agreement_id, cycle_start_date, due_at, milestone_days)
+				VALUES ($1, $2, $3, $4, $5)
+				ON CONFLICT (shop_id, agreement_id, cycle_start_date, milestone_days) DO NOTHING`,
+				shopID, agreementID, nextCycleStart, nextCycleStart.AddDate(0, 0, -milestone), milestone,
+			); err != nil {
+				return err
+			}
+		}
+	case "lost":
+		if _, err := tx.Exec(ctx, `
+			UPDATE agreements SET status = 'lapsed', updated_at = now()
+			WHERE shop_id = $1 AND id = $2`, shopID, agreementID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `
+			UPDATE renewal_tasks SET status = 'lost', updated_at = now()
+			WHERE shop_id = $1 AND agreement_id = $2 AND cycle_start_date = $3
+			  AND id <> $4 AND status IN ('open', 'contacted')`, shopID, agreementID, cycleStart, id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
 }
