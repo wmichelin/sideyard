@@ -31,7 +31,10 @@ docker run -d \
   -p "127.0.0.1:${PORT}:8080" \
   "$IMAGE"
 
-docker ps --filter "name=^${CONTAINER}$" --format '{{.Names}} {{.Status}} {{.Image}}'
+# Status output is diagnostic only; Docker may report a transient non-zero while
+# the newly created container is still being registered. The health probe below
+# is the deploy gate.
+docker ps --filter "name=^${CONTAINER}$" --format '{{.Names}} {{.Status}} {{.Image}}' || true
 
 if [[ ! -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]]; then
   cat > "/etc/nginx/sites-available/${DOMAIN}" <<NGINX
