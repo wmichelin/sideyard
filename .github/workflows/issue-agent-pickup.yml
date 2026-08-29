@@ -1,0 +1,20 @@
+name: Pick up ClubDue issues
+
+on:
+  issues:
+    types: [opened, labeled, reopened]
+
+concurrency:
+  group: clubdue-issue-pickup
+  cancel-in-progress: false
+
+jobs:
+  wake-agent:
+    # This job runs on the private G5 runner and executes only the fixed queue
+    # tick. Issue text is never interpolated into a shell command.
+    if: github.event.issue.state == 'open'
+    runs-on: [self-hosted, linux, x64, clubdue]
+    timeout-minutes: 10
+    steps:
+      - name: Wake ClubDue agent queue
+        run: /home/wmichelin/assistant/bin/clubdue-loop tick
