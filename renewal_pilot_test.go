@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"html/template"
 	"net/http"
 	"net/http/httptest"
@@ -127,6 +128,54 @@ func TestRenewalMutationErrorsRenderAndProductionRenewalHasNoPaymentCTA(t *testi
 	}
 }
 
+func TestRenewalLinkCreationReturnsJSONForInPlaceSubmission(t *testing.T) {
+	databaseURL := integrationDatabaseURL(t)
+	ctx := context.Background()
+	db, err := openDB(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	store := &Store{db: db}
+	stamp := time.Now().UTC().Format("20060102150405.000000000")
+	shopID := createTestShop(t, ctx, db, "renewal-link-json-"+stamp)
+	customerID := createTestCustomer(t, ctx, db, shopID, "Renewal Link Customer")
+	agreementID, err := store.CreateAgreement(ctx, shopID, CreateAgreementInput{
+		CustomerID: customerID, Status: AgreementActive, AnniversaryDate: time.Now().UTC().AddDate(0, 1, 0),
+		VisitsEntitled: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	auth := newAuth(db, "test-session-secret", false)
+	server := &Server{store: store, auth: auth}
+	request := httptest.NewRequest(http.MethodPost, "/agreements/"+agreementID+"/renewal-link", nil)
+	request.Header.Set("Accept", "application/json")
+	request.SetPathValue("id", agreementID)
+	request = request.WithContext(contextWithUser(request.Context(), &User{ShopID: shopID}))
+	response := httptest.NewRecorder()
+	server.handleAgreementRenewalLink(response, request)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("JSON renewal link response = %d, want %d", response.Code, http.StatusCreated)
+	}
+
+	var payload struct {
+		RenewalURL string `json:"renewal_url"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode JSON renewal link response: %v", err)
+	}
+	token := strings.TrimPrefix(payload.RenewalURL, "/renew/")
+	if token == "" || token == payload.RenewalURL {
+		t.Fatalf("renewal URL = %q, want /renew/<token>", payload.RenewalURL)
+	}
+	if _, err := store.GetHomeownerRenewal(ctx, hashToken(token, auth.sessionSecret)); err != nil {
+		t.Fatalf("JSON response token did not resolve to a renewal: %v", err)
+	}
+}
+
 func TestRenewalAndVisitTemplatesUseAccessiblePilotLanguage(t *testing.T) {
 	renewals, err := templateFS.ReadFile("templates/renewals.html")
 	if err != nil {
@@ -164,6 +213,10 @@ func TestHomeownerRenewalUsesScopedCardSpacing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	renewalLinkScript, err := staticFS.ReadFile("static/renewal-link.js")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if !strings.Contains(string(renewal), `class="form-panel renewal-card"`) {
 		t.Fatal("homeowner renewal template is missing its scoped card class")
@@ -173,6 +226,14 @@ func TestHomeownerRenewalUsesScopedCardSpacing(t *testing.T) {
 	}
 	if !strings.Contains(string(agreementForm), `class="panel renewal-link-panel"`) {
 		t.Fatal("agreement editor homeowner renewal panel is missing its scoped spacing class")
+	}
+	if !strings.Contains(string(agreementForm), "data-renewal-link-form") || !strings.Contains(string(agreementForm), "/static/renewal-link.js") {
+		t.Fatal("agreement editor renewal link does not support in-place creation")
+	}
+	for _, want := range []string{"event.preventDefault()", "fetch(renewalLinkForm.action", "Accept: \"application/json\"", "credentials: \"same-origin\""} {
+		if !strings.Contains(string(renewalLinkScript), want) {
+			t.Fatalf("renewal link in-place submission is missing %q", want)
+		}
 	}
 	for _, want := range []string{
 		".renewal-card {",

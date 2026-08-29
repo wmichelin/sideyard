@@ -1,9 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -20,6 +22,14 @@ func (s *Server) handleAgreementRenewalLink(w http.ResponseWriter, r *http.Reque
 		hashToken(token, s.auth.sessionSecret), s.renewalLinkExpiry()); err != nil {
 		log.Printf("create renewal link: %v", err)
 		http.NotFound(w, r)
+		return
+	}
+	if strings.Contains(r.Header.Get("Accept"), "application/json") {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(struct {
+			RenewalURL string `json:"renewal_url"`
+		}{RenewalURL: renewalURL(token)})
 		return
 	}
 	http.Redirect(w, r, "/agreements/"+r.PathValue("id")+"?renewal_token="+url.QueryEscape(token), http.StatusSeeOther)
