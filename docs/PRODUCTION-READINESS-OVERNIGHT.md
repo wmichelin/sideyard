@@ -100,18 +100,18 @@ scripts cannot target ports 8080 or 8081.
 
 ### P1.2 — Make renewal handling pilot-safe
 
-- [ ] Never render or accept the fake payment action in production mode.
-- [ ] Show an honest contact-the-shop state when real payment is unavailable.
-- [ ] Make future, due-today, and past-due imported active agreements produce
+- [x] Never render or accept the fake payment action in production mode.
+- [x] Show an honest contact-the-shop state when real payment is unavailable.
+- [x] Make future, due-today, and past-due imported active agreements produce
       explicit deterministic renewal work; never roll an overdue cycle out of
       the queue silently.
-- [ ] Add customer contact details, property, agreement link, and due state to
+- [x] Add customer contact details, property, agreement link, and due state to
       the renewal workbench.
-- [ ] Render renewal mutation errors instead of silently redirecting.
-- [ ] Replace click-only rows with semantic, accessible links.
-- [ ] Label visit handoff truthfully: “scheduled” currently records a Jobber
+- [x] Render renewal mutation errors instead of silently redirecting.
+- [x] Replace click-only rows with semantic, accessible links.
+- [x] Label visit handoff truthfully: “scheduled” currently records a Jobber
       handoff/click time, not an appointment time.
-- [ ] Reconcile README and demo claims with actual renewal behavior.
+- [x] Reconcile README and demo claims with actual renewal behavior.
 
 Acceptance: production-mode tests prove the fake CTA is absent, renewal errors
 are visible, representative future/due/past-due imports remain actionable, and
