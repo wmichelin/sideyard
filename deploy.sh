@@ -3,7 +3,7 @@
 #
 # Usage:
 #   ./deploy.sh staging     # default — safe to run often
-#   ./deploy.sh production  # prod — prefer GitHub Actions after staging sign-off
+#   ./deploy.sh production  # rejected — use the reviewed GitHub release workflow
 #
 # Requires in .env or environment:
 #   GITHUB_TOKEN   — classic PAT with read:packages + write:packages
@@ -11,10 +11,21 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TARGET="${1:-staging}"
+
+# Production promotion is intentionally unavailable from a developer machine.
+# The GitHub workflow requires an immutable image digest and the production
+# environment gate, which keeps the reviewed artifact and approval auditable.
+case "$TARGET" in
+  production|prod)
+    echo "ERROR: local production deployment is disabled. After staging review and explicit approval, run the reviewed Deploy Production GitHub workflow with an immutable image digest." >&2
+    exit 2
+    ;;
+esac
+
 # shellcheck source=scripts/env.sh
 source "${ROOT}/scripts/env.sh"
 
-TARGET="${1:-staging}"
 clubdue_env "$TARGET"
 
 if [[ -f "${ROOT}/.env" ]]; then

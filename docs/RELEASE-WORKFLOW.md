@@ -32,6 +32,7 @@ Report:
 - Staging URL: https://clubdue-staging.michelindigitalmedia.com
 - CI / Deploy Staging run status (link if available)
 - Smoke test result
+- Exact staging commit SHA and immutable image digest to use if approval follows
 
 **Do not deploy to production until the user explicitly approves.**
 
@@ -39,20 +40,38 @@ Report:
 
 When the user says OK / ship it / looks good:
 
+1. Identify the exact successful **Deploy Staging** run the user reviewed and
+   record its full commit SHA. Do not substitute the current `main` SHA if a
+   newer commit has been pushed.
+2. Obtain the immutable digest for that exact image tag (GHCR access required):
+
+   ```bash
+   STAGING_SHA=<full-sha-from-the-reviewed-Deploy-Staging-run>
+   docker buildx imagetools inspect "ghcr.io/wmichelin/clubdue:${STAGING_SHA}" \
+     --format '{{ .Manifest.Digest }}'
+   ```
+
+   The result must be `sha256:` followed by 64 lowercase hexadecimal
+   characters. Optionally prove the reference resolves before promotion:
+
+   ```bash
+   docker pull "ghcr.io/wmichelin/clubdue@sha256:<reviewed-digest>"
+   ```
+
+3. Enable the production gate immediately before dispatching the reviewed
+   artifact, then close it when the promotion finishes:
+
 ```bash
 gh variable set PRODUCTION_DEPLOY_ENABLED --body true
-gh workflow run deploy-production.yml
+gh workflow run deploy-production.yml -f mode=promote -f image_digest=sha256:<reviewed-digest>
 ```
 
-This promotes the `:staging` image (what they just reviewed) to `:latest` and deploys production.
-Set `PRODUCTION_DEPLOY_ENABLED` back to `false` when the approved promotion
-finishes. Autonomous roadmap and issue agents must never enable it.
-
-If the user approved a specific commit rather than current staging:
-
-```bash
-gh workflow run deploy-production.yml -f promote_tag=<git-sha>
-```
+The workflow validates the digest, pulls and promotes that exact image to
+`:latest`, and deploys the droplet by the immutable digest. Set
+`PRODUCTION_DEPLOY_ENABLED` back to `false` when the approved promotion
+finishes. Its run summary records the reviewed image reference; include that
+digest with the release evidence. Autonomous roadmap and issue agents must
+never enable it.
 
 Monitor the run:
 
@@ -61,6 +80,17 @@ gh run watch
 ```
 
 Confirm with `./scripts/smoke-test.sh production`.
+
+If the promoted app release must be reversed, use the same approved production
+window and run the GitHub workflow only (never deploy directly from a laptop):
+
+```bash
+gh workflow run deploy-production.yml -f mode=rollback
+```
+
+Rollback restores the retained previous application container; it does not roll
+back database schema or data. Use it only when the retained binary remains
+compatible with the database migrations already applied.
 
 Then close the promotion window:
 
@@ -76,5 +106,7 @@ Fix forward on `main` — do not deploy production. Staging should recover on th
 
 - **Never** skip staging for user-visible changes.
 - **Never** trigger **Deploy Production** without explicit user approval in chat.
+- **Never** use `./deploy.sh production` or `./deploy.sh prod`; those local
+  paths fail closed before loading secrets, building, or connecting to a host.
 - **Never** modify Pantry, Headscale, or their nginx configs on the droplet.
 - Prefer small, frequent merges to `main` over large batches.

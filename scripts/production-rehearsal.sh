@@ -20,19 +20,35 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# These validation checks execute before registry, package, Docker, or droplet
-# work in the shared deployment helper.
+# These validation checks run inside a disposable Docker shell. The helper's
+# narrow plan seam exercises rollout state selection without a droplet, nginx,
+# registry access, or a way to mutate real deployment state.
+DEPLOY_TEST_IMAGE="ubuntu:24.04"
+run_deploy_helper() {
+  docker run --rm --network none \
+    -v "$ROOT/scripts/droplet-deploy.sh:/opt/clubdue/droplet-deploy.sh:ro" \
+    -e CONTAINER="$1" -e PORT="$2" "${@:3}" \
+    "$DEPLOY_TEST_IMAGE" bash /opt/clubdue/droplet-deploy.sh
+}
+
 for deployment_target in 'clubdue:8080' 'clubdue:8081' 'clubdue:8082' 'clubdue-staging:8083'; do
   deployment_container="${deployment_target%%:*}"
   deployment_port="${deployment_target##*:}"
-  if env CONTAINER="$deployment_container" PORT="$deployment_port" bash -c "$(<"$ROOT/scripts/droplet-deploy.sh")" >/dev/null 2>&1; then
+  if run_deploy_helper "$deployment_container" "$deployment_port" >/dev/null 2>&1; then
     echo "invalid deployment target ${deployment_target} was accepted" >&2
     exit 1
   fi
 done
-env CONTAINER=clubdue-staging PORT=8082 IMAGE=validation DOMAIN=validation.invalid \
-  GHCR_USER=validation GHCR_TOKEN=validation CLUBDUE_DEPLOY_VALIDATE_ONLY=1 \
-  bash -c "$(<"$ROOT/scripts/droplet-deploy.sh")" >/dev/null
+run_deploy_helper clubdue-staging 8082 -e CLUBDUE_DEPLOY_VALIDATE_ONLY=1 >/dev/null
+
+[ "$(run_deploy_helper clubdue 8083 -e CLUBDUE_DEPLOY_TEST_PLAN=candidate)" = \
+  'candidate=18083 active=8083 failure=preserve-active' ]
+[ "$(run_deploy_helper clubdue 8083 -e CLUBDUE_DEPLOY_TEST_PLAN=promote)" = \
+  'proxy=18083 active=18083 previous=8083' ]
+[ "$(run_deploy_helper clubdue 8083 -e CLUBDUE_DEPLOY_TEST_PLAN=next-promote)" = \
+  'proxy=8083 active=8083 previous=18083' ]
+[ "$(run_deploy_helper clubdue 8083 -e CLUBDUE_DEPLOY_TEST_PLAN=rollback)" = \
+  'proxy=8083 active=8083 previous=18083' ]
 
 wait_for_postgres() {
   local container="$1"
@@ -111,14 +127,22 @@ dev_route_status="$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:${
 export CLUBDUE_BACKUP_DB_CONTAINER="$SOURCE_DB"
 export CLUBDUE_BACKUP_DIR="$WORK_DIR/backups"
 export CLUBDUE_BACKUP_PASSPHRASE="disposable-production-rehearsal-backup-passphrase"
+export CLUBDUE_BACKUP_HMAC_KEY="disposable-production-rehearsal-hmac-key"
 export CLUBDUE_BACKUP_RETENTION_DAYS=30
 mkdir -p "$CLUBDUE_BACKUP_DIR"
 expired_backup="$CLUBDUE_BACKUP_DIR/clubdue-postgres-20000101T000000Z.sql.enc"
+expired_backup_mac="${expired_backup}.mac"
 touch -d '2000-01-01 UTC' "$expired_backup"
+touch -d '2000-01-01 UTC' "$expired_backup_mac"
 backup_file="$($ROOT/scripts/postgres-backup.sh)"
+backup_mac_file="${backup_file}.mac"
 [ -s "$backup_file" ]
+[ -s "$backup_mac_file" ]
 [ ! -e "$expired_backup" ]
+[ ! -e "$expired_backup_mac" ]
 [ "$(stat -c '%a' "$backup_file")" = "600" ]
+[ "$(stat -c '%a' "$backup_mac_file")" = "600" ]
+[ "$(stat -c '%s' "$backup_mac_file")" = "32" ]
 if openssl enc -d -aes-256-cbc -pbkdf2 -pass env:CLUBDUE_BACKUP_PASSPHRASE -in "$backup_file" | grep -q 'owner@rehearsal.invalid'; then
   :
 else
@@ -140,4 +164,40 @@ restored_owner_count="$(docker exec "$RESTORE_DB" psql --username=clubdue --dbna
   --command "SELECT count(*) FROM users WHERE email = 'owner@rehearsal.invalid'")"
 [ "$restored_owner_count" = "1" ]
 
-echo "production rehearsal passed: readiness, authenticated dashboard, encrypted backup, and restore"
+expect_authenticated_restore_failure() {
+  local candidate_backup="$1"
+  local failure_output="$WORK_DIR/restore-failure.log"
+
+  if "$ROOT/scripts/postgres-restore.sh" "$candidate_backup" > /dev/null 2>"$failure_output"; then
+    echo "tampered backup was restored" >&2
+    exit 1
+  fi
+  grep -qx 'backup authentication failed' "$failure_output"
+}
+
+tampered_ciphertext="$WORK_DIR/tampered-ciphertext.sql.enc"
+cp "$backup_file" "$tampered_ciphertext"
+cp "$backup_mac_file" "${tampered_ciphertext}.mac"
+# Appending a byte guarantees a different authenticated ciphertext while
+# keeping the original valid MAC sidecar intact.
+printf '\000' >> "$tampered_ciphertext"
+expect_authenticated_restore_failure "$tampered_ciphertext"
+
+tampered_mac="$WORK_DIR/tampered-mac.sql.enc"
+cp "$backup_file" "$tampered_mac"
+cp "$backup_mac_file" "${tampered_mac}.mac"
+first_mac_byte="$(od -An -tu1 -N1 "${tampered_mac}.mac" | tr -d '[:space:]')"
+if [ "$first_mac_byte" = "0" ]; then
+  replacement_mac_byte=1
+else
+  replacement_mac_byte=0
+fi
+printf "\\$(printf '%03o' "$replacement_mac_byte")" \
+  | dd of="${tampered_mac}.mac" bs=1 count=1 conv=notrunc status=none
+expect_authenticated_restore_failure "$tampered_mac"
+
+restored_owner_count_after_tamper_tests="$(docker exec "$RESTORE_DB" psql --username=clubdue --dbname=clubdue --tuples-only --no-align \
+  --command "SELECT count(*) FROM users WHERE email = 'owner@rehearsal.invalid'")"
+[ "$restored_owner_count_after_tamper_tests" = "1" ]
+
+echo "production rehearsal passed: readiness, authenticated encrypted backup, restore, and tamper rejection"
