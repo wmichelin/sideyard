@@ -12,7 +12,11 @@ jobs:
   wake-agent:
     # This job runs on the private G5 runner and executes only the dedicated
     # issue queue. It never invokes the roadmap iteration loop.
-    if: github.event.issue.state == 'open'
+    # Long-running roadmap work has its own durable scheduler and master issue.
+    # Never dispatch that issue through the ordinary issue worker into the same
+    # T3 thread, or the two orchestrators can create competing implementation
+    # turns.
+    if: ${{ github.event.issue.state == 'open' && !contains(github.event.issue.labels.*.name, 'roadmap-loop') }}
     runs-on: [self-hosted, linux, x64, clubdue]
     timeout-minutes: 10
     permissions:

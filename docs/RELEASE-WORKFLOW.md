@@ -40,10 +40,13 @@ Report:
 When the user says OK / ship it / looks good:
 
 ```bash
+gh variable set PRODUCTION_DEPLOY_ENABLED --body true
 gh workflow run deploy-production.yml
 ```
 
 This promotes the `:staging` image (what they just reviewed) to `:latest` and deploys production.
+Set `PRODUCTION_DEPLOY_ENABLED` back to `false` when the approved promotion
+finishes. Autonomous roadmap and issue agents must never enable it.
 
 If the user approved a specific commit rather than current staging:
 
@@ -58,6 +61,12 @@ gh run watch
 ```
 
 Confirm with `./scripts/smoke-test.sh production`.
+
+Then close the promotion window:
+
+```bash
+gh variable set PRODUCTION_DEPLOY_ENABLED --body false
+```
 
 ### 5. If staging is broken
 

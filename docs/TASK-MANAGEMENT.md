@@ -38,6 +38,12 @@ The roadmap iteration worker is a separate queue and never claims or dispatches
 issues. Every issue-bot and execution-status comment includes the staging link,
 even while deployment is pending: https://clubdue-staging.michelindigitalmedia.com
 
+Long-running roadmap runs use one master issue labeled `roadmap-loop`. That
+label excludes the issue from the ordinary issue-pickup workflow so one durable
+roadmap scheduler remains the sole execution owner. Customer P0/P1 issues still
+preempt the next roadmap slice and are handled by that owner before roadmap work
+continues.
+
 ## Required team review comment
 
 Before implementation, the ticket must receive one clearly labeled comment:

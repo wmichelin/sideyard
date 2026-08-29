@@ -16,6 +16,9 @@ concurrency:
 
 jobs:
   deploy:
+    # workflow_dispatch is not itself approval. Autonomous work leaves this
+    # repository variable unset/false, so an accidental dispatch is harmless.
+    if: ${{ vars.PRODUCTION_DEPLOY_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     environment: production
     permissions:
