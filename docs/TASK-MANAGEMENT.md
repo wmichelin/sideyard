@@ -32,9 +32,10 @@ G5 runner. The dedicated issue-pickup worker then comments when it claims the
 ticket, posts the six-role team review, reports implementation/test progress,
 and reports the staging result. Label changes (`agent-claimed`,
 `staging-ready`, or `blocked`) are also visible status signals. If no comment
-appears within a few minutes, check the Actions run linked from the issue; the
-separate five-minute issue-queue poller remains as a fallback. The roadmap
-iteration worker is a separate queue and never claims or dispatches issues.
+appears within a few minutes, check the Actions run linked from the issue.
+Issue intake is event-driven; there is no continuously running issue poller.
+The roadmap iteration worker is a separate queue and never claims or dispatches
+issues.
 
 ## Required team review comment
 
