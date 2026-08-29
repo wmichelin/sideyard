@@ -11,7 +11,8 @@ concurrency:
 jobs:
   wake-agent:
     # This job runs on the private G5 runner and executes only the dedicated
-    # issue queue. It never invokes the roadmap iteration loop.
+    # issue intake queue. Ready issues are handed to the delivery workflow by
+    # the intake worker; this job never invokes the roadmap iteration loop.
     # Long-running roadmap work has its own durable scheduler and master issue.
     # Never dispatch that issue through the ordinary issue worker into the same
     # T3 thread, or the two orchestrators can create competing implementation
@@ -32,7 +33,7 @@ jobs:
         run: |
           LABEL_TEXT=""
           if [ -n "$EVENT_LABEL" ]; then LABEL_TEXT=", label: $EVENT_LABEL"; fi
-          gh issue comment "$ISSUE_NUMBER" --repo "${{ github.repository }}" --body "🤖 ClubDue automation received this issue event (action: ${EVENT_ACTION}${LABEL_TEXT}). The G5 runner is checking the queue now. Staging: ${STAGING_URL} (pending)"
+          gh issue comment "$ISSUE_NUMBER" --repo "${{ github.repository }}" --body "🤖 ClubDue automation received this issue event (action: ${EVENT_ACTION}${LABEL_TEXT}). The G5 runner is starting issue intake. Staging: ${STAGING_URL} (pending)"
       - name: Ensure issue is queued
         if: github.event.action == 'opened' || github.event.action == 'reopened'
         env:
@@ -49,10 +50,11 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
           # Removing `blocked` is an explicit request to retry. Clear the
-          # stale ownership marker so the dedicated worker can claim it again.
+          # stale ownership marker so the dedicated intake worker can process
+          # the issue again.
           gh issue edit "$ISSUE_NUMBER" --repo "${{ github.repository }}" \
             --remove-label agent-claimed --add-label agent-ready
-      - name: Wake ClubDue issue queue
+      - name: Wake ClubDue issue intake
         env:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: /home/wmichelin/assistant/bin/clubdue-issue-pickup "$ISSUE_NUMBER"

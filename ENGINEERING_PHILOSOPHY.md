@@ -1,5 +1,5 @@
 <!-- BEGIN managed: agent-skills engineering philosophy -->
-<!-- source: https://github.com/wmichelin/agent-skills.git@023b0f42a930136b7c238b41d246d984533f5a15 -->
+<!-- source: https://github.com/wmichelin/agent-skills.git@a0e2141a435295a4eb9a04462341b7e21fb3d9e7 -->
 # Engineering principles
 
 This is the user's current engineering playbook. It is primarily for Go codebases. User instructions and repository-local rules take precedence.

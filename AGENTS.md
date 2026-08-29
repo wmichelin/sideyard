@@ -23,6 +23,14 @@ See [docs/RELEASE-WORKFLOW.md](docs/RELEASE-WORKFLOW.md) for the full checklist.
 
 Shared pantry DO droplet. Do not touch Pantry (`:8080`) or Headscale (`:8081`).
 
+## Issue delivery
+
+For a GitHub issue, invoke `github-issue-intake` first; it posts a delivery
+brief and hands a ready issue to `team-delivery-workflow`. Invoke
+`team-delivery-workflow` directly for a manual request, delivery brief,
+approved conformance plan, or delivery-ready issue; intake is not required for
+those paths.
+
 ## Engineering philosophy
 
 Read and follow [ENGINEERING_PHILOSOPHY.md](ENGINEERING_PHILOSOPHY.md).
