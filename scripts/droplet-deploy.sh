@@ -8,30 +8,25 @@ set -euo pipefail
 # ClubDue shares this droplet with Pantry and Headscale. Validate the target
 # before installing packages, logging into a registry, or mutating Docker so a
 # mistaken deployment cannot affect either reserved local port.
-case "$PORT" in
-  8080|8081)
-    echo "ERROR: ClubDue may not target reserved port ${PORT}" >&2
-    exit 64
-    ;;
-esac
+if [ "$PORT" = "8080" ] || [ "$PORT" = "8081" ]; then
+  echo "ERROR: ClubDue may not target reserved port ${PORT}" >&2
+  exit 64
+fi
 
-case "${CONTAINER}:${PORT}" in
-  clubdue-staging:8082|clubdue:8083)
-    :
-    ;;
-  clubdue-staging:*)
+if [ "$CONTAINER" = "clubdue-staging" ]; then
+  if [ "$PORT" != "8082" ]; then
     echo "ERROR: staging must use isolated port 8082" >&2
     exit 64
-    ;;
-  clubdue:*)
+  fi
+elif [ "$CONTAINER" = "clubdue" ]; then
+  if [ "$PORT" != "8083" ]; then
     echo "ERROR: production must use isolated port 8083" >&2
     exit 64
-    ;;
-  *)
-    echo "ERROR: unsupported ClubDue container ${CONTAINER}" >&2
-    exit 64
-    ;;
-esac
+  fi
+else
+  echo "ERROR: unsupported ClubDue container ${CONTAINER}" >&2
+  exit 64
+fi
 
 : "${IMAGE:?IMAGE required}"
 : "${DOMAIN:?DOMAIN required}"
