@@ -1,4 +1,8 @@
 :root {
+	/* Prevent mobile browsers from independently inflating text on narrow
+	   screens; all page typography is deliberately expressed in rem units. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
   --bg: #0f1419;
   --surface: #1a2332;
   --surface-hover: #243044;
