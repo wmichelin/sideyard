@@ -183,7 +183,7 @@ func TestHomeownerRenewalUsesScopedCardSpacing(t *testing.T) {
 		".renewal-link-actions {",
 		"margin-top: 1rem;",
 		".renewal-link-panel .section-title {",
-		"padding: 0 0 0.35rem;",
+		"padding: 0 0 0.75rem;",
 		"border-bottom: 0;",
 	} {
 		if !strings.Contains(string(styles), want) {
