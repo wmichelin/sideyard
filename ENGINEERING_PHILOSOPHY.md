@@ -1,6 +1,8 @@
+<!-- BEGIN managed: agent-skills engineering philosophy -->
+<!-- source: https://github.com/wmichelin/agent-skills.git@023b0f42a930136b7c238b41d246d984533f5a15 -->
 # Engineering principles
 
-This is the user's current engineering playbook. It is primarily for Go codebases. Explicit user direction and repository-local rules, including safety and compliance requirements, take precedence.
+This is the user's current engineering playbook. It is primarily for Go codebases. User instructions and repository-local rules take precedence.
 
 ## Priority order
 
@@ -17,7 +19,10 @@ This is the user's current engineering playbook. It is primarily for Go codebase
 - Prefer one clear source of truth. Avoid duplicate representations, hidden coupling, and configuration that is not exercised.
 - Add an abstraction only when it removes demonstrated complexity or supports a stable boundary. Do not create generic frameworks for one use.
 - Keep modules cohesive and dependencies directional. Do not spread a concern across unrelated layers merely to make a local edit convenient.
-- Organize folders loosely around domains and ownership, keeping related behavior near each other. Do not force a rigid domain taxonomy when the codebase or change has a clearer structure.
+- Keep the repository root intentionally sparse. It may contain module/build metadata, top-level documentation, operational configuration, and deliberate entrypoints; it must not become a dumping ground for unrelated application source files.
+- Organize application code into cohesive folders around domains and ownership. Prefer a stable business capability over a generic technical bucket such as `utils`, `helpers`, or `common`; do not force a rigid domain taxonomy when the codebase or change has a clearer structure.
+- In Go applications, put executable entrypoints in `cmd/<binary>` and non-public application packages under `internal/<domain>` (or a similarly clear domain directory). A root Go package is appropriate only for a deliberate public module API, not as a default home for application code.
+- When a flat codebase needs structure, move one cohesive behavior at a time, preserve its public contracts, and validate after every move. Do not combine a broad directory reshuffle with behavior changes or unrelated cleanup.
 - Preserve compatibility deliberately. Identify callers, persisted data, wire formats, migrations, and operational dependencies before changing them.
 - Make failure behavior intentional: validate at boundaries, retain useful context, and never silently discard errors or data.
 - Chase behavioral coverage, not line coverage: tests should prove observable outcomes, edge cases, error paths, and contracts. Strive for full behavioral coverage of changed code, while avoiding tests coupled to incidental implementation details.
@@ -36,3 +41,8 @@ This is the user's current engineering playbook. It is primarily for Go codebase
 ## Decision record
 
 For any exception or material tradeoff, record: the principle affected, the evidence, the chosen option, and the risk accepted. Keep this proportional; a short note in the plan or PR is normally enough.
+<!-- END managed: agent-skills engineering philosophy -->
+
+## Project-specific additions
+
+Explicit user direction and repository-local rules, including safety and compliance requirements, take precedence.
