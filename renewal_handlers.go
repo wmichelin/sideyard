@@ -36,17 +36,18 @@ func (s *Server) handleHomeownerRenewal(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	s.render(w, "renewal.html", map[string]any{
-		"Renewal":        renewal,
-		"PriceFmt":       formatCents(renewal.PriceCents),
-		"AnniversaryFmt": renewal.AnniversaryDate.Format("January 2, 2006"),
-		"Paid":           r.URL.Query().Get("payment") == "stub",
+		"Renewal":         renewal,
+		"PriceFmt":        formatCents(renewal.PriceCents),
+		"AnniversaryFmt":  renewal.AnniversaryDate.Format("January 2, 2006"),
+		"TestPaymentStub": s.config.TestPaymentStubEnabled(),
+		"Paid":            s.config.TestPaymentStubEnabled() && r.URL.Query().Get("payment") == "stub",
 	})
 }
 
 func (s *Server) handleHomeownerRenewalPayment(w http.ResponseWriter, r *http.Request) {
 	// Deliberately a non-charging placeholder until Stripe Checkout and webhook
 	// verification are configured. Revalidate the expiring token before replying.
-	if s.demo {
+	if s.demo || !s.config.TestPaymentStubEnabled() {
 		http.NotFound(w, r)
 		return
 	}

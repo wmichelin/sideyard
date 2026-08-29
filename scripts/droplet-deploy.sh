@@ -61,7 +61,12 @@ fi
 docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
 app_args=(docker run -d --name "$CONTAINER" --restart always -p "127.0.0.1:${PORT}:8080")
 if [ "$CONTAINER" = "clubdue-staging" ]; then
-  app_args+=(--network clubdue-staging-net -e "DATABASE_URL=postgres://clubdue:${POSTGRES_PASSWORD}@clubdue-staging-db:5432/clubdue?sslmode=disable" -e "SESSION_SECRET=${SESSION_SECRET}" -e ENABLE_DEV_ROUTES=1)
+  app_args+=(--network clubdue-staging-net -e APP_ENV=staging -e "PUBLIC_URL=https://${DOMAIN}" -e "DATABASE_URL=postgres://clubdue:${POSTGRES_PASSWORD}@clubdue-staging-db:5432/clubdue?sslmode=disable" -e "SESSION_SECRET=${SESSION_SECRET}" -e ENABLE_DEV_ROUTES=1)
+else
+  # Production is intentionally not provisioned in this run. If an approved
+  # deployment is attempted before P1.1 supplies its database and secret
+  # contract, the production-mode configuration validation fails closed.
+  app_args+=(-e APP_ENV=production -e "PUBLIC_URL=https://${DOMAIN}")
 fi
 "${app_args[@]}" \
   "$IMAGE" >/dev/null

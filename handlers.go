@@ -13,10 +13,11 @@ import (
 )
 
 type Server struct {
-	tmpl  *template.Template
-	auth  *Auth
-	store *Store
-	demo  bool
+	tmpl   *template.Template
+	auth   *Auth
+	store  *Store
+	config Config
+	demo   bool
 }
 
 type NavData struct {
@@ -89,6 +90,14 @@ func (s *Server) handleSignupPost(w http.ResponseWriter, r *http.Request) {
 	shopName := r.FormValue("shop_name")
 	email := r.FormValue("email")
 	password := r.FormValue("password")
+	if !s.config.SignupAllowed(email) {
+		s.render(w, "signup.html", map[string]any{
+			"Error":    "This email is not approved for pilot enrollment.",
+			"ShopName": shopName,
+			"Email":    email,
+		})
+		return
+	}
 
 	token, err := s.auth.signup(r.Context(), shopName, email, password)
 	if err != nil {

@@ -295,6 +295,51 @@ func TestCompletedVisitCannotExceedAgreementEntitlement(t *testing.T) {
 	}
 }
 
+func TestProvisionOwnerCreatesAndRecoversAccess(t *testing.T) {
+	databaseURL := integrationDatabaseURL(t)
+	ctx := context.Background()
+	db, err := openDB(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	auth := newAuth(db, "test-session-secret")
+	stamp := time.Now().UTC().Format("20060102150405.000000000")
+	credentials := OwnerCredentials{
+		Email:    "owner-" + stamp + "@example.test",
+		Password: "first-password",
+		ShopName: "Provision " + stamp,
+	}
+	action, err := auth.provisionOwner(ctx, credentials)
+	if err != nil || action != "provisioned" {
+		t.Fatalf("provision owner = %q, %v", action, err)
+	}
+	if _, err := auth.login(ctx, credentials.Email, credentials.Password); err != nil {
+		t.Fatalf("provisioned owner could not log in: %v", err)
+	}
+
+	credentials.Password = "recovered-password"
+	action, err = auth.provisionOwner(ctx, credentials)
+	if err != nil || action != "recovered" {
+		t.Fatalf("recover owner = %q, %v", action, err)
+	}
+	if _, err := auth.login(ctx, credentials.Email, "first-password"); err == nil {
+		t.Fatal("old owner password remained valid after recovery")
+	}
+	if _, err := auth.login(ctx, credentials.Email, credentials.Password); err != nil {
+		t.Fatalf("recovered owner could not log in: %v", err)
+	}
+
+	var count int
+	if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM owner_provision_events WHERE action IN ('provisioned', 'recovered')`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count < 2 {
+		t.Fatalf("expected provision and recovery audit events, got %d", count)
+	}
+}
+
 func withAgreementField(in CreateAgreementInput, update func(*CreateAgreementInput)) CreateAgreementInput {
 	update(&in)
 	return in

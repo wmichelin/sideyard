@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"embed"
+	"fmt"
 	"html/template"
 	"io/fs"
 	"log"
@@ -19,36 +20,46 @@ var staticFS embed.FS
 
 func main() {
 	loadEnvFile(".env")
+	config, err := LoadConfig(os.Getenv)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := run(config, os.Args[1:]); err != nil {
+		log.Fatal(err)
+	}
+}
 
-	addr := ":8080"
-	if p := os.Getenv("PORT"); p != "" {
-		addr = ":" + p
+func run(config Config, args []string) error {
+	if len(args) > 0 {
+		if len(args) != 1 || args[0] != "provision-owner" {
+			return fmt.Errorf("unsupported command")
+		}
+		return runProvisionOwner(config)
 	}
 
 	tmpl, err := template.ParseFS(templateFS, "templates/*.html")
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	static, err := fs.Sub(staticFS, "static")
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
-	databaseURL := os.Getenv("DATABASE_URL")
-	srv := &Server{tmpl: tmpl, demo: databaseURL == ""}
+	srv := &Server{tmpl: tmpl, config: config, demo: config.DemoMode()}
 
-	if databaseURL != "" {
+	if !srv.demo {
 		ctx := context.Background()
-		db, err := openDB(ctx, databaseURL)
+		db, err := openDB(ctx, config.DatabaseURL)
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 		defer db.Close()
 
-		auth := newAuth(db)
-		if err := auth.bootstrapShop(ctx); err != nil {
-			log.Fatalf("bootstrap shop: %v", err)
+		auth := newAuth(db, config.SessionSecret)
+		if err := auth.bootstrapShop(ctx, config.BootstrapOwner); err != nil {
+			return fmt.Errorf("bootstrap shop: %w", err)
 		}
 
 		srv.auth = auth
@@ -78,7 +89,7 @@ func main() {
 	mux.HandleFunc("POST /logout", srv.handleLogout)
 	mux.HandleFunc("GET /renew/{token}", srv.handleHomeownerRenewal)
 	mux.HandleFunc("POST /renew/{token}", srv.handleHomeownerRenewalPayment)
-	if devRoutesEnabled() && !srv.demo {
+	if config.EnableDevRoutes && !srv.demo {
 		mux.HandleFunc("POST /dev/seed", srv.handleDevSeed)
 		log.Print("Dev routes enabled: POST /dev/seed")
 	}
@@ -117,10 +128,30 @@ func main() {
 	mux.HandleFunc("GET /plan-templates/{id}", auth(srv.handlePlanTemplateEdit))
 	mux.HandleFunc("POST /plan-templates/{id}", auth(srv.handlePlanTemplateEdit))
 
-	log.Printf("ClubDue listening on %s", addr)
-	if err := http.ListenAndServe(addr, mux); err != nil {
-		log.Fatal(err)
+	log.Printf("ClubDue listening on %s", config.Address)
+	return http.ListenAndServe(config.Address, mux)
+}
+
+func runProvisionOwner(config Config) error {
+	credentials, err := config.ValidateProvisionOwner()
+	if err != nil {
+		return err
 	}
+	if config.DatabaseURL == "" {
+		return fmt.Errorf("DATABASE_URL is required for provision-owner")
+	}
+	db, err := openDB(context.Background(), config.DatabaseURL)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	auth := newAuth(db, config.SessionSecret)
+	action, err := auth.provisionOwner(context.Background(), credentials)
+	if err != nil {
+		return fmt.Errorf("provision owner: %w", err)
+	}
+	log.Printf("owner %s completed", action)
+	return nil
 }
 
 func runDailyRenewalGeneration(store *Store) {

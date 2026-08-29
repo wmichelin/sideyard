@@ -54,11 +54,17 @@ For a guided owner presentation, use [docs/demo-script.md](docs/demo-script.md).
 
 | Variable | Purpose |
 |----------|---------|
+| `APP_ENV` | `development` (default), `staging`, or `production`; staging/production fail closed without their required configuration |
 | `DATABASE_URL` | Postgres connection string |
 | `SESSION_SECRET` | Required secret for session and homeowner-link hashes |
+| `PUBLIC_URL` | HTTPS public URL required in staging and production |
 | `ENABLE_DEV_ROUTES` | Set to `1` to enable `POST /dev/seed` locally |
-| `BOOTSTRAP_EMAIL` / `BOOTSTRAP_PASSWORD` | Optional owner created for an otherwise empty database |
-| `SHOP_NAME` | Shop name used for the optional bootstrap owner |
+| `BOOTSTRAP_EMAIL` / `BOOTSTRAP_PASSWORD` / `BOOTSTRAP_SHOP_NAME` | Optional owner created for an otherwise empty database (`SHOP_NAME` remains a local compatibility alias) |
+| `SIGNUP_ALLOWLIST` | Comma-separated production pilot enrollment allowlist |
+
+For audited, operator-run pilot owner provisioning or password recovery, see
+[owner provisioning](docs/OWNER-PROVISIONING.md). Never place production owner
+credentials in the repository or a GitHub workflow.
 
 ## Verify
 

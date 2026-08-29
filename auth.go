@@ -8,10 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -33,12 +33,8 @@ type Auth struct {
 	sessionSecret []byte
 }
 
-func newAuth(db *DB) *Auth {
-	secret := os.Getenv("SESSION_SECRET")
-	if secret == "" {
-		secret = "dev-insecure-change-me"
-	}
-	return &Auth{db: db, sessionSecret: []byte(secret)}
+func newAuth(db *DB, sessionSecret string) *Auth {
+	return &Auth{db: db, sessionSecret: []byte(sessionSecret)}
 }
 
 func bcryptGenerate(password string) (string, error) {
@@ -49,15 +45,14 @@ func bcryptGenerate(password string) (string, error) {
 	return string(hash), nil
 }
 
-func (a *Auth) bootstrapShop(ctx context.Context) error {
-	email := strings.TrimSpace(os.Getenv("BOOTSTRAP_EMAIL"))
-	password := os.Getenv("BOOTSTRAP_PASSWORD")
-	shopName := strings.TrimSpace(os.Getenv("SHOP_NAME"))
-	if email == "" || password == "" {
+func (a *Auth) bootstrapShop(ctx context.Context, credentials OwnerCredentials) error {
+	credentials.Email = normalizeEmail(credentials.Email)
+	credentials.ShopName = strings.TrimSpace(credentials.ShopName)
+	if credentials.Email == "" || credentials.Password == "" {
 		return nil
 	}
-	if shopName == "" {
-		shopName = "Demo Shop"
+	if credentials.ShopName == "" {
+		credentials.ShopName = "Demo Shop"
 	}
 
 	var count int
@@ -68,8 +63,66 @@ func (a *Auth) bootstrapShop(ctx context.Context) error {
 		return nil
 	}
 
-	_, err := a.signup(ctx, shopName, email, password)
+	_, err := a.provisionOwner(ctx, credentials)
 	return err
+}
+
+func (a *Auth) provisionOwner(ctx context.Context, credentials OwnerCredentials) (string, error) {
+	credentials.Email = normalizeEmail(credentials.Email)
+	credentials.ShopName = strings.TrimSpace(credentials.ShopName)
+	if credentials.Email == "" || credentials.Password == "" || credentials.ShopName == "" {
+		return "", errors.New("owner email, password, and shop name are required")
+	}
+	if len(credentials.Password) < 8 {
+		return "", errors.New("owner password must be at least 8 characters")
+	}
+
+	hash, err := bcryptGenerate(credentials.Password)
+	if err != nil {
+		return "", err
+	}
+	tx, err := a.db.Pool.Begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback(ctx)
+
+	var userID string
+	err = tx.QueryRow(ctx, `SELECT id FROM users WHERE email = $1 FOR UPDATE`, credentials.Email).Scan(&userID)
+	action := "recovered"
+	if errors.Is(err, pgx.ErrNoRows) {
+		var shopID string
+		slug := slugify(credentials.ShopName)
+		err = tx.QueryRow(ctx, `SELECT id FROM shops WHERE slug = $1`, slug).Scan(&shopID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			if err := tx.QueryRow(ctx, `INSERT INTO shops (name, slug) VALUES ($1, $2) RETURNING id`, credentials.ShopName, slug).Scan(&shopID); err != nil {
+				return "", err
+			}
+		} else if err != nil {
+			return "", err
+		}
+		if err := tx.QueryRow(ctx, `INSERT INTO users (shop_id, email, password_hash, role) VALUES ($1, $2, $3, 'owner') RETURNING id`, shopID, credentials.Email, hash).Scan(&userID); err != nil {
+			return "", err
+		}
+		action = "provisioned"
+	} else if err != nil {
+		return "", err
+	} else {
+		if _, err := tx.Exec(ctx, `UPDATE users SET password_hash = $2, role = 'owner' WHERE id = $1`, userID, hash); err != nil {
+			return "", err
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE user_id = $1`, userID); err != nil {
+			return "", err
+		}
+	}
+
+	if _, err := tx.Exec(ctx, `INSERT INTO owner_provision_events (user_id, action) VALUES ($1, $2)`, userID, action); err != nil {
+		return "", err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return "", err
+	}
+	return action, nil
 }
 
 func (a *Auth) signup(ctx context.Context, shopName, email, password string) (string, error) {

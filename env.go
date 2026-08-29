@@ -34,8 +34,3 @@ func loadEnvFile(path string) {
 		}
 	}
 }
-
-func devRoutesEnabled() bool {
-	v := strings.ToLower(strings.TrimSpace(os.Getenv("ENABLE_DEV_ROUTES")))
-	return v == "1" || v == "true" || v == "yes"
-}
