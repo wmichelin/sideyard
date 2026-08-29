@@ -107,7 +107,9 @@ jobs:
           username: root
           key: ${{ secrets.DROPLET_SSH_KEY }}
           envs: CONTAINER,IMAGE,PORT,DOMAIN,CLUBDUE_DEPLOY_MODE,GHCR_USER,GHCR_TOKEN
-          script_stop: true
+          # Preserve the complete Bash program; its own `set -euo pipefail`
+          # is the fail-fast boundary (ssh-action's line wrapper breaks case).
+          script_stop: false
           script_path: scripts/droplet-deploy.sh
 
       - name: Smoke test production
