@@ -387,6 +387,15 @@ body {
   margin-top: 1rem;
 }
 
+.renewal-link-panel .section-title {
+  padding: 0 0 0.35rem;
+  border-bottom: 0;
+}
+
+.renewal-link-panel .empty-note {
+  text-align: left;
+}
+
 .form-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));

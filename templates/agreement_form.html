@@ -81,7 +81,7 @@
 </form>
 
 {{ if .IsEdit }}
-<section class="panel">
+<section class="panel renewal-link-panel">
   <h3 class="section-title">Homeowner renewal link</h3>
   <p class="empty-note">Creates a 30-day customer renewal link. Production asks the customer to contact the shop; staging keeps a clearly non-charging payment test stub.</p>
   <form method="post" action="/agreements/{{ .Form.ID }}/renewal-link" class="renewal-link-actions">
