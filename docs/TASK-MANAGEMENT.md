@@ -25,6 +25,16 @@ desired outcome, acceptance criteria, and priority.
 5. `blocked`: the agent cannot proceed without a product decision, secret, or
    external dependency. It comments the exact blocker.
 
+## Status updates
+
+The issue receives an automation comment when GitHub delivers the event to the
+G5 runner. The execution agent then comments when it claims the ticket, posts
+the six-role team review, reports implementation/test progress, and reports
+the staging result. Label changes (`agent-claimed`, `staging-ready`, or
+`blocked`) are also visible status signals. If no comment appears within a few
+minutes, check the Actions run linked from the issue; the five-minute poller
+remains as a fallback.
+
 ## Required team review comment
 
 Before implementation, the ticket must receive one clearly labeled comment:

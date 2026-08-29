@@ -15,6 +15,18 @@ jobs:
     if: github.event.issue.state == 'open'
     runs-on: [self-hosted, linux, x64, clubdue]
     timeout-minutes: 10
+    permissions:
+      issues: write
     steps:
+      - name: Report event received
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          EVENT_ACTION: ${{ github.event.action }}
+          EVENT_LABEL: ${{ github.event.label.name || '' }}
+        run: |
+          LABEL_TEXT=""
+          if [ -n "$EVENT_LABEL" ]; then LABEL_TEXT=", label: $EVENT_LABEL"; fi
+          gh issue comment "$ISSUE_NUMBER" --repo "${{ github.repository }}" --body "🤖 ClubDue automation received this issue event (action: ${EVENT_ACTION}${LABEL_TEXT}). The G5 runner is checking the queue now."
       - name: Wake ClubDue agent queue
         run: /home/wmichelin/assistant/bin/clubdue-loop tick
