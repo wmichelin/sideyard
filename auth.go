@@ -32,10 +32,23 @@ type Auth struct {
 	db            *DB
 	sessionSecret []byte
 	secureCookies bool
+	clock         Clock
 }
 
 func newAuth(db *DB, sessionSecret string, secureCookies bool) *Auth {
-	return &Auth{db: db, sessionSecret: []byte(sessionSecret), secureCookies: secureCookies}
+	return newAuthWithClock(db, sessionSecret, secureCookies, nil)
+}
+
+func newAuthWithClock(db *DB, sessionSecret string, secureCookies bool, clock Clock) *Auth {
+	return &Auth{db: db, sessionSecret: []byte(sessionSecret), secureCookies: secureCookies, clock: clock}
+}
+
+func (a *Auth) nowUTC() time.Time {
+	return utcNow(a.clock)
+}
+
+func (a *Auth) sessionExpiry() time.Time {
+	return a.nowUTC().Add(sessionTTL)
 }
 
 func bcryptGenerate(password string) (string, error) {
@@ -214,7 +227,7 @@ func (a *Auth) createSession(ctx context.Context, userID string) (string, error)
 		return "", err
 	}
 	tokenHash := hashToken(token, a.sessionSecret)
-	expires := time.Now().UTC().Add(sessionTTL)
+	expires := a.sessionExpiry()
 
 	_, err = a.db.Pool.Exec(ctx, `
 		INSERT INTO sessions (user_id, token_hash, expires_at) VALUES ($1, $2, $3)`,
@@ -247,8 +260,8 @@ func (a *Auth) userFromRequest(ctx context.Context, r *http.Request) (*User, err
 		FROM sessions sess
 		JOIN users u ON u.id = sess.user_id
 		JOIN shops s ON s.id = u.shop_id
-		WHERE sess.token_hash = $1 AND sess.expires_at > now()
-	`, tokenHash).Scan(&u.ID, &u.ShopID, &u.Email, &u.Role, &u.ShopName)
+		WHERE sess.token_hash = $1 AND sess.expires_at > $2
+		`, tokenHash, a.nowUTC()).Scan(&u.ID, &u.ShopID, &u.Email, &u.Role, &u.ShopName)
 	if err != nil {
 		return nil, errors.New("unauthenticated")
 	}

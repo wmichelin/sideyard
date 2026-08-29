@@ -17,7 +17,7 @@ func (s *Server) handleAgreementRenewalLink(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if err := s.store.CreateRenewalLink(r.Context(), user.ShopID, r.PathValue("id"),
-		hashToken(token, s.auth.sessionSecret), time.Now().UTC().Add(renewalLinkTTL)); err != nil {
+		hashToken(token, s.auth.sessionSecret), s.renewalLinkExpiry()); err != nil {
 		log.Printf("create renewal link: %v", err)
 		http.NotFound(w, r)
 		return

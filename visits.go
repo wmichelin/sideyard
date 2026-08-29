@@ -71,7 +71,7 @@ func isVisitOverdue(season string, year int, status VisitStatus, now time.Time) 
 }
 
 func (s *Store) SyncVisitDues(ctx context.Context, shopID string) error {
-	year := time.Now().UTC().Year()
+	year := s.nowUTC().Year()
 	rows, err := s.db.Pool.Query(ctx, `
 		SELECT a.id, a.plan_snapshot_visit_windows
 		FROM agreements a
@@ -164,7 +164,7 @@ func (s *Store) ListVisitDues(ctx context.Context, shopID string, dueOnly bool) 
 	}
 	defer rows.Close()
 
-	now := time.Now().UTC()
+	now := s.nowUTC()
 	var out []VisitDueRow
 	for rows.Next() {
 		var v VisitDueRow
@@ -213,7 +213,7 @@ func (s *Store) BulkUpdateVisitStatus(ctx context.Context, shopID string, visitI
 	}
 	defer tx.Rollback(ctx)
 
-	now := time.Now().UTC()
+	now := s.nowUTC()
 
 	for _, visitID := range visitIDs {
 		var agreementID string

@@ -19,6 +19,21 @@ type Server struct {
 	config   Config
 	demo     bool
 	throttle *authThrottle
+	clock    Clock
+}
+
+func (s *Server) nowUTC() time.Time {
+	return utcNow(s.clock)
+}
+
+func (s *Server) renewalLinkExpiry() time.Time {
+	return s.nowUTC().Add(renewalLinkTTL)
+}
+
+func agreementIsWithinRenewalWindow(agreement Agreement, now time.Time, days int) bool {
+	return agreement.Status == AgreementActive &&
+		!agreement.AnniversaryDate.Before(now) &&
+		!agreement.AnniversaryDate.After(now.AddDate(0, 0, days))
 }
 
 type NavData struct {
@@ -281,11 +296,12 @@ func (s *Server) handleAgreementsList(w http.ResponseWriter, r *http.Request) {
 		days, _ = strconv.Atoi(raw)
 	}
 	rows := make([]row, 0, len(agreements))
+	now := s.nowUTC()
 	for _, a := range agreements {
 		if filter == "active" && a.Status != AgreementActive {
 			continue
 		}
-		if days > 0 && (a.Status != AgreementActive || a.AnniversaryDate.Before(time.Now().UTC()) || a.AnniversaryDate.After(time.Now().UTC().AddDate(0, 0, days))) {
+		if days > 0 && !agreementIsWithinRenewalWindow(a, now, days) {
 			continue
 		}
 		rows = append(rows, row{
@@ -308,7 +324,7 @@ func (s *Server) handleAgreementNew(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r.Context())
 	s.renderAgreementForm(w, r, user, agreementFormData{
 		Status:          string(AgreementActive),
-		AnniversaryDate: time.Now().UTC().Format("2006-01-02"),
+		AnniversaryDate: s.nowUTC().Format("2006-01-02"),
 		VisitsEntitled:  2,
 	})
 }

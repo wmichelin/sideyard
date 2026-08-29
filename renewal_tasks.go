@@ -114,17 +114,18 @@ func (s *Store) QueueRenewalDigests(ctx context.Context, asOf time.Time) error {
 }
 
 func (s *Store) ListRenewalTasks(ctx context.Context, shopID string) ([]RenewalTask, error) {
+	asOf := s.nowUTC()
 	rows, err := s.db.Pool.Query(ctx, `
 		SELECT t.id, a.id, c.id, c.name, COALESCE(c.email, ''), COALESCE(c.phone, ''),
 			COALESCE(p.address_line1 || ', ' || p.city || ', ' || p.state || ' ' || p.postal_code, ''),
 			a.plan_snapshot_name, a.anniversary_date, t.due_at, t.milestone_days,
-			(a.anniversary_date-CURRENT_DATE)::int, t.status, COALESCE(t.notes, '')
+			(a.anniversary_date-$2::date)::int, t.status, COALESCE(t.notes, '')
 		FROM renewal_tasks t
 		JOIN agreements a ON a.id = t.agreement_id
 		JOIN customers c ON c.id = a.customer_id
 		LEFT JOIN properties p ON p.id = a.property_id
-		WHERE t.shop_id = $1 AND (t.due_at <= CURRENT_DATE OR t.status <> 'open')
-		ORDER BY t.due_at, a.anniversary_date, t.milestone_days DESC`, shopID)
+		WHERE t.shop_id = $1 AND (t.due_at <= $2::date OR t.status <> 'open')
+		ORDER BY t.due_at, a.anniversary_date, t.milestone_days DESC`, shopID, asOf)
 	if err != nil {
 		return nil, err
 	}

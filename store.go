@@ -99,7 +99,12 @@ type RenewalItem struct {
 }
 
 type Store struct {
-	db *DB
+	db    *DB
+	clock Clock
+}
+
+func (s *Store) nowUTC() time.Time {
+	return utcNow(s.clock)
 }
 
 func (s *Store) ListCustomers(ctx context.Context, shopID string) ([]Customer, error) {
@@ -489,23 +494,24 @@ func (s *Store) UpdateAgreement(ctx context.Context, shopID, agreementID string,
 
 func (s *Store) DashboardStats(ctx context.Context, shopID string) (DashboardStats, error) {
 	var stats DashboardStats
+	asOf := s.nowUTC()
 	err := s.db.Pool.QueryRow(ctx, `
 		SELECT
 			COUNT(*) FILTER (WHERE a.status = 'active'),
 			COUNT(*) FILTER (WHERE a.status = 'active'
-				AND a.anniversary_date >= CURRENT_DATE
-				AND a.anniversary_date < date_trunc('month', CURRENT_DATE) + INTERVAL '1 month'),
+				AND a.anniversary_date >= $2::date
+				AND a.anniversary_date < date_trunc('month', $2::date) + INTERVAL '1 month'),
 			COUNT(*) FILTER (WHERE a.status = 'active'
-				AND a.anniversary_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 90),
+				AND a.anniversary_date BETWEEN $2::date AND $2::date + 90),
 			COUNT(*) FILTER (WHERE a.status = 'lapsed'
-				AND a.updated_at >= date_trunc('month', CURRENT_DATE)),
+				AND a.updated_at >= date_trunc('month', $2::date)),
 			COALESCE(SUM(
 				CASE WHEN a.status = 'active' THEN
 					CASE WHEN a.plan_snapshot_billing_interval = 'monthly' THEN a.price_cents ELSE a.price_cents / 12 END
 				ELSE 0 END
 			), 0)
 		FROM agreements a
-		WHERE a.shop_id = $1`, shopID).Scan(
+		WHERE a.shop_id = $1`, shopID, asOf).Scan(
 		&stats.ActiveCount,
 		&stats.RenewalsDueMonth,
 		&stats.RenewalsDue90,
@@ -520,6 +526,7 @@ func (s *Store) DashboardStats(ctx context.Context, shopID string) (DashboardSta
 }
 
 func (s *Store) RenewalQueue(ctx context.Context, shopID string) ([]RenewalBucket, error) {
+	asOf := s.nowUTC()
 	rows, err := s.db.Pool.Query(ctx, `
 		SELECT
 			a.id,
@@ -527,15 +534,15 @@ func (s *Store) RenewalQueue(ctx context.Context, shopID string) ([]RenewalBucke
 			COALESCE(p.address_line1 || ', ' || p.city || ', ' || p.state, ''),
 			a.plan_snapshot_name,
 			a.anniversary_date,
-			(a.anniversary_date - CURRENT_DATE)::int,
+			(a.anniversary_date - $2::date)::int,
 			a.price_cents
 		FROM agreements a
 		JOIN customers c ON c.id = a.customer_id
 		LEFT JOIN properties p ON p.id = a.property_id
 		WHERE a.shop_id = $1
 		  AND a.status = 'active'
-		  AND a.anniversary_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 90
-		ORDER BY a.anniversary_date`, shopID)
+		  AND a.anniversary_date BETWEEN $2::date AND $2::date + 90
+		ORDER BY a.anniversary_date`, shopID, asOf)
 	if err != nil {
 		return nil, err
 	}
