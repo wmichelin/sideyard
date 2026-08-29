@@ -150,3 +150,29 @@ func TestRenewalAndVisitTemplatesUseAccessiblePilotLanguage(t *testing.T) {
 		t.Fatal("visit handoff language is not truthful")
 	}
 }
+
+func TestHomeownerRenewalUsesScopedCardSpacing(t *testing.T) {
+	renewal, err := templateFS.ReadFile("templates/renewal.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	styles, err := staticFS.ReadFile("static/style.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(string(renewal), `class="form-panel renewal-card"`) {
+		t.Fatal("homeowner renewal template is missing its scoped card class")
+	}
+	for _, want := range []string{
+		".renewal-card {",
+		"max-width: 42rem;",
+		"padding: 1.25rem;",
+		".renewal-card .section-title {",
+		"padding: 0 0 0.75rem;",
+	} {
+		if !strings.Contains(string(styles), want) {
+			t.Fatalf("homeowner renewal spacing contract is missing %q", want)
+		}
+	}
+}
