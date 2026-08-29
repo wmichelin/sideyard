@@ -39,11 +39,14 @@ explicit chat approval and the GitHub Actions production gate remain required.
 ### Reversible ClubDue application rollout
 
 Each normal deployment preserves the environment database and changes only the
-ClubDue application tier. It starts `*-candidate` on the alternate ClubDue
-loopback port, requires `GET /readyz` to return `ok`, and only then changes
-the single, identified ClubDue nginx vhost upstream. The old active container
-is then retained as exactly one `*-previous` release. On the next successful
-candidate deployment, only that stale previous release is removed.
+ClubDue application tier. It retains one `*-previous` rollback release on the
+alternate port. Before the next candidate starts, that stale rollback slot is
+removed to free the alternate port; the current release continues serving.
+The new `*-candidate` must then return `ok` from `GET /readyz` before the
+single, identified ClubDue nginx vhost upstream changes. The old active
+container is then retained as the next `*-previous` release. If candidate
+startup fails, traffic remains on the active release, but the stale rollback
+slot is no longer available.
 
 The initial rollout accepts the legacy stable names (`clubdue` or
 `clubdue-staging`) on the base port and converts them into the `*-previous`
