@@ -1,0 +1,4 @@
+external_id,customer_name,email,phone,address_line1,city,state,postal_code,plan_name,anniversary_date,status,price_cents
+pilot-1001,Avery Morgan,avery.morgan@example.test,555-0101,101 Cedar Lane,Denver,CO,80202,Essential HVAC Care,2026-10-15,active,19900
+pilot-1002,Blake Rowan,blake.rowan@example.test,555-0102,22 Juniper Road,Boulder,CO,80302,Essential HVAC Care,2026-11-01,active,19900
+pilot-1003,Cameron Ellis,cameron.ellis@example.test,555-0103,8 Willow Court,Aurora,CO,80012,Essential HVAC Care,2026-12-15,pending_renewal,19900

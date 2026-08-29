@@ -178,6 +178,9 @@ func (s *Store) UpdateRenewalTask(ctx context.Context, shopID, id, status, notes
 		WHERE shop_id = $1 AND id = $2`, shopID, id, status, notes); err != nil {
 		return err
 	}
+	if err := recordPilotActivationTx(ctx, tx, shopID, pilotEventFirstRenewalAction); err != nil {
+		return err
+	}
 
 	switch status {
 	case "renewed":

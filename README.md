@@ -49,6 +49,8 @@ Without `DATABASE_URL`, ClubDue runs an in-memory legacy sample screen instead o
 - **Homeowner renewals** — from an agreement edit page, create a 30-day renewal link. Staging exposes only a clearly non-charging test stub; production asks the homeowner to contact the shop because online payment is unavailable.
 
 For a guided owner presentation, use [docs/demo-script.md](docs/demo-script.md).
+For the deliberately limited one-owner pilot, its privacy boundaries, onboarding
+checklist, feedback cadence, and honest FAQ, see [docs/CONTROLLED-PILOT.md](docs/CONTROLLED-PILOT.md).
 
 ## Configuration
 

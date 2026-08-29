@@ -88,11 +88,10 @@ func (a *Auth) provisionOwner(ctx context.Context, credentials OwnerCredentials)
 	}
 	defer tx.Rollback(ctx)
 
-	var userID string
-	err = tx.QueryRow(ctx, `SELECT id FROM users WHERE email = $1 FOR UPDATE`, credentials.Email).Scan(&userID)
+	var userID, shopID string
+	err = tx.QueryRow(ctx, `SELECT id, shop_id FROM users WHERE email = $1 FOR UPDATE`, credentials.Email).Scan(&userID, &shopID)
 	action := "recovered"
 	if errors.Is(err, pgx.ErrNoRows) {
-		var shopID string
 		slug := slugify(credentials.ShopName)
 		err = tx.QueryRow(ctx, `SELECT id FROM shops WHERE slug = $1`, slug).Scan(&shopID)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -119,6 +118,14 @@ func (a *Auth) provisionOwner(ctx context.Context, credentials OwnerCredentials)
 
 	if _, err := tx.Exec(ctx, `INSERT INTO owner_provision_events (user_id, action) VALUES ($1, $2)`, userID, action); err != nil {
 		return "", err
+	}
+	if action == "provisioned" {
+		if err := recordPilotActivationTx(ctx, tx, shopID, pilotEventInvited); err != nil {
+			return "", err
+		}
+		if err := recordPilotActivationTx(ctx, tx, shopID, pilotEventAccountCreated); err != nil {
+			return "", err
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return "", err
@@ -168,6 +175,9 @@ func (a *Auth) signup(ctx context.Context, shopName, email, password string) (st
 		if strings.Contains(err.Error(), "duplicate") {
 			return "", errors.New("email already registered")
 		}
+		return "", err
+	}
+	if err := recordPilotActivationTx(ctx, tx, shopID, pilotEventAccountCreated); err != nil {
 		return "", err
 	}
 

@@ -73,6 +73,11 @@ func (s *Server) handleImportDryRun(w http.ResponseWriter, r *http.Request, user
 		http.Error(w, "server error", http.StatusInternalServerError)
 		return
 	}
+	if err := s.store.RecordPilotActivation(r.Context(), user.ShopID, pilotEventImportPreviewed); err != nil {
+		log.Printf("pilot activation import preview: %v", err)
+		http.Error(w, "server error", http.StatusInternalServerError)
+		return
+	}
 
 	preview := analysis.Rows
 	if len(preview) > 20 {

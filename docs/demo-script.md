@@ -16,7 +16,9 @@ Click **Renewal queue** and then return to the dashboard.
 
 On **Renewals**, show the actionable milestone rows. Each row includes the homeowner’s phone/email, property, linked agreement, anniversary, and an upcoming/due-today/past-due state. Imported overdue agreements stay visible in their overdue cycle until the owner records an outcome.
 
-This MVP is a visibility queue; it does not yet record contact attempts or outcomes.
+Record a non-final **Contacted** outcome and note to show that queue work is
+saved. The app does not send or track outreach automatically, and a **Renewed**
+or **Lost** outcome remains an owner-recorded operational decision.
 
 ## 1:30–2:20 — Work visits and export to Jobber
 

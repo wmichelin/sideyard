@@ -267,6 +267,9 @@ func (s *Store) BulkUpdateVisitStatus(ctx context.Context, shopID string, visitI
 			return err
 		}
 	}
+	if err := recordPilotActivationTx(ctx, tx, shopID, pilotEventFirstVisitAction); err != nil {
+		return err
+	}
 
 	return tx.Commit(ctx)
 }

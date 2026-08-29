@@ -41,6 +41,9 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
 		}
+		if err := s.store.RecordReturningPilotUse(r.Context(), user.ShopID); err != nil {
+			log.Printf("pilot activation returning use: %v", err)
+		}
 		next(w, r.WithContext(contextWithUser(r.Context(), user)))
 	}
 }

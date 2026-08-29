@@ -357,6 +357,9 @@ func (s *Store) CommitImport(ctx context.Context, shopID string, rows []ImportRo
 			return ImportCommitResult{}, err
 		}
 	}
+	if err := recordPilotActivationTx(ctx, tx, shopID, pilotEventImportCommitted); err != nil {
+		return ImportCommitResult{}, err
+	}
 
 	if err := tx.Commit(ctx); err != nil {
 		return ImportCommitResult{}, err
