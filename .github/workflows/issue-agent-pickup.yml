@@ -40,4 +40,4 @@ jobs:
       - name: Wake ClubDue issue queue
         env:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
-        run: /home/wmichelin/assistant/bin/clubdue-loop issue-pickup "$ISSUE_NUMBER"
+        run: /home/wmichelin/assistant/bin/clubdue-issue-pickup "$ISSUE_NUMBER"
