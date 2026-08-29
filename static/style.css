@@ -186,6 +186,25 @@ body {
   font-weight: 600;
 }
 
+.name-cell a,
+.table a {
+  color: inherit;
+}
+
+.link-detail,
+.contact-detail {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 400;
+  color: var(--text-muted);
+  margin-top: 0.2rem;
+  overflow-wrap: anywhere;
+}
+
+.contact-detail a {
+  color: var(--text-muted);
+}
+
 .muted {
   color: var(--text-muted);
 }

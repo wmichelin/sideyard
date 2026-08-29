@@ -7,9 +7,37 @@ import (
 )
 
 type RenewalTask struct {
-	ID, CustomerName, PlanName, Status, Notes string
-	Anniversary, DueAt                        time.Time
-	Milestone, Days                           int
+	ID, AgreementID, CustomerID                        string
+	CustomerName, CustomerEmail, CustomerPhone         string
+	PropertyAddress, PlanName, Status, Notes, DueState string
+	Anniversary, DueAt                                 time.Time
+	Milestone, Days                                    int
+}
+
+// renewalCycleStart returns the most recent agreement cycle that has started
+// by today. Keeping an overdue agreement in that cycle makes its work visible
+// until an owner records an explicit renewed or lost outcome.
+func renewalCycleStart(anniversary, today time.Time, termMonths int) (time.Time, error) {
+	if termMonths <= 0 {
+		return time.Time{}, fmt.Errorf("agreement term must be positive")
+	}
+	cycleStart := time.Date(anniversary.UTC().Year(), anniversary.UTC().Month(), anniversary.UTC().Day(), 0, 0, 0, 0, time.UTC)
+	today = time.Date(today.UTC().Year(), today.UTC().Month(), today.UTC().Day(), 0, 0, 0, 0, time.UTC)
+	for next := cycleStart.AddDate(0, termMonths, 0); !next.After(today); next = cycleStart.AddDate(0, termMonths, 0) {
+		cycleStart = next
+	}
+	return cycleStart, nil
+}
+
+func renewalDueState(days int) string {
+	switch {
+	case days < 0:
+		return "Past due"
+	case days == 0:
+		return "Due today"
+	default:
+		return "Upcoming"
+	}
 }
 
 func (s *Store) GenerateRenewalTasks(ctx context.Context, shopID string, asOf time.Time) error {
@@ -31,8 +59,9 @@ func (s *Store) GenerateRenewalTasks(ctx context.Context, shopID string, asOf ti
 		if err := rows.Scan(&agreementID, &cycleStart, &termMonths); err != nil {
 			return err
 		}
-		for cycleStart.Before(today) {
-			cycleStart = cycleStart.AddDate(0, termMonths, 0)
+		cycleStart, err = renewalCycleStart(cycleStart, today, termMonths)
+		if err != nil {
+			return fmt.Errorf("agreement %s: %w", agreementID, err)
 		}
 		if cycleStart.After(latestStart) {
 			continue
@@ -86,11 +115,14 @@ func (s *Store) QueueRenewalDigests(ctx context.Context, asOf time.Time) error {
 
 func (s *Store) ListRenewalTasks(ctx context.Context, shopID string) ([]RenewalTask, error) {
 	rows, err := s.db.Pool.Query(ctx, `
-		SELECT t.id, c.name, a.plan_snapshot_name, a.anniversary_date, t.due_at,
-			t.milestone_days, (a.anniversary_date-CURRENT_DATE)::int, t.status, COALESCE(t.notes, '')
+		SELECT t.id, a.id, c.id, c.name, COALESCE(c.email, ''), COALESCE(c.phone, ''),
+			COALESCE(p.address_line1 || ', ' || p.city || ', ' || p.state || ' ' || p.postal_code, ''),
+			a.plan_snapshot_name, a.anniversary_date, t.due_at, t.milestone_days,
+			(a.anniversary_date-CURRENT_DATE)::int, t.status, COALESCE(t.notes, '')
 		FROM renewal_tasks t
 		JOIN agreements a ON a.id = t.agreement_id
 		JOIN customers c ON c.id = a.customer_id
+		LEFT JOIN properties p ON p.id = a.property_id
 		WHERE t.shop_id = $1 AND (t.due_at <= CURRENT_DATE OR t.status <> 'open')
 		ORDER BY t.due_at, a.anniversary_date, t.milestone_days DESC`, shopID)
 	if err != nil {
@@ -100,9 +132,13 @@ func (s *Store) ListRenewalTasks(ctx context.Context, shopID string) ([]RenewalT
 	var out []RenewalTask
 	for rows.Next() {
 		var t RenewalTask
-		if err := rows.Scan(&t.ID, &t.CustomerName, &t.PlanName, &t.Anniversary, &t.DueAt, &t.Milestone, &t.Days, &t.Status, &t.Notes); err != nil {
+		if err := rows.Scan(
+			&t.ID, &t.AgreementID, &t.CustomerID, &t.CustomerName, &t.CustomerEmail, &t.CustomerPhone,
+			&t.PropertyAddress, &t.PlanName, &t.Anniversary, &t.DueAt, &t.Milestone, &t.Days, &t.Status, &t.Notes,
+		); err != nil {
 			return nil, err
 		}
+		t.DueState = renewalDueState(t.Days)
 		out = append(out, t)
 	}
 	return out, rows.Err()

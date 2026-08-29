@@ -474,21 +474,33 @@ func (s *Server) parseAgreementForm(w http.ResponseWriter, r *http.Request, user
 func (s *Server) handleRenewals(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r.Context())
 	if r.Method == http.MethodPost {
-		if err := r.ParseForm(); err == nil {
-			_ = s.store.UpdateRenewalTask(r.Context(), user.ShopID, r.FormValue("task_id"), r.FormValue("status"), r.FormValue("notes"))
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "bad form", http.StatusBadRequest)
+			return
+		}
+		if err := s.store.UpdateRenewalTask(r.Context(), user.ShopID, r.FormValue("task_id"), r.FormValue("status"), r.FormValue("notes")); err != nil {
+			log.Printf("renewal update: %v", err)
+			s.renderRenewalQueue(w, r, user, "Could not save this renewal outcome. It may already be final or no longer available.", http.StatusBadRequest)
+			return
 		}
 		http.Redirect(w, r, "/renewals", http.StatusSeeOther)
 		return
 	}
+	s.renderRenewalQueue(w, r, user, "", http.StatusOK)
+}
+
+func (s *Server) renderRenewalQueue(w http.ResponseWriter, r *http.Request, user *User, updateError string, status int) {
 	tasks, err := s.store.ListRenewalTasks(r.Context(), user.ShopID)
 	if err != nil {
 		log.Printf("renewal queue: %v", err)
 		http.Error(w, "server error", http.StatusInternalServerError)
 		return
 	}
-
+	if updateError != "" {
+		w.WriteHeader(status)
+	}
 	s.renderLayout(w, r, "Renewals — ClubDue", "renewals_content", map[string]any{
-		"Nav": NavData{Active: "renewals", User: user}, "Tasks": tasks,
+		"Nav": NavData{Active: "renewals", User: user}, "Tasks": tasks, "UpdateError": updateError,
 	})
 }
 

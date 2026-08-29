@@ -2,7 +2,7 @@
 <header class="page-header">
   <div>
     <h2 class="page-title">Visit due-list</h2>
-    <p class="page-subtitle">Seasonal tune-ups to schedule in Jobber.</p>
+    <p class="page-subtitle">Seasonal tune-ups to hand off to Jobber. This records a handoff, not an appointment time.</p>
   </div>
   <a href="/visits/export.csv{{ if not .DueOnly }}?filter=all{{ end }}" class="secondary-btn">Export CSV</a>
 </header>
@@ -49,7 +49,7 @@
 
   {{ if .Visits }}
   <div class="link-row bulk-actions">
-    <button type="submit" name="action" value="scheduled" class="secondary-btn">Mark scheduled</button>
+    <button type="submit" name="action" value="scheduled" class="secondary-btn">Mark handed off to Jobber</button>
     <button type="submit" name="action" value="completed" class="primary-btn">Mark completed</button>
   </div>
   {{ end }}

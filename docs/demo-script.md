@@ -14,13 +14,13 @@ Click **Renewal queue** and then return to the dashboard.
 
 ## 0:45–1:30 — Review upcoming renewals
 
-On **Renewals**, show the 7/14/30/60/90-day groups. Each row includes the homeowner, property, plan, anniversary, days remaining, and price. This makes it easy to work the most urgent calls first.
+On **Renewals**, show the actionable milestone rows. Each row includes the homeowner’s phone/email, property, linked agreement, anniversary, and an upcoming/due-today/past-due state. Imported overdue agreements stay visible in their overdue cycle until the owner records an outcome.
 
 This MVP is a visibility queue; it does not yet record contact attempts or outcomes.
 
 ## 1:30–2:20 — Work visits and export to Jobber
 
-Open **Visits**. Point out spring/fall due windows and the overdue emphasis. Select one or two visits and use **Mark scheduled** or **Mark completed**. Then choose **Export CSV** to demonstrate the Jobber-paste export.
+Open **Visits**. Point out spring/fall due windows and the overdue emphasis. Select one or two visits and use **Mark handed off to Jobber** or **Mark completed**. Explain that the handoff records the Jobber click/time, not a booked appointment. Then choose **Export CSV** to demonstrate the Jobber-paste export.
 
 ## 2:20–3:15 — Add a plan, customer, and agreement
 
@@ -32,6 +32,6 @@ Open **Import**, upload `testdata/sample-import.csv`, and select **Preview impor
 
 ## 4:00–5:00 — Send a homeowner renewal link
 
-Open an agreement, scroll to **Homeowner renewal link**, and select **Create renewal link**. Open the generated link in a new tab. The customer-facing page shows the plan and price, then clearly labels payment as a non-charging test stub.
+Open an agreement, scroll to **Homeowner renewal link**, and select **Create renewal link**. Open the generated link in a new tab. The customer-facing page shows the plan and price. Staging clearly labels its non-charging test stub; production instead asks the homeowner to contact the shop.
 
-Close with the MVP boundary: the workflow proves the renewal handoff today; production Stripe Checkout and verified webhooks are the payment follow-up.
+Close with the MVP boundary: the workflow makes customer contact and a manual payment handoff explicit today; production Stripe Checkout and verified webhooks are a future payment follow-up.

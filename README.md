@@ -44,9 +44,9 @@ Without `DATABASE_URL`, ClubDue runs an in-memory legacy sample screen instead o
 - **Dashboard** — active agreements, renewals due this month, lapsed month-to-date, and overdue visits, with direct links to the work queues.
 - **Agreement book** — create customers and plan templates, then create or edit an agreement with renewal date, status, price, and entitled/used visits.
 - **CSV import** — upload a fixed-format file, inspect a dry-run, and commit it. Re-imports use `external_id` to update rather than duplicate records. Try [`testdata/sample-import.csv`](testdata/sample-import.csv).
-- **Renewals** — view active agreements in 7/14/30/60/90-day windows.
-- **Visits** — track seasonal spring/fall due work, bulk mark it scheduled or completed, and export a Jobber-ready CSV.
-- **Homeowner renewals** — from an agreement edit page, create a 30-day renewal link. Its payment button is intentionally a non-charging Stripe/webhook placeholder for this MVP.
+- **Renewals** — work deterministic 90/60/30/14/7-day tasks with customer contact details, property, agreement links, clear upcoming/due/past-due state, and recorded outcomes. Imported overdue agreements remain in the overdue cycle until an explicit outcome is recorded.
+- **Visits** — track seasonal spring/fall due work, bulk mark it handed off to Jobber or completed, and export a Jobber-ready CSV. A Jobber handoff is not an appointment time.
+- **Homeowner renewals** — from an agreement edit page, create a 30-day renewal link. Staging exposes only a clearly non-charging test stub; production asks the homeowner to contact the shop because online payment is unavailable.
 
 For a guided owner presentation, use [docs/demo-script.md](docs/demo-script.md).
 
@@ -89,4 +89,4 @@ See [docs/DEPLOY.md](docs/DEPLOY.md) and [docs/RELEASE-WORKFLOW.md](docs/RELEASE
 
 ## MVP boundaries
 
-The payment screen is deliberately a test stub: it does not collect card data, charge a card, or mark an agreement paid. Production Stripe Checkout plus a verified webhook remains the next payment integration step.
+The staging payment screen is deliberately a test stub: it does not collect card data, charge a card, or mark an agreement paid. Production has no payment CTA and directs homeowners to contact the shop. Stripe Checkout plus a verified webhook remains a future, separately approved integration.

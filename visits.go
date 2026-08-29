@@ -318,7 +318,7 @@ func visitStatusLabel(s VisitStatus) string {
 	case VisitDue:
 		return "Due"
 	case VisitScheduled:
-		return "Scheduled"
+		return "Handed off to Jobber"
 	case VisitCompleted:
 		return "Completed"
 	default:

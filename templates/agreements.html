@@ -24,10 +24,10 @@
       </thead>
       <tbody>
         {{ range .Agreements }}
-        <tr class="clickable-row" onclick="location.href='/agreements/{{ .ID }}'">
-          <td class="name-cell">{{ .CustomerName }}</td>
+        <tr>
+          <td class="name-cell"><a href="/customers/{{ .CustomerID }}">{{ .CustomerName }}</a></td>
           <td class="muted">{{ .PropertyAddress }}</td>
-          <td>{{ .PlanName }}</td>
+          <td><a href="/agreements/{{ .ID }}">{{ .PlanName }}<span class="link-detail">Open agreement</span></a></td>
           <td>{{ .AnniversaryFmt }}</td>
           <td>{{ .VisitsLabel }}</td>
           <td>{{ .PriceFmt }}</td>
