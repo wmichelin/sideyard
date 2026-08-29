@@ -394,6 +394,7 @@ body {
 
 .renewal-link-panel .empty-note {
   text-align: left;
+  padding-top: 1.25rem;
 }
 
 .form-row {
