@@ -86,13 +86,13 @@ process-only, and shutdown closes HTTP/database resources cleanly.
 
 ### P1.1 — Prepare production deployment parity
 
-- [ ] Add an isolated ClubDue production Postgres/network/volume/env contract,
+- [x] Add an isolated ClubDue production Postgres/network/volume/env contract,
       without provisioning or deploying it during this run.
-- [ ] Ensure staging and production cannot share data, secrets, or networks.
-- [ ] Add backup, retention, and disposable restore-rehearsal commands.
-- [ ] Document and test backup encryption, access, deletion, and retention.
-- [ ] Add a production-mode rehearsal using disposable infrastructure.
-- [ ] Keep production smoke credentials in GitHub secrets, never the repo.
+- [x] Ensure staging and production cannot share data, secrets, or networks.
+- [x] Add backup, retention, and disposable restore-rehearsal commands.
+- [x] Document and test backup encryption, access, deletion, and retention.
+- [x] Add a production-mode rehearsal using disposable infrastructure.
+- [x] Keep production smoke credentials in GitHub secrets, never the repo.
 
 Acceptance: a disposable production-mode rehearsal reaches readiness, login,
 and an authenticated dashboard; backup output restores successfully; deployment
