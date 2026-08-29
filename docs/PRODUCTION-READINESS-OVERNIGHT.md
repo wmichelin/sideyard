@@ -61,14 +61,14 @@ can be provisioned and recover access while an unapproved signup is rejected.
 
 ### P0.3 — Harden HTTP and authentication boundaries
 
-- [ ] Set secure session-cookie attributes outside development.
-- [ ] Add CSRF protection to every state-changing form.
-- [ ] Add request and multipart upload limits.
-- [ ] Add baseline security headers and bounded login/signup throttling.
-- [ ] Rotate sessions after authentication and retain generic login failures.
-- [ ] Verify every registered mutation route rejects missing/invalid CSRF and
+- [x] Set secure session-cookie attributes outside development.
+- [x] Add CSRF protection to every state-changing form.
+- [x] Add request and multipart upload limits.
+- [x] Add baseline security headers and bounded login/signup throttling.
+- [x] Rotate sessions after authentication and retain generic login failures.
+- [x] Verify every registered mutation route rejects missing/invalid CSRF and
       security logs contain no customer email, token, or homeowner data.
-- [ ] Add handler tests for success, rejection, limit, and throttling paths.
+- [x] Add handler tests for success, rejection, limit, and throttling paths.
 
 Acceptance: missing/invalid CSRF is rejected, oversized import is rejected,
 auth throttling recovers after its window, and normal staging forms still work.
