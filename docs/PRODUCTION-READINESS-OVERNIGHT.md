@@ -32,11 +32,11 @@ explicit approval in chat.
 
 ### P0.1 — Run Postgres integration tests in CI
 
-- [ ] Add a disposable Postgres 16 service to CI.
-- [ ] Run the tenant, snapshot, renewal, digest, and visit-entitlement tests
+- [x] Add a disposable Postgres 16 service to CI.
+- [x] Run the tenant, snapshot, renewal, digest, and visit-entitlement tests
       with `DATABASE_URL` configured.
-- [ ] Make CI fail if the required integration tests skip.
-- [ ] Preserve a fast local unit-test path and static binary build.
+- [x] Make CI fail if the required integration tests skip.
+- [x] Preserve a fast local unit-test path and static binary build.
 
 Acceptance: CI proves the database suite executed and `go test -count=1 ./...`
 plus `CGO_ENABLED=0 go build ./...` pass.
