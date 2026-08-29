@@ -215,9 +215,9 @@ func (a *Auth) login(ctx context.Context, email, password string) (string, error
 	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)); err != nil {
 		return "", errors.New("invalid email or password")
 	}
-	if _, err := a.db.Pool.Exec(ctx, `DELETE FROM sessions WHERE user_id = $1`, userID); err != nil {
-		return "", fmt.Errorf("rotate session: %w", err)
-	}
+	// Every successful authentication receives a new, independent session token.
+	// Do not revoke the user's other sessions here: deployment smoke tests and
+	// concurrent signed-in devices use the same account.
 	return a.createSession(ctx, userID)
 }
 

@@ -65,7 +65,8 @@ can be provisioned and recover access while an unapproved signup is rejected.
 - [x] Add CSRF protection to every state-changing form.
 - [x] Add request and multipart upload limits.
 - [x] Add baseline security headers and bounded login/signup throttling.
-- [x] Rotate sessions after authentication and retain generic login failures.
+- [x] Issue a fresh session after authentication while retaining other active
+      device sessions; retain generic login failures.
 - [x] Verify every registered mutation route rejects missing/invalid CSRF and
       security logs contain no customer email, token, or homeowner data.
 - [x] Add handler tests for success, rejection, limit, and throttling paths.

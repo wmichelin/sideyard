@@ -149,7 +149,8 @@ Run the same self-cleaning, no-remote-infrastructure rehearsal locally or in CI:
 ```
 
 It starts only `clubdue-production-rehearsal-*` Docker resources, verifies
-production-mode readiness, CSRF-aware owner login, authenticated dashboard,
+production-mode readiness, CSRF-aware owner login, authenticated dashboard
+sessions remain active after a second login for the same account,
 encrypted backup output, successful restore to a fresh Postgres container,
 rejection of tampered ciphertext and a tampered MAC, the reserved-port deploy
 guard, and Docker-isolated candidate/promotion/rollback mapping. It removes

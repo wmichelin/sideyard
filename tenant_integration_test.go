@@ -342,7 +342,7 @@ func TestProvisionOwnerCreatesAndRecoversAccess(t *testing.T) {
 	}
 }
 
-func TestLoginRotatesExistingSessionsAndKeepsFailuresGeneric(t *testing.T) {
+func TestLoginCreatesIndependentSessionsAndKeepsFailuresGeneric(t *testing.T) {
 	databaseURL := integrationDatabaseURL(t)
 	ctx := context.Background()
 	db, err := openDB(ctx, databaseURL)
@@ -375,8 +375,8 @@ func TestLoginRotatesExistingSessionsAndKeepsFailuresGeneric(t *testing.T) {
 
 	firstRequest := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
 	firstRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: firstToken})
-	if _, err := auth.userFromRequest(ctx, firstRequest); err == nil {
-		t.Fatal("prior session remained valid after successful re-authentication")
+	if _, err := auth.userFromRequest(ctx, firstRequest); err != nil {
+		t.Fatalf("prior session was invalidated by successful re-authentication: %v", err)
 	}
 	secondRequest := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
 	secondRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: secondToken})
