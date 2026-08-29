@@ -208,7 +208,14 @@ fi
 candidate_port="$ALT_PORT"; [ "$active_port" = "$ALT_PORT" ] && candidate_port="$PORT"
 
 assert_safe_vhost
-container_exists "$CANDIDATE_CONTAINER" && fail "stale ClubDue candidate exists; inspect it before retrying"
+if container_exists "$CANDIDATE_CONTAINER"; then
+  if [ "$(docker inspect -f '{{.State.Running}}' "$CANDIDATE_CONTAINER")" = true ]; then
+    fail "running ClubDue candidate exists; inspect it before retrying"
+  fi
+  # A failed Docker start can leave a stopped candidate behind. It never
+  # served traffic, so removing it is safe and makes the next rollout retryable.
+  docker rm "$CANDIDATE_CONTAINER" >/dev/null
+fi
 # The retained previous release occupies the alternate port needed by the next
 # candidate. Releasing that stale rollback slot leaves the current release
 # serving unchanged; if the new candidate fails, traffic remains on current.
@@ -219,11 +226,14 @@ cleanup_candidate() {
 }
 trap cleanup_candidate EXIT
 
-docker run -d --name "$CANDIDATE_CONTAINER" --restart always --network "$NETWORK" \
+if ! docker run -d --name "$CANDIDATE_CONTAINER" --restart always --network "$NETWORK" \
   -p "127.0.0.1:${candidate_port}:8080" "${APP_ENV[@]}" \
   -e "PUBLIC_URL=https://${DOMAIN}" \
   -e "DATABASE_URL=postgres://clubdue:${POSTGRES_PASSWORD}@${DB}:5432/clubdue?sslmode=disable" \
-  -e "SESSION_SECRET=${SESSION_SECRET}" "$IMAGE" >/dev/null
+  -e "SESSION_SECRET=${SESSION_SECRET}" "$IMAGE" >/dev/null; then
+  docker rm -f "$CANDIDATE_CONTAINER" >/dev/null 2>&1 || true
+  fail "candidate ${CANDIDATE_CONTAINER} could not start; active release remains unchanged"
+fi
 candidate_started=1
 wait_for_ready "$candidate_port" || fail "candidate ${CANDIDATE_CONTAINER} did not become ready; active release remains unchanged"
 

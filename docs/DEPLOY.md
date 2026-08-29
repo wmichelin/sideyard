@@ -48,6 +48,9 @@ container is then retained as the next `*-previous` release. If candidate
 startup fails, traffic remains on the active release, but the stale rollback
 slot is no longer available.
 
+A stopped `*-candidate` left by a failed Docker start is removed automatically
+on the next retry. A running candidate still fails closed for investigation.
+
 The initial rollout accepts the legacy stable names (`clubdue` or
 `clubdue-staging`) on the base port and converts them into the `*-previous`
 slot after the candidate is live. It does not create or rewrite an arbitrary
