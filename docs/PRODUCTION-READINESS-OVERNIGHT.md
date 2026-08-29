@@ -134,20 +134,20 @@ checks passed afterward.
 
 ### P1.4 — Define and instrument the controlled pilot
 
-- [ ] Document an invite-only, one-trusted-owner pilot: duration, eligibility,
+- [x] Document an invite-only, one-trusted-owner pilot: duration, eligibility,
       assisted onboarding, manual payment, CSV-only Jobber handoff, no real
       email, supported plan shapes, support/escalation, and exit/rollback.
-- [ ] Add pilot-facing privacy, data-handling/retention/deletion, limitations,
+- [x] Add pilot-facing privacy, data-handling/retention/deletion, limitations,
       support, and consent guidance; clearly flag any terms requiring human or
       legal approval rather than presenting them as approved.
-- [ ] Add a concierge import checklist, representative fictional sample CSV,
+- [x] Add a concierge import checklist, representative fictional sample CSV,
       first-run checklist, export/correction procedure, and feedback cadence.
-- [ ] Reconcile the demo script and README with implemented behavior; add a
+- [x] Reconcile the demo script and README with implemented behavior; add a
       concise pilot overview and honest capabilities/limitations FAQ.
-- [ ] Instrument the activation funnel without homeowner PII: invited,
+- [x] Instrument the activation funnel without homeowner PII: invited,
       account created, import previewed/committed, first renewal/visit action,
       and returning use.
-- [ ] Rehearse a fresh-shop onboarding and record import reconciliation,
+- [x] Rehearse a fresh-shop onboarding and record import reconciliation,
       time-to-first-value, workflow failures, and manual workarounds.
 
 Acceptance: a representative fictional pilot reaches first value in under 15
