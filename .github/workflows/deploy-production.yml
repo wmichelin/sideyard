@@ -69,7 +69,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
-          password: ${{ secrets.GHCR_PAT }}
+          password: ${{ github.token }}
 
       - name: Promote reviewed image to latest
         if: ${{ inputs.mode == 'promote' }}
