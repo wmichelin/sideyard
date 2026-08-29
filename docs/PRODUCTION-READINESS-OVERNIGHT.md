@@ -119,13 +119,13 @@ the enriched workflow passes desktop/mobile staging checks.
 
 ### P1.3 — Expand smoke coverage and runbooks
 
-- [ ] Exercise liveness, readiness, CSRF-aware login, dashboard, agreements,
+- [x] Exercise liveness, readiness, CSRF-aware login, dashboard, agreements,
       a renewal mutation, a visit-status mutation, and visit export in staging
       smoke tests.
-- [ ] Verify production mode has no development routes or fake payment action.
-- [ ] Document configuration, provisioning, backup/restore, rollback, staging
+- [x] Verify production mode has no development routes or fake payment action.
+- [x] Document configuration, provisioning, backup/restore, rollback, staging
       verification, production approval, and pilot limitations.
-- [ ] Run the final Postgres-backed suite, build, diff check, exact-SHA CI and
+- [x] Run the final Postgres-backed suite, build, diff check, exact-SHA CI and
       staging deployment checks, authenticated smoke, and focused acceptance.
 
 Acceptance: every required box is checked in a committed revision; CI and the
