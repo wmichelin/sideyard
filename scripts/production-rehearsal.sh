@@ -30,6 +30,9 @@ for deployment_target in 'clubdue:8080' 'clubdue:8081' 'clubdue:8082' 'clubdue-s
     exit 1
   fi
 done
+env CONTAINER=clubdue-staging PORT=8082 IMAGE=validation DOMAIN=validation.invalid \
+  GHCR_USER=validation GHCR_TOKEN=validation CLUBDUE_DEPLOY_VALIDATE_ONLY=1 \
+  bash -c "$(<"$ROOT/scripts/droplet-deploy.sh")" >/dev/null
 
 wait_for_postgres() {
   local container="$1"

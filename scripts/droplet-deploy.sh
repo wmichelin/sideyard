@@ -17,6 +17,7 @@ esac
 
 case "${CONTAINER}:${PORT}" in
   clubdue-staging:8082|clubdue:8083)
+    :
     ;;
   clubdue-staging:*)
     echo "ERROR: staging must use isolated port 8082" >&2
@@ -36,6 +37,11 @@ esac
 : "${DOMAIN:?DOMAIN required}"
 : "${GHCR_USER:?GHCR_USER required}"
 : "${GHCR_TOKEN:?GHCR_TOKEN required}"
+
+if [ "${CLUBDUE_DEPLOY_VALIDATE_ONLY:-}" = "1" ]; then
+  echo "ClubDue deployment target validated: ${CONTAINER} on ${PORT}"
+  exit 0
+fi
 
 EMAIL="${EMAIL:-wmichelin@gmail.com}"
 
