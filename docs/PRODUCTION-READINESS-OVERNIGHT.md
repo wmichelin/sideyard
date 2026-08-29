@@ -43,17 +43,17 @@ plus `CGO_ENABLED=0 go build ./...` pass.
 
 ### P0.2 — Validate configuration and fail closed
 
-- [ ] Introduce one typed configuration source for environment, database,
+- [x] Introduce one typed configuration source for environment, database,
       session secret, public URL, development routes, and runtime limits.
-- [ ] Permit implicit demo mode only in development.
-- [ ] Require Postgres, a strong session secret, and an HTTPS public URL in
+- [x] Permit implicit demo mode only in development.
+- [x] Require Postgres, a strong session secret, and an HTTPS public URL in
       staging/production.
-- [ ] Reject development routes and the test-payment stub in production.
-- [ ] Make production pilot enrollment invite-only or allowlist-controlled;
+- [x] Reject development routes and the test-payment stub in production.
+- [x] Make production pilot enrollment invite-only or allowlist-controlled;
       reject unapproved public signup.
-- [ ] Add a documented, auditable owner recovery/provisioning path that does
+- [x] Add a documented, auditable owner recovery/provisioning path that does
       not require ad hoc database edits.
-- [ ] Cover safe and unsafe environment combinations with table-driven tests.
+- [x] Cover safe and unsafe environment combinations with table-driven tests.
 
 Acceptance: unsafe production configuration exits nonzero with a secret-free
 error; staging retains its explicit seeded workflow; an approved pilot owner
