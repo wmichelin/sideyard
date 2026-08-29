@@ -10,8 +10,8 @@ concurrency:
 
 jobs:
   wake-agent:
-    # This job runs on the private G5 runner and executes only the fixed queue
-    # tick. Issue text is never interpolated into a shell command.
+    # This job runs on the private G5 runner and executes only the dedicated
+    # issue queue. It never invokes the roadmap iteration loop.
     if: github.event.issue.state == 'open'
     runs-on: [self-hosted, linux, x64, clubdue]
     timeout-minutes: 10

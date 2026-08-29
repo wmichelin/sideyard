@@ -28,12 +28,13 @@ desired outcome, acceptance criteria, and priority.
 ## Status updates
 
 The issue receives an automation comment when GitHub delivers the event to the
-G5 runner. The execution agent then comments when it claims the ticket, posts
-the six-role team review, reports implementation/test progress, and reports
-the staging result. Label changes (`agent-claimed`, `staging-ready`, or
-`blocked`) are also visible status signals. If no comment appears within a few
-minutes, check the Actions run linked from the issue; the five-minute poller
-remains as a fallback.
+G5 runner. The dedicated issue-pickup worker then comments when it claims the
+ticket, posts the six-role team review, reports implementation/test progress,
+and reports the staging result. Label changes (`agent-claimed`,
+`staging-ready`, or `blocked`) are also visible status signals. If no comment
+appears within a few minutes, check the Actions run linked from the issue; the
+separate five-minute issue-queue poller remains as a fallback. The roadmap
+iteration worker is a separate queue and never claims or dispatches issues.
 
 ## Required team review comment
 
