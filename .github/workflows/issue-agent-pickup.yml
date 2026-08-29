@@ -28,5 +28,14 @@ jobs:
           LABEL_TEXT=""
           if [ -n "$EVENT_LABEL" ]; then LABEL_TEXT=", label: $EVENT_LABEL"; fi
           gh issue comment "$ISSUE_NUMBER" --repo "${{ github.repository }}" --body "🤖 ClubDue automation received this issue event (action: ${EVENT_ACTION}${LABEL_TEXT}). The G5 runner is checking the queue now."
+      - name: Ensure issue is queued
+        if: github.event.action == 'opened' || github.event.action == 'reopened'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          # Issues created outside the repository forms may have no labels.
+          # Every new/reopened issue must still enter the queue.
+          gh issue edit "$ISSUE_NUMBER" --repo "${{ github.repository }}" --add-label agent-ready
       - name: Wake ClubDue agent queue
         run: /home/wmichelin/assistant/bin/clubdue-loop tick
