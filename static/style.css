@@ -151,7 +151,9 @@ body {
 }
 
 .table-wrap {
+  max-width: 100%;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
 }
 
 .table {
@@ -282,6 +284,7 @@ body {
 .main {
   padding: 2rem 2rem 4rem;
   max-width: 1100px;
+  min-width: 0;
 }
 
 .page-header {
