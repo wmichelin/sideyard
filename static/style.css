@@ -319,6 +319,10 @@ body {
   gap: 0.75rem;
 }
 
+.dashboard-quick-links {
+  padding-top: 1rem;
+}
+
 .secondary-btn,
 .ghost-btn {
   display: inline-flex;
