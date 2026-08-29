@@ -24,10 +24,11 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           EVENT_ACTION: ${{ github.event.action }}
           EVENT_LABEL: ${{ github.event.label.name || '' }}
+          STAGING_URL: https://clubdue-staging.michelindigitalmedia.com
         run: |
           LABEL_TEXT=""
           if [ -n "$EVENT_LABEL" ]; then LABEL_TEXT=", label: $EVENT_LABEL"; fi
-          gh issue comment "$ISSUE_NUMBER" --repo "${{ github.repository }}" --body "🤖 ClubDue automation received this issue event (action: ${EVENT_ACTION}${LABEL_TEXT}). The G5 runner is checking the queue now."
+          gh issue comment "$ISSUE_NUMBER" --repo "${{ github.repository }}" --body "🤖 ClubDue automation received this issue event (action: ${EVENT_ACTION}${LABEL_TEXT}). The G5 runner is checking the queue now. Staging: ${STAGING_URL} (pending)"
       - name: Ensure issue is queued
         if: github.event.action == 'opened' || github.event.action == 'reopened'
         env:

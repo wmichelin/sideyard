@@ -35,7 +35,8 @@ and reports the staging result. Label changes (`agent-claimed`,
 appears within a few minutes, check the Actions run linked from the issue.
 Issue intake is event-driven; there is no continuously running issue poller.
 The roadmap iteration worker is a separate queue and never claims or dispatches
-issues.
+issues. Every issue-bot and execution-status comment includes the staging link,
+even while deployment is pending: https://clubdue-staging.michelindigitalmedia.com
 
 ## Required team review comment
 
