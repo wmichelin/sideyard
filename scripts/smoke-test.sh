@@ -42,11 +42,14 @@ echo "  ✓ dashboard title"
 if [ "$TARGET" = "staging" ]; then
   echo "$HTML" | grep -q 'Active agreements'
   echo "  ✓ dashboard metrics"
-  curl -fsS -b "$COOKIE_JAR" "${CLUBDUE_URL}/agreements" | grep -q 'Alex Rivera'
+  AGREEMENTS_HTML="$(curl -fsS -b "$COOKIE_JAR" "${CLUBDUE_URL}/agreements")"
+  [[ "$AGREEMENTS_HTML" == *'Alex Rivera'* ]]
   echo "  ✓ seeded agreement book"
-  curl -fsS -b "$COOKIE_JAR" "${CLUBDUE_URL}/renewals" | grep -q 'Renewal queue'
+  RENEWALS_HTML="$(curl -fsS -b "$COOKIE_JAR" "${CLUBDUE_URL}/renewals")"
+  [[ "$RENEWALS_HTML" == *'Renewal queue'* ]]
   echo "  ✓ renewal queue"
-  curl -fsS -b "$COOKIE_JAR" "${CLUBDUE_URL}/visits/export.csv" | head -1 | grep -q 'customer_name'
+  VISITS_CSV="$(curl -fsS -b "$COOKIE_JAR" "${CLUBDUE_URL}/visits/export.csv")"
+  [[ "$VISITS_CSV" == customer_name,* ]]
   echo "  ✓ visit CSV export"
 else
   echo "$HTML" | grep -q 'Alex Rivera'
