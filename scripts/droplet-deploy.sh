@@ -15,18 +15,16 @@ case "$PORT" in
     ;;
 esac
 
-case "$CONTAINER" in
-  clubdue-staging)
-    if [ "$PORT" != "8082" ]; then
-      echo "ERROR: staging must use isolated port 8082" >&2
-      exit 64
-    fi
+case "${CONTAINER}:${PORT}" in
+  clubdue-staging:8082|clubdue:8083)
     ;;
-  clubdue)
-    if [ "$PORT" != "8083" ]; then
-      echo "ERROR: production must use isolated port 8083" >&2
-      exit 64
-    fi
+  clubdue-staging:*)
+    echo "ERROR: staging must use isolated port 8082" >&2
+    exit 64
+    ;;
+  clubdue:*)
+    echo "ERROR: production must use isolated port 8083" >&2
+    exit 64
     ;;
   *)
     echo "ERROR: unsupported ClubDue container ${CONTAINER}" >&2

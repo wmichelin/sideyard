@@ -25,7 +25,7 @@ trap cleanup EXIT
 for deployment_target in 'clubdue:8080' 'clubdue:8081' 'clubdue:8082' 'clubdue-staging:8083'; do
   deployment_container="${deployment_target%%:*}"
   deployment_port="${deployment_target##*:}"
-  if env CONTAINER="$deployment_container" PORT="$deployment_port" "$ROOT/scripts/droplet-deploy.sh" >/dev/null 2>&1; then
+  if env CONTAINER="$deployment_container" PORT="$deployment_port" bash -c "$(<"$ROOT/scripts/droplet-deploy.sh")" >/dev/null 2>&1; then
     echo "invalid deployment target ${deployment_target} was accepted" >&2
     exit 1
   fi
@@ -35,7 +35,13 @@ wait_for_postgres() {
   local container="$1"
   for attempt in $(seq 1 30); do
     if docker exec "$container" pg_isready -U clubdue -d clubdue >/dev/null 2>&1; then
-      return 0
+      # The official Postgres image briefly accepts connections during its
+      # initialization server, then restarts for the final server. Require a
+      # second successful probe after that handoff before backup or restore.
+      sleep 2
+      if docker exec "$container" psql --username=clubdue --dbname=clubdue --command 'SELECT 1' >/dev/null 2>&1; then
+        return 0
+      fi
     fi
     sleep 1
   done
