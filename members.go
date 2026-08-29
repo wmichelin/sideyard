@@ -31,15 +31,15 @@ type MemberRow struct {
 }
 
 type Summary struct {
-	TotalExpected   float64
-	TotalCollected  float64
-	PaidCount       int
-	OverdueCount    int
-	Outstanding     float64
-	CollectionRate  int
-	ExpectedFmt     string
-	CollectedFmt    string
-	OutstandingFmt  string
+	TotalExpected  float64
+	TotalCollected float64
+	PaidCount      int
+	OverdueCount   int
+	Outstanding    float64
+	CollectionRate int
+	ExpectedFmt    string
+	CollectedFmt   string
+	OutstandingFmt string
 }
 
 type PageData struct {

@@ -8,6 +8,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # Match the Docker build stage so formatting, vetting, tests, and the
+    # static build use the same pinned Go toolchain as the release artifact.
+    container: golang:1.23-alpine
     services:
       postgres:
         image: postgres:16-alpine
@@ -15,8 +18,6 @@ jobs:
           POSTGRES_DB: clubdue_test
           POSTGRES_USER: clubdue
           POSTGRES_PASSWORD: clubdue
-        ports:
-          - 5432:5432
         options: >-
           --health-cmd "pg_isready -U clubdue -d clubdue_test"
           --health-interval 5s
@@ -25,14 +26,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.23"
-          cache: true
+      - name: Check formatting
+        run: |
+          unformatted="$(find . -name '*.go' -not -path './.git/*' -exec gofmt -l {} +)"
+          test -z "$unformatted"
+
+      - name: Vet
+        run: go vet ./...
 
       - name: Postgres integration tests
         env:
-          DATABASE_URL: postgres://clubdue:clubdue@localhost:5432/clubdue_test?sslmode=disable
+          DATABASE_URL: postgres://clubdue:clubdue@postgres:5432/clubdue_test?sslmode=disable
           CLUBDUE_REQUIRE_POSTGRES_INTEGRATION: "1"
         run: >-
           go test -count=1 -v -run
@@ -41,12 +45,17 @@ jobs:
 
       - name: Full test suite
         env:
-          DATABASE_URL: postgres://clubdue:clubdue@localhost:5432/clubdue_test?sslmode=disable
+          DATABASE_URL: postgres://clubdue:clubdue@postgres:5432/clubdue_test?sslmode=disable
           CLUBDUE_REQUIRE_POSTGRES_INTEGRATION: "1"
         run: go test -count=1 ./...
 
       - name: Build
         run: CGO_ENABLED=0 go build ./...
+
+  production-rehearsal:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Production-mode backup and restore rehearsal
         run: ./scripts/production-rehearsal.sh
