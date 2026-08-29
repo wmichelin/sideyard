@@ -2,7 +2,7 @@ name: Pick up ClubDue issues
 
 on:
   issues:
-    types: [opened, labeled, reopened]
+    types: [opened, labeled, reopened, unlabeled]
 
 concurrency:
   group: clubdue-issue-pickup
@@ -42,6 +42,16 @@ jobs:
           # Issues created outside the repository forms may have no labels.
           # Every new/reopened issue must still enter the queue.
           gh issue edit "$ISSUE_NUMBER" --repo "${{ github.repository }}" --add-label agent-ready
+      - name: Requeue an unblocked issue
+        if: github.event.action == 'unlabeled' && github.event.label.name == 'blocked'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          # Removing `blocked` is an explicit request to retry. Clear the
+          # stale ownership marker so the dedicated worker can claim it again.
+          gh issue edit "$ISSUE_NUMBER" --repo "${{ github.repository }}" \
+            --remove-label agent-claimed --add-label agent-ready
       - name: Wake ClubDue issue queue
         env:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
