@@ -22,3 +22,7 @@ See [docs/RELEASE-WORKFLOW.md](docs/RELEASE-WORKFLOW.md) for the full checklist.
 ## Droplet isolation
 
 Shared pantry DO droplet. Do not touch Pantry (`:8080`) or Headscale (`:8081`).
+
+## Engineering philosophy
+
+Read and follow [ENGINEERING_PHILOSOPHY.md](ENGINEERING_PHILOSOPHY.md).

@@ -1,0 +1,6 @@
+---
+description: Repository-wide engineering philosophy
+alwaysApply: true
+---
+
+Read and follow [ENGINEERING_PHILOSOPHY.md](../../ENGINEERING_PHILOSOPHY.md).
