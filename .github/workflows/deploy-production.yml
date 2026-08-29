@@ -61,4 +61,7 @@ jobs:
           script_path: scripts/droplet-deploy.sh
 
       - name: Smoke test production
+        env:
+          CLUBDUE_SMOKE_EMAIL: ${{ secrets.CLUBDUE_PRODUCTION_SMOKE_EMAIL }}
+          CLUBDUE_SMOKE_PASSWORD: ${{ secrets.CLUBDUE_PRODUCTION_SMOKE_PASSWORD }}
         run: ./scripts/smoke-test.sh production

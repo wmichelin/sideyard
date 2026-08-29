@@ -47,3 +47,6 @@ jobs:
 
       - name: Build
         run: CGO_ENABLED=0 go build ./...
+
+      - name: Production-mode backup and restore rehearsal
+        run: ./scripts/production-rehearsal.sh

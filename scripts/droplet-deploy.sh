@@ -3,8 +3,38 @@
 set -euo pipefail
 
 : "${CONTAINER:?CONTAINER required}"
-: "${IMAGE:?IMAGE required}"
 : "${PORT:?PORT required}"
+
+# ClubDue shares this droplet with Pantry and Headscale. Validate the target
+# before installing packages, logging into a registry, or mutating Docker so a
+# mistaken deployment cannot affect either reserved local port.
+case "$PORT" in
+  8080|8081)
+    echo "ERROR: ClubDue may not target reserved port ${PORT}" >&2
+    exit 64
+    ;;
+esac
+
+case "$CONTAINER" in
+  clubdue-staging)
+    if [ "$PORT" != "8082" ]; then
+      echo "ERROR: staging must use isolated port 8082" >&2
+      exit 64
+    fi
+    ;;
+  clubdue)
+    if [ "$PORT" != "8083" ]; then
+      echo "ERROR: production must use isolated port 8083" >&2
+      exit 64
+    fi
+    ;;
+  *)
+    echo "ERROR: unsupported ClubDue container ${CONTAINER}" >&2
+    exit 64
+    ;;
+esac
+
+: "${IMAGE:?IMAGE required}"
 : "${DOMAIN:?DOMAIN required}"
 : "${GHCR_USER:?GHCR_USER required}"
 : "${GHCR_TOKEN:?GHCR_TOKEN required}"
@@ -56,6 +86,40 @@ if [ "$CONTAINER" = "clubdue-staging" ]; then
     sleep 1
   done
   docker exec "$STAGING_DB" pg_isready -U clubdue -d clubdue >/dev/null
+else
+  # Production provisioning is deliberately performed only by an explicitly
+  # approved workflow. This branch never creates credentials: the operator
+  # must first create this root-only, production-specific file out of band.
+  PRODUCTION_NETWORK="clubdue-production-net"
+  PRODUCTION_DB="clubdue-production-db"
+  PRODUCTION_VOLUME="clubdue-production-pgdata"
+  PRODUCTION_ENV_FILE="/opt/clubdue/production.env"
+
+  if [ ! -r "$PRODUCTION_ENV_FILE" ]; then
+    echo "ERROR: production environment file is missing" >&2
+    exit 1
+  fi
+  production_env_mode="$(stat -c '%a' "$PRODUCTION_ENV_FILE")"
+  if [ $((8#$production_env_mode & 077)) -ne 0 ]; then
+    echo "ERROR: production environment file must not be group/world readable" >&2
+    exit 1
+  fi
+  # shellcheck disable=SC1090
+  set -a; . "$PRODUCTION_ENV_FILE"; set +a
+  : "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required in production environment file}"
+  : "${SESSION_SECRET:?SESSION_SECRET required in production environment file}"
+
+  docker network create "$PRODUCTION_NETWORK" >/dev/null 2>&1 || true
+  docker volume create "$PRODUCTION_VOLUME" >/dev/null
+  docker rm -f "$PRODUCTION_DB" >/dev/null 2>&1 || true
+  docker run -d --name "$PRODUCTION_DB" --restart always --network "$PRODUCTION_NETWORK" \
+    -e POSTGRES_USER=clubdue -e POSTGRES_DB=clubdue -e POSTGRES_PASSWORD \
+    -v "${PRODUCTION_VOLUME}:/var/lib/postgresql/data" postgres:16-alpine >/dev/null
+  for attempt in $(seq 1 30); do
+    if docker exec "$PRODUCTION_DB" pg_isready -U clubdue -d clubdue >/dev/null 2>&1; then break; fi
+    sleep 1
+  done
+  docker exec "$PRODUCTION_DB" pg_isready -U clubdue -d clubdue >/dev/null
 fi
 
 docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
@@ -63,10 +127,7 @@ app_args=(docker run -d --name "$CONTAINER" --restart always -p "127.0.0.1:${POR
 if [ "$CONTAINER" = "clubdue-staging" ]; then
   app_args+=(--network clubdue-staging-net -e APP_ENV=staging -e "PUBLIC_URL=https://${DOMAIN}" -e "DATABASE_URL=postgres://clubdue:${POSTGRES_PASSWORD}@clubdue-staging-db:5432/clubdue?sslmode=disable" -e "SESSION_SECRET=${SESSION_SECRET}" -e ENABLE_DEV_ROUTES=1)
 else
-  # Production is intentionally not provisioned in this run. If an approved
-  # deployment is attempted before P1.1 supplies its database and secret
-  # contract, the production-mode configuration validation fails closed.
-  app_args+=(-e APP_ENV=production -e "PUBLIC_URL=https://${DOMAIN}")
+  app_args+=(--network clubdue-production-net -e APP_ENV=production -e "PUBLIC_URL=https://${DOMAIN}" -e "DATABASE_URL=postgres://clubdue:${POSTGRES_PASSWORD}@clubdue-production-db:5432/clubdue?sslmode=disable" -e "SESSION_SECRET=${SESSION_SECRET}")
 fi
 "${app_args[@]}" \
   "$IMAGE" >/dev/null

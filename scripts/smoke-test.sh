@@ -34,7 +34,20 @@ if [ "$TARGET" = "staging" ]; then
   echo "  ✓ staging login"
   HTML="$(curl -fsS -b "$COOKIE_JAR" "${CLUBDUE_URL}/dashboard")"
 else
-  HTML="$(curl -fsS "${CLUBDUE_URL}/")"
+  : "${CLUBDUE_SMOKE_EMAIL:?Set CLUBDUE_SMOKE_EMAIL from a GitHub environment secret}"
+  : "${CLUBDUE_SMOKE_PASSWORD:?Set CLUBDUE_SMOKE_PASSWORD from a GitHub environment secret}"
+  COOKIE_JAR="$(mktemp)"
+  trap 'rm -f "$COOKIE_JAR"' EXIT
+  LOGIN_PAGE="$(curl -fsS -c "$COOKIE_JAR" "${CLUBDUE_URL}/login")"
+  CSRF_TOKEN="$(printf '%s' "$LOGIN_PAGE" | sed -n 's/.*name="csrf_token" value="\([^"]*\)".*/\1/p' | head -1)"
+  [ -n "$CSRF_TOKEN" ]
+  LOGIN_STATUS="$(curl -fsS -b "$COOKIE_JAR" -c "$COOKIE_JAR" -o /dev/null -w '%{http_code}' \
+    --data-urlencode "csrf_token=$CSRF_TOKEN" \
+    --data-urlencode "email=$CLUBDUE_SMOKE_EMAIL" \
+    --data-urlencode "password=$CLUBDUE_SMOKE_PASSWORD" "${CLUBDUE_URL}/login")"
+  [ "$LOGIN_STATUS" = "303" ]
+  echo "  ✓ production login"
+  HTML="$(curl -fsS -b "$COOKIE_JAR" "${CLUBDUE_URL}/dashboard")"
 fi
 echo "$HTML" | grep -q 'ClubDue'
 echo "  ✓ dashboard title"
@@ -52,10 +65,8 @@ if [ "$TARGET" = "staging" ]; then
   [[ "$VISITS_CSV" == customer_name,* ]]
   echo "  ✓ visit CSV export"
 else
-  echo "$HTML" | grep -q 'Alex Rivera'
-  echo "  ✓ sample member row"
-  echo "$HTML" | grep -q 'Collected'
-  echo "  ✓ summary stats"
+  echo "$HTML" | grep -q 'Active agreements'
+  echo "  ✓ dashboard metrics"
 fi
 
 echo "All checks passed for ${CLUBDUE_URL}"
