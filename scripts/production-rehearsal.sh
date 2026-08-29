@@ -46,7 +46,7 @@ run_deploy_helper clubdue-staging 8082 -e CLUBDUE_DEPLOY_VALIDATE_ONLY=1 >/dev/n
 [ "$(run_deploy_helper clubdue 8083 -e CLUBDUE_DEPLOY_TEST_PLAN=promote)" = \
   'proxy=18083 active=18083 previous=8083' ]
 [ "$(run_deploy_helper clubdue 8083 -e CLUBDUE_DEPLOY_TEST_PLAN=next-promote)" = \
-  'proxy=8083 active=8083 previous=18083' ]
+  'release-previous=8083 candidate=8083 active=8083 previous=18083' ]
 [ "$(run_deploy_helper clubdue 8083 -e CLUBDUE_DEPLOY_TEST_PLAN=rollback)" = \
   'proxy=8083 active=8083 previous=18083' ]
 

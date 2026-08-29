@@ -24,7 +24,8 @@ rollout_plan() {
   case "${CLUBDUE_DEPLOY_TEST_PLAN:?CLUBDUE_DEPLOY_TEST_PLAN required}" in
     candidate) printf 'candidate=%s active=%s failure=preserve-active\n' "$ALT_PORT" "$PORT" ;;
     promote) printf 'proxy=%s active=%s previous=%s\n' "$ALT_PORT" "$ALT_PORT" "$PORT" ;;
-    next-promote|rollback) printf 'proxy=%s active=%s previous=%s\n' "$PORT" "$PORT" "$ALT_PORT" ;;
+    next-promote) printf 'release-previous=%s candidate=%s active=%s previous=%s\n' "$PORT" "$PORT" "$PORT" "$ALT_PORT" ;;
+    rollback) printf 'proxy=%s active=%s previous=%s\n' "$PORT" "$PORT" "$ALT_PORT" ;;
     *) fail "unsupported deployment test plan ${CLUBDUE_DEPLOY_TEST_PLAN}" ;;
   esac
 }
@@ -208,6 +209,10 @@ candidate_port="$ALT_PORT"; [ "$active_port" = "$ALT_PORT" ] && candidate_port="
 
 assert_safe_vhost
 container_exists "$CANDIDATE_CONTAINER" && fail "stale ClubDue candidate exists; inspect it before retrying"
+# The retained previous release occupies the alternate port needed by the next
+# candidate. Releasing that stale rollback slot leaves the current release
+# serving unchanged; if the new candidate fails, traffic remains on current.
+container_exists "$PREVIOUS_CONTAINER" && docker rm -f "$PREVIOUS_CONTAINER" >/dev/null
 candidate_started=0
 cleanup_candidate() {
   [ "$candidate_started" = 1 ] && docker rm -f "$CANDIDATE_CONTAINER" >/dev/null 2>&1 || true
@@ -222,9 +227,7 @@ docker run -d --name "$CANDIDATE_CONTAINER" --restart always --network "$NETWORK
 candidate_started=1
 wait_for_ready "$candidate_port" || fail "candidate ${CANDIDATE_CONTAINER} did not become ready; active release remains unchanged"
 
-# Candidate readiness is the point at which the stale prior release can be
-# discarded. The active release stays available until the nginx cutover passes.
-container_exists "$PREVIOUS_CONTAINER" && docker rm -f "$PREVIOUS_CONTAINER" >/dev/null
+# The active release stays available until the nginx cutover passes.
 switch_proxy "$candidate_port"
 if container_exists "$CURRENT_CONTAINER"; then docker rename "$CURRENT_CONTAINER" "$PREVIOUS_CONTAINER"; else docker rename "$CONTAINER" "$PREVIOUS_CONTAINER"; fi
 docker rename "$CANDIDATE_CONTAINER" "$CURRENT_CONTAINER"
