@@ -27,7 +27,7 @@ real pilot begins.
 1. Confirm the owner invitation in the support log, then use the audited
    [owner-provisioning procedure](OWNER-PROVISIONING.md). Deliver credentials
    out of band; never place them in a ticket, CSV, shell history, or source.
-2. Work from the fictional [concierge fixture](../testdata/pilot-concierge-import.csv).
+2. Work from the fictional [concierge fixture](../internal/clubdue/testdata/pilot-concierge-import.csv).
    Copy it locally; replace every row with approved customer data only after
    the owner validates the required fixed columns and `external_id` source.
 3. In **Import**, upload and preview the file. Resolve every displayed error

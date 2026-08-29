@@ -39,7 +39,7 @@ explicit approval in chat.
 - [x] Preserve a fast local unit-test path and static binary build.
 
 Acceptance: CI proves the database suite executed and `go test -count=1 ./...`
-plus `CGO_ENABLED=0 go build ./...` pass.
+plus `CGO_ENABLED=0 go build -o /tmp/clubdue ./cmd/clubdue` pass.
 
 ### P0.2 — Validate configuration and fail closed
 
