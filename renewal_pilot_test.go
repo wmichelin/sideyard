@@ -156,6 +156,10 @@ func TestHomeownerRenewalUsesScopedCardSpacing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	agreementForm, err := templateFS.ReadFile("templates/agreement_form.html")
+	if err != nil {
+		t.Fatal(err)
+	}
 	styles, err := staticFS.ReadFile("static/style.css")
 	if err != nil {
 		t.Fatal(err)
@@ -164,12 +168,17 @@ func TestHomeownerRenewalUsesScopedCardSpacing(t *testing.T) {
 	if !strings.Contains(string(renewal), `class="form-panel renewal-card"`) {
 		t.Fatal("homeowner renewal template is missing its scoped card class")
 	}
+	if !strings.Contains(string(agreementForm), `class="renewal-link-actions"`) {
+		t.Fatal("agreement editor homeowner renewal action is missing its scoped spacing class")
+	}
 	for _, want := range []string{
 		".renewal-card {",
 		"max-width: 42rem;",
 		"padding: 1.25rem;",
 		".renewal-card .section-title {",
 		"padding: 0 0 0.75rem;",
+		".renewal-link-actions {",
+		"margin-top: 1rem;",
 	} {
 		if !strings.Contains(string(styles), want) {
 			t.Fatalf("homeowner renewal spacing contract is missing %q", want)

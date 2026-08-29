@@ -383,6 +383,10 @@ body {
   padding: 0 0 0.75rem;
 }
 
+.renewal-link-actions {
+  margin-top: 1rem;
+}
+
 .form-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
