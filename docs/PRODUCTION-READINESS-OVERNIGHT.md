@@ -75,11 +75,11 @@ auth throttling recovers after its window, and normal staging forms still work.
 
 ### P0.4 — Add runtime readiness and observability
 
-- [ ] Configure HTTP server timeouts and graceful signal shutdown.
-- [ ] Add process-only `/livez` and database-aware `/readyz`.
-- [ ] Add request IDs and completion logs without secrets or homeowner data.
-- [ ] Surface background renewal/digest errors with useful context.
-- [ ] Make deployment readiness depend on `/readyz`.
+- [x] Configure HTTP server timeouts and graceful signal shutdown.
+- [x] Add process-only `/livez` and database-aware `/readyz`.
+- [x] Add request IDs and completion logs without secrets or homeowner data.
+- [x] Surface background renewal/digest errors with useful context.
+- [x] Make deployment readiness depend on `/readyz`.
 
 Acceptance: readiness fails when Postgres is unavailable, liveness remains
 process-only, and shutdown closes HTTP/database resources cleanly.
