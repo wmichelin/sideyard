@@ -37,5 +37,7 @@ jobs:
           # Issues created outside the repository forms may have no labels.
           # Every new/reopened issue must still enter the queue.
           gh issue edit "$ISSUE_NUMBER" --repo "${{ github.repository }}" --add-label agent-ready
-      - name: Wake ClubDue agent queue
-        run: /home/wmichelin/assistant/bin/clubdue-loop tick
+      - name: Wake ClubDue issue queue
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: /home/wmichelin/assistant/bin/clubdue-loop issue-pickup "$ISSUE_NUMBER"
