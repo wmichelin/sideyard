@@ -183,8 +183,8 @@ func TestHomeownerRenewalUsesScopedCardSpacing(t *testing.T) {
 		".renewal-link-actions {",
 		"margin-top: 1rem;",
 		".renewal-link-panel .section-title {",
-		"padding: 0 0 0.75rem;",
-		"border-bottom: 0;",
+		"padding: 0 0 1rem;",
+		"border-bottom: 1px solid var(--border);",
 	} {
 		if !strings.Contains(string(styles), want) {
 			t.Fatalf("homeowner renewal spacing contract is missing %q", want)

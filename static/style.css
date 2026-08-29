@@ -388,8 +388,8 @@ body {
 }
 
 .renewal-link-panel .section-title {
-  padding: 0 0 0.75rem;
-  border-bottom: 0;
+  padding: 0 0 1rem;
+  border-bottom: 1px solid var(--border);
 }
 
 .renewal-link-panel .empty-note {
