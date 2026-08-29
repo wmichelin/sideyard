@@ -35,7 +35,7 @@ func (s *Server) handleHomeownerRenewal(w http.ResponseWriter, r *http.Request) 
 		http.NotFound(w, r)
 		return
 	}
-	s.render(w, "renewal.html", map[string]any{
+	s.render(w, r, "renewal.html", map[string]any{
 		"Renewal":         renewal,
 		"PriceFmt":        formatCents(renewal.PriceCents),
 		"AnniversaryFmt":  renewal.AnniversaryDate.Format("January 2, 2006"),

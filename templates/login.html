@@ -17,6 +17,7 @@
     <p class="subtitle">Sign in to your shop.</p>
     {{ if .Error }}<p class="error-banner">{{ .Error }}</p>{{ end }}
     <form method="post" action="/login" class="form-stack">
+      {{ template "csrf_field" . }}
       <label>
         <span>Email</span>
         <input type="email" name="email" value="{{ .Email }}" required autocomplete="username">

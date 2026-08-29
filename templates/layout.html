@@ -25,6 +25,7 @@
         <a href="/plan-templates" class="nav-link{{ if eq .Nav.Active "plans" }} active{{ end }}">Plan templates</a>
       </nav>
       <form method="post" action="/logout" class="logout-form">
+        {{ template "csrf_field" . }}
         <button type="submit" class="ghost-btn">Sign out</button>
       </form>
     </aside>
@@ -35,3 +36,5 @@
 </body>
 </html>
 {{ end }}
+
+{{ define "csrf_field" }}<input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">{{ end }}

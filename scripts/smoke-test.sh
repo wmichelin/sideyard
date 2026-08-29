@@ -15,10 +15,17 @@ curl -fsS "${CLUBDUE_URL}/healthz" | grep -qx ok
 echo "  ✓ /healthz"
 
 if [ "$TARGET" = "staging" ]; then
-  curl -fsS -X POST "${CLUBDUE_URL}/dev/seed" >/dev/null
   COOKIE_JAR="$(mktemp)"
   trap 'rm -f "$COOKIE_JAR"' EXIT
-  LOGIN_STATUS="$(curl -fsS -c "$COOKIE_JAR" -o /dev/null -w '%{http_code}' -d 'email=owner@demo.local&password=demo1234' "${CLUBDUE_URL}/login")"
+  LOGIN_PAGE="$(curl -fsS -c "$COOKIE_JAR" "${CLUBDUE_URL}/login")"
+  CSRF_TOKEN="$(printf '%s' "$LOGIN_PAGE" | sed -n 's/.*name="csrf_token" value="\([^"]*\)".*/\1/p' | head -1)"
+  [ -n "$CSRF_TOKEN" ]
+  curl -fsS -b "$COOKIE_JAR" -c "$COOKIE_JAR" -X POST \
+    --data-urlencode "csrf_token=$CSRF_TOKEN" "${CLUBDUE_URL}/dev/seed" >/dev/null
+  LOGIN_STATUS="$(curl -fsS -b "$COOKIE_JAR" -c "$COOKIE_JAR" -o /dev/null -w '%{http_code}' \
+    --data-urlencode "csrf_token=$CSRF_TOKEN" \
+    --data-urlencode 'email=owner@demo.local' \
+    --data-urlencode 'password=demo1234' "${CLUBDUE_URL}/login")"
   [ "$LOGIN_STATUS" = "303" ]
   echo "  ✓ staging login"
   HTML="$(curl -fsS -b "$COOKIE_JAR" "${CLUBDUE_URL}/dashboard")"

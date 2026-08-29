@@ -47,7 +47,7 @@ func run(config Config, args []string) error {
 		return err
 	}
 
-	srv := &Server{tmpl: tmpl, config: config, demo: config.DemoMode()}
+	srv := &Server{tmpl: tmpl, config: config, demo: config.DemoMode(), throttle: newAuthThrottle(config.RuntimeLimits)}
 
 	if !srv.demo {
 		ctx := context.Background()
@@ -57,7 +57,7 @@ func run(config Config, args []string) error {
 		}
 		defer db.Close()
 
-		auth := newAuth(db, config.SessionSecret)
+		auth := newAuth(db, config.SessionSecret, srv.secureCookies())
 		if err := auth.bootstrapShop(ctx, config.BootstrapOwner); err != nil {
 			return fmt.Errorf("bootstrap shop: %w", err)
 		}
@@ -79,57 +79,61 @@ func run(config Config, args []string) error {
 		log.Print("ClubDue running in demo mode (set DATABASE_URL for Postgres)")
 	}
 
+	log.Printf("ClubDue listening on %s", config.Address)
+	return http.ListenAndServe(config.Address, srv.handler(static))
+}
+
+func (s *Server) handler(static fs.FS) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(static))))
-	mux.HandleFunc("GET /healthz", srv.handleHealthz)
-	mux.HandleFunc("GET /login", srv.handleLoginGet)
-	mux.HandleFunc("POST /login", srv.handleLoginPost)
-	mux.HandleFunc("GET /signup", srv.handleSignupGet)
-	mux.HandleFunc("POST /signup", srv.handleSignupPost)
-	mux.HandleFunc("POST /logout", srv.handleLogout)
-	mux.HandleFunc("GET /renew/{token}", srv.handleHomeownerRenewal)
-	mux.HandleFunc("POST /renew/{token}", srv.handleHomeownerRenewalPayment)
-	if config.EnableDevRoutes && !srv.demo {
-		mux.HandleFunc("POST /dev/seed", srv.handleDevSeed)
+	mux.HandleFunc("GET /healthz", s.handleHealthz)
+	mux.HandleFunc("GET /login", s.handleLoginGet)
+	mux.HandleFunc("POST /login", s.handleLoginPost)
+	mux.HandleFunc("GET /signup", s.handleSignupGet)
+	mux.HandleFunc("POST /signup", s.handleSignupPost)
+	mux.HandleFunc("POST /logout", s.handleLogout)
+	mux.HandleFunc("GET /renew/{token}", s.handleHomeownerRenewal)
+	mux.HandleFunc("POST /renew/{token}", s.handleHomeownerRenewalPayment)
+	if s.config.EnableDevRoutes && !s.demo {
+		mux.HandleFunc("POST /dev/seed", s.handleDevSeed)
 		log.Print("Dev routes enabled: POST /dev/seed")
 	}
 
-	auth := srv.requireAuth
+	auth := s.requireAuth
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		if srv.demo {
-			auth(srv.handleDashboard)(w, r)
+		if s.demo {
+			auth(s.handleDashboard)(w, r)
 			return
 		}
 		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 	})
-	mux.HandleFunc("GET /dashboard", auth(srv.handleDashboard))
-	mux.HandleFunc("GET /agreements", auth(srv.handleAgreementsList))
-	mux.HandleFunc("GET /agreements/new", auth(srv.handleAgreementNew))
-	mux.HandleFunc("POST /agreements", auth(srv.handleAgreementCreate))
-	mux.HandleFunc("GET /agreements/{id}", auth(srv.handleAgreementEdit))
-	mux.HandleFunc("POST /agreements/{id}", auth(srv.handleAgreementUpdate))
-	mux.HandleFunc("POST /agreements/{id}/renewal-link", auth(srv.handleAgreementRenewalLink))
-	mux.HandleFunc("GET /renewals", auth(srv.handleRenewals))
-	mux.HandleFunc("POST /renewals", auth(srv.handleRenewals))
-	mux.HandleFunc("GET /customers", auth(srv.handleCustomers))
-	mux.HandleFunc("POST /customers", auth(srv.handleCustomers))
-	mux.HandleFunc("GET /customers/{id}", auth(srv.handleCustomerEdit))
-	mux.HandleFunc("POST /customers/{id}", auth(srv.handleCustomerEdit))
-	mux.HandleFunc("POST /customers/{id}/delete", auth(srv.handleCustomerDelete))
-	mux.HandleFunc("POST /customers/{id}/properties", auth(srv.handlePropertyCreate))
-	mux.HandleFunc("POST /properties/{id}/equipment", auth(srv.handleEquipmentCreate))
-	mux.HandleFunc("GET /import", auth(srv.handleImport))
-	mux.HandleFunc("POST /import", auth(srv.handleImport))
-	mux.HandleFunc("GET /visits/export.csv", auth(srv.handleVisitsExport))
-	mux.HandleFunc("GET /visits", auth(srv.handleVisits))
-	mux.HandleFunc("POST /visits", auth(srv.handleVisits))
-	mux.HandleFunc("GET /plan-templates", auth(srv.handlePlanTemplates))
-	mux.HandleFunc("POST /plan-templates", auth(srv.handlePlanTemplates))
-	mux.HandleFunc("GET /plan-templates/{id}", auth(srv.handlePlanTemplateEdit))
-	mux.HandleFunc("POST /plan-templates/{id}", auth(srv.handlePlanTemplateEdit))
+	mux.HandleFunc("GET /dashboard", auth(s.handleDashboard))
+	mux.HandleFunc("GET /agreements", auth(s.handleAgreementsList))
+	mux.HandleFunc("GET /agreements/new", auth(s.handleAgreementNew))
+	mux.HandleFunc("POST /agreements", auth(s.handleAgreementCreate))
+	mux.HandleFunc("GET /agreements/{id}", auth(s.handleAgreementEdit))
+	mux.HandleFunc("POST /agreements/{id}", auth(s.handleAgreementUpdate))
+	mux.HandleFunc("POST /agreements/{id}/renewal-link", auth(s.handleAgreementRenewalLink))
+	mux.HandleFunc("GET /renewals", auth(s.handleRenewals))
+	mux.HandleFunc("POST /renewals", auth(s.handleRenewals))
+	mux.HandleFunc("GET /customers", auth(s.handleCustomers))
+	mux.HandleFunc("POST /customers", auth(s.handleCustomers))
+	mux.HandleFunc("GET /customers/{id}", auth(s.handleCustomerEdit))
+	mux.HandleFunc("POST /customers/{id}", auth(s.handleCustomerEdit))
+	mux.HandleFunc("POST /customers/{id}/delete", auth(s.handleCustomerDelete))
+	mux.HandleFunc("POST /customers/{id}/properties", auth(s.handlePropertyCreate))
+	mux.HandleFunc("POST /properties/{id}/equipment", auth(s.handleEquipmentCreate))
+	mux.HandleFunc("GET /import", auth(s.handleImport))
+	mux.HandleFunc("POST /import", auth(s.handleImport))
+	mux.HandleFunc("GET /visits/export.csv", auth(s.handleVisitsExport))
+	mux.HandleFunc("GET /visits", auth(s.handleVisits))
+	mux.HandleFunc("POST /visits", auth(s.handleVisits))
+	mux.HandleFunc("GET /plan-templates", auth(s.handlePlanTemplates))
+	mux.HandleFunc("POST /plan-templates", auth(s.handlePlanTemplates))
+	mux.HandleFunc("GET /plan-templates/{id}", auth(s.handlePlanTemplateEdit))
+	mux.HandleFunc("POST /plan-templates/{id}", auth(s.handlePlanTemplateEdit))
 
-	log.Printf("ClubDue listening on %s", config.Address)
-	return http.ListenAndServe(config.Address, mux)
+	return s.securityHandler(mux)
 }
 
 func runProvisionOwner(config Config) error {
@@ -145,7 +149,7 @@ func runProvisionOwner(config Config) error {
 		return err
 	}
 	defer db.Close()
-	auth := newAuth(db, config.SessionSecret)
+	auth := newAuth(db, config.SessionSecret, config.Environment != EnvironmentDevelopment)
 	action, err := auth.provisionOwner(context.Background(), credentials)
 	if err != nil {
 		return fmt.Errorf("provision owner: %w", err)

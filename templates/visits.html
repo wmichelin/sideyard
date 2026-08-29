@@ -13,6 +13,7 @@
 </div>
 
 <form method="post" action="/visits?filter={{ if .DueOnly }}due{{ else }}all{{ end }}">
+  {{ template "csrf_field" . }}
   <input type="hidden" name="filter" value="{{ if .DueOnly }}due{{ else }}all{{ end }}">
 
   <section class="table-section">
@@ -54,9 +55,5 @@
   {{ end }}
 </form>
 
-<script>
-document.getElementById('select-all')?.addEventListener('change', function(e) {
-  document.querySelectorAll('.visit-check').forEach(cb => cb.checked = e.target.checked);
-});
-</script>
+<script src="/static/visits.js" defer></script>
 {{ end }}

@@ -80,7 +80,7 @@ func (s *Server) renderCustomerEdit(w http.ResponseWriter, r *http.Request, user
 		http.Error(w, "server error", http.StatusInternalServerError)
 		return
 	}
-	s.renderLayout(w, "Edit customer — ClubDue", "customer_form_content", map[string]any{
+	s.renderLayout(w, r, "Edit customer — ClubDue", "customer_form_content", map[string]any{
 		"Nav": NavData{Active: "customers", User: user}, "Customer": customer, "Properties": properties,
 		"UpdateError": r.Method == http.MethodPost,
 	})

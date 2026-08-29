@@ -13,11 +13,12 @@ import (
 )
 
 type Server struct {
-	tmpl   *template.Template
-	auth   *Auth
-	store  *Store
-	config Config
-	demo   bool
+	tmpl     *template.Template
+	auth     *Auth
+	store    *Store
+	config   Config
+	demo     bool
+	throttle *authThrottle
 }
 
 type NavData struct {
@@ -71,7 +72,7 @@ func (s *Server) handleSignupGet(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 		return
 	}
-	s.render(w, "signup.html", map[string]any{
+	s.render(w, r, "signup.html", map[string]any{
 		"Error":    "",
 		"ShopName": "",
 		"Email":    "",
@@ -90,24 +91,34 @@ func (s *Server) handleSignupPost(w http.ResponseWriter, r *http.Request) {
 	shopName := r.FormValue("shop_name")
 	email := r.FormValue("email")
 	password := r.FormValue("password")
+	throttle := s.authLimiter()
+	throttleKey := authThrottleKey(r, "signup")
+	if !throttle.allowed(throttleKey) {
+		s.render(w, r, "signup.html", map[string]any{
+			"Error": "Too many attempts. Please try again later.", "ShopName": shopName, "Email": email,
+		})
+		return
+	}
 	if !s.config.SignupAllowed(email) {
-		s.render(w, "signup.html", map[string]any{
+		throttle.failure(throttleKey)
+		s.render(w, r, "signup.html", map[string]any{
 			"Error":    "This email is not approved for pilot enrollment.",
 			"ShopName": shopName,
 			"Email":    email,
 		})
 		return
 	}
-
 	token, err := s.auth.signup(r.Context(), shopName, email, password)
 	if err != nil {
-		s.render(w, "signup.html", map[string]any{
+		throttle.failure(throttleKey)
+		s.render(w, r, "signup.html", map[string]any{
 			"Error":    err.Error(),
 			"ShopName": shopName,
 			"Email":    email,
 		})
 		return
 	}
+	throttle.success(throttleKey)
 	s.auth.setSessionCookie(w, token)
 	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 }
@@ -135,7 +146,7 @@ func (s *Server) handleLoginGet(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	s.render(w, "login.html", map[string]any{
+	s.render(w, r, "login.html", map[string]any{
 		"Error": "",
 		"Email": "",
 		"Demo":  s.demo,
@@ -153,15 +164,25 @@ func (s *Server) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 	}
 	email := r.FormValue("email")
 	password := r.FormValue("password")
+	throttle := s.authLimiter()
+	throttleKey := authThrottleKey(r, "login")
+	if !throttle.allowed(throttleKey) {
+		s.render(w, r, "login.html", map[string]any{
+			"Error": "Too many attempts. Please try again later.", "Email": email, "Demo": false,
+		})
+		return
+	}
 	token, err := s.auth.login(r.Context(), email, password)
 	if err != nil {
-		s.render(w, "login.html", map[string]any{
-			"Error": err.Error(),
+		throttle.failure(throttleKey)
+		s.render(w, r, "login.html", map[string]any{
+			"Error": "Invalid email or password.",
 			"Email": email,
 			"Demo":  false,
 		})
 		return
 	}
+	throttle.success(throttleKey)
 	s.auth.setSessionCookie(w, token)
 	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 }
@@ -176,7 +197,8 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
-func (s *Server) renderLayout(w http.ResponseWriter, title, contentTemplate string, data map[string]any) {
+func (s *Server) renderLayout(w http.ResponseWriter, r *http.Request, title, contentTemplate string, data map[string]any) {
+	data["CSRFToken"] = csrfTokenFromContext(r.Context())
 	var body bytes.Buffer
 	if err := s.tmpl.ExecuteTemplate(&body, contentTemplate, data); err != nil {
 		log.Printf("render content %s: %v", contentTemplate, err)
@@ -185,13 +207,13 @@ func (s *Server) renderLayout(w http.ResponseWriter, title, contentTemplate stri
 	}
 	data["Title"] = title
 	data["Body"] = template.HTML(body.String())
-	s.render(w, "layout.html", data)
+	s.render(w, r, "layout.html", data)
 }
 
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r.Context())
 	if s.demo {
-		s.render(w, "demo.html", buildPageData(sampleMembers))
+		s.render(w, r, "demo.html", buildPageData(sampleMembers))
 		return
 	}
 
@@ -202,7 +224,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.renderLayout(w, "Dashboard — ClubDue", "dashboard_content", map[string]any{
+	s.renderLayout(w, r, "Dashboard — ClubDue", "dashboard_content", map[string]any{
 		"Nav": NavData{Active: "dashboard", User: user},
 		"Stats": map[string]any{
 			"ActiveCount":      stats.ActiveCount,
@@ -252,7 +274,7 @@ func (s *Server) handleAgreementsList(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	s.renderLayout(w, "Agreements — ClubDue", "agreements_content", map[string]any{
+	s.renderLayout(w, r, "Agreements — ClubDue", "agreements_content", map[string]any{
 		"Nav":        NavData{Active: "agreements", User: user},
 		"Agreements": rows,
 		"Filter":     filter, "RenewDays": days,
@@ -331,7 +353,7 @@ func (s *Server) renderAgreementForm(w http.ResponseWriter, r *http.Request, use
 	if form.ID != "" {
 		title = "Edit agreement — ClubDue"
 	}
-	s.renderLayout(w, title, "agreement_form_content", map[string]any{
+	s.renderLayout(w, r, title, "agreement_form_content", map[string]any{
 		"Nav":        NavData{Active: "agreements", User: user},
 		"Form":       form,
 		"Customers":  customers,
@@ -445,7 +467,7 @@ func (s *Server) handleRenewals(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.renderLayout(w, "Renewals — ClubDue", "renewals_content", map[string]any{
+	s.renderLayout(w, r, "Renewals — ClubDue", "renewals_content", map[string]any{
 		"Nav": NavData{Active: "renewals", User: user}, "Tasks": tasks,
 	})
 }
@@ -476,7 +498,7 @@ func (s *Server) handleCustomers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.renderLayout(w, "Customers — ClubDue", "customers_content", map[string]any{
+	s.renderLayout(w, r, "Customers — ClubDue", "customers_content", map[string]any{
 		"Nav":       NavData{Active: "customers", User: user},
 		"Customers": customers,
 	})
@@ -526,7 +548,7 @@ func (s *Server) handlePlanTemplates(w http.ResponseWriter, r *http.Request) {
 		rows[i] = row{PlanTemplate: p, PriceFmt: formatCents(p.PriceCents)}
 	}
 
-	s.renderLayout(w, "Plan templates — ClubDue", "plan_templates_content", map[string]any{
+	s.renderLayout(w, r, "Plan templates — ClubDue", "plan_templates_content", map[string]any{
 		"Nav":   NavData{Active: "plans", User: user},
 		"Plans": rows,
 	})
@@ -561,14 +583,17 @@ func (s *Server) handlePlanTemplateEdit(w http.ResponseWriter, r *http.Request) 
 		plan = &PlanTemplate{ID: id, Name: name, Description: r.FormValue("description"), PriceCents: price, TermMonths: termMonths, VisitsPerYear: visits}
 	}
 
-	s.renderLayout(w, "Edit plan template — ClubDue", "plan_template_form_content", map[string]any{
+	s.renderLayout(w, r, "Edit plan template — ClubDue", "plan_template_form_content", map[string]any{
 		"Nav":   NavData{Active: "plans", User: user},
 		"Plan":  plan,
 		"Error": err != nil || r.Method == http.MethodPost,
 	})
 }
 
-func (s *Server) render(w http.ResponseWriter, name string, data any) {
+func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, data any) {
+	if pageData, ok := data.(map[string]any); ok {
+		pageData["CSRFToken"] = csrfTokenFromContext(r.Context())
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.tmpl.ExecuteTemplate(w, name, data); err != nil {
 		log.Printf("render %s: %v", name, err)

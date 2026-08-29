@@ -31,10 +31,11 @@ type User struct {
 type Auth struct {
 	db            *DB
 	sessionSecret []byte
+	secureCookies bool
 }
 
-func newAuth(db *DB, sessionSecret string) *Auth {
-	return &Auth{db: db, sessionSecret: []byte(sessionSecret)}
+func newAuth(db *DB, sessionSecret string, secureCookies bool) *Auth {
+	return &Auth{db: db, sessionSecret: []byte(sessionSecret), secureCookies: secureCookies}
 }
 
 func bcryptGenerate(password string) (string, error) {
@@ -191,6 +192,9 @@ func (a *Auth) login(ctx context.Context, email, password string) (string, error
 	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)); err != nil {
 		return "", errors.New("invalid email or password")
 	}
+	if _, err := a.db.Pool.Exec(ctx, `DELETE FROM sessions WHERE user_id = $1`, userID); err != nil {
+		return "", fmt.Errorf("rotate session: %w", err)
+	}
 	return a.createSession(ctx, userID)
 }
 
@@ -247,6 +251,7 @@ func (a *Auth) setSessionCookie(w http.ResponseWriter, token string) {
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
+		Secure:   a.secureCookies,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int(sessionTTL.Seconds()),
 	})
@@ -258,6 +263,7 @@ func (a *Auth) clearSessionCookie(w http.ResponseWriter) {
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
+		Secure:   a.secureCookies,
 		MaxAge:   -1,
 	})
 }

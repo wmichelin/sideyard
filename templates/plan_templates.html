@@ -9,6 +9,7 @@
 <section class="panel">
   <h3 class="section-title">Add plan template</h3>
   <form method="post" action="/plan-templates" class="form-stack">
+    {{ template "csrf_field" . }}
     <div class="form-row">
       <label>
         <span>Name</span>

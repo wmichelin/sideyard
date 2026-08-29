@@ -61,6 +61,11 @@ func TestLoadConfig(t *testing.T) {
 			env:     map[string]string{"MAX_REQUEST_BODY_BYTES": "0"},
 			wantErr: "MAX_REQUEST_BODY_BYTES must be a positive integer",
 		},
+		{
+			name:    "multipart memory must fit within the request limit",
+			env:     map[string]string{"MAX_REQUEST_BODY_BYTES": "1024", "MAX_MULTIPART_MEMORY_BYTES": "1025"},
+			wantErr: "MAX_MULTIPART_MEMORY_BYTES must not exceed MAX_REQUEST_BODY_BYTES",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

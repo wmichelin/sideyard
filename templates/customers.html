@@ -9,6 +9,7 @@
 <section class="panel">
   <h3 class="section-title">Add customer</h3>
   <form method="post" action="/customers" class="form-row">
+    {{ template "csrf_field" . }}
     <label>
       <span>Name</span>
       <input type="text" name="name" required>

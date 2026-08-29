@@ -10,6 +10,7 @@
 {{ if .Error }}<p class="error-banner">Enter a name, non-negative price, and positive term and visit count.</p>{{ end }}
 
 <form method="post" class="form-panel">
+  {{ template "csrf_field" . }}
   <div class="form-row">
     <label>
       <span>Name</span>

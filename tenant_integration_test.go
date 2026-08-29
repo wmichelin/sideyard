@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 	"time"
@@ -304,7 +306,7 @@ func TestProvisionOwnerCreatesAndRecoversAccess(t *testing.T) {
 	}
 	defer db.Close()
 
-	auth := newAuth(db, "test-session-secret")
+	auth := newAuth(db, "test-session-secret", false)
 	stamp := time.Now().UTC().Format("20060102150405.000000000")
 	credentials := OwnerCredentials{
 		Email:    "owner-" + stamp + "@example.test",
@@ -337,6 +339,61 @@ func TestProvisionOwnerCreatesAndRecoversAccess(t *testing.T) {
 	}
 	if count < 2 {
 		t.Fatalf("expected provision and recovery audit events, got %d", count)
+	}
+}
+
+func TestLoginRotatesExistingSessionsAndKeepsFailuresGeneric(t *testing.T) {
+	databaseURL := integrationDatabaseURL(t)
+	ctx := context.Background()
+	db, err := openDB(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	auth := newAuth(db, "test-session-secret", false)
+	stamp := time.Now().UTC().Format("20060102150405.000000000")
+	credentials := OwnerCredentials{
+		Email:    "rotation-" + stamp + "@example.test",
+		Password: "correct-password",
+		ShopName: "Rotation " + stamp,
+	}
+	if _, err := auth.provisionOwner(ctx, credentials); err != nil {
+		t.Fatal(err)
+	}
+	firstToken, err := auth.login(ctx, credentials.Email, credentials.Password)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondToken, err := auth.login(ctx, credentials.Email, credentials.Password)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if firstToken == secondToken {
+		t.Fatal("successful login reused an existing session token")
+	}
+
+	firstRequest := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
+	firstRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: firstToken})
+	if _, err := auth.userFromRequest(ctx, firstRequest); err == nil {
+		t.Fatal("prior session remained valid after successful re-authentication")
+	}
+	secondRequest := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
+	secondRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: secondToken})
+	if _, err := auth.userFromRequest(ctx, secondRequest); err != nil {
+		t.Fatalf("new session was not valid: %v", err)
+	}
+
+	unknownErr := func() error {
+		_, err := auth.login(ctx, "unknown-"+stamp+"@example.test", "wrong-password")
+		return err
+	}()
+	wrongPasswordErr := func() error {
+		_, err := auth.login(ctx, credentials.Email, "wrong-password")
+		return err
+	}()
+	if unknownErr == nil || wrongPasswordErr == nil || unknownErr.Error() != wrongPasswordErr.Error() {
+		t.Fatalf("login failures differ: unknown=%v wrong=%v", unknownErr, wrongPasswordErr)
 	}
 }
 

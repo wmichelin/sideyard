@@ -26,6 +26,7 @@
         {{ else }}
         <p class="empty-note">Payment is in test-stub mode. Stripe Checkout and its webhook will be connected before live use; this action never charges a card.</p>
         <form method="post">
+          {{ template "csrf_field" . }}
           <button type="submit" class="primary-btn">Continue to test payment</button>
         </form>
         {{ end }}

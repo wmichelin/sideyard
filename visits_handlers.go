@@ -51,7 +51,7 @@ func (s *Server) handleVisits(w http.ResponseWriter, r *http.Request) {
 		rows[i] = row{VisitDueRow: v, StatusLabel: visitStatusLabel(v.Status)}
 	}
 
-	s.renderLayout(w, "Visits — ClubDue", "visits_content", map[string]any{
+	s.renderLayout(w, r, "Visits — ClubDue", "visits_content", map[string]any{
 		"Nav":     NavData{Active: "visits", User: user},
 		"Visits":  rows,
 		"Filter":  filter,

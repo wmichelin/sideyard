@@ -13,6 +13,7 @@
     <p class="subtitle">One shop account per HVAC/home-services business.</p>
     {{ if .Error }}<p class="error-banner">{{ .Error }}</p>{{ end }}
     <form method="post" action="/signup" class="form-stack">
+      {{ template "csrf_field" . }}
       <label>
         <span>Shop name</span>
         <input type="text" name="shop_name" value="{{ .ShopName }}" required autocomplete="organization">

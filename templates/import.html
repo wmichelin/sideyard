@@ -17,6 +17,7 @@
 <section class="panel">
   <h3 class="section-title">Upload file</h3>
   <form method="post" action="/import" enctype="multipart/form-data" class="form-stack">
+    {{ template "csrf_field" . }}
     <input type="hidden" name="step" value="dry_run">
     <label>
       <span>CSV file</span>
@@ -87,6 +88,7 @@
   <a href="/import" class="secondary-btn">Upload different file</a>
   {{ if .CanCommit }}
   <form method="post" action="/import" class="inline-form">
+    {{ template "csrf_field" . }}
     <input type="hidden" name="step" value="commit">
     <input type="hidden" name="csv_data" value="{{ .CSVData }}">
     <button type="submit" class="primary-btn">Commit import</button>
