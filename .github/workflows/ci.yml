@@ -8,6 +8,20 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: clubdue_test
+          POSTGRES_USER: clubdue
+          POSTGRES_PASSWORD: clubdue
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U clubdue -d clubdue_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 
@@ -16,8 +30,20 @@ jobs:
           go-version: "1.23"
           cache: true
 
-      - name: Test
-        run: go test ./...
+      - name: Postgres integration tests
+        env:
+          DATABASE_URL: postgres://clubdue:clubdue@localhost:5432/clubdue_test?sslmode=disable
+          CLUBDUE_REQUIRE_POSTGRES_INTEGRATION: "1"
+        run: >-
+          go test -count=1 -v -run
+          '^(TestAgreementReferencesStayWithinShopAndCustomer|TestAgreementKeepsPlanTermsSnapshotAfterTemplateEdit|TestGenerateRenewalTasksCreatesCycleAwareMilestonesIdempotently|TestRenewedTaskRollsAgreementAndRetiresCycle|TestQueueRenewalDigestsIsDailyAndIdempotent|TestCompletedVisitCannotExceedAgreementEntitlement)$'
+          ./...
+
+      - name: Full test suite
+        env:
+          DATABASE_URL: postgres://clubdue:clubdue@localhost:5432/clubdue_test?sslmode=disable
+          CLUBDUE_REQUIRE_POSTGRES_INTEGRATION: "1"
+        run: go test -count=1 ./...
 
       - name: Build
-        run: CGO_ENABLED=0 go build -o /dev/null .
+        run: CGO_ENABLED=0 go build ./...

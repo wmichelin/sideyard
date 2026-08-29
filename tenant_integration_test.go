@@ -10,10 +10,7 @@ import (
 // This test intentionally uses the same migrations as the application. Set
 // DATABASE_URL to a disposable Postgres database to run it locally or in CI.
 func TestAgreementReferencesStayWithinShopAndCustomer(t *testing.T) {
-	databaseURL := os.Getenv("DATABASE_URL")
-	if databaseURL == "" {
-		t.Skip("DATABASE_URL is required for Postgres integration tests")
-	}
+	databaseURL := integrationDatabaseURL(t)
 
 	ctx := context.Background()
 	db, err := openDB(ctx, databaseURL)
@@ -71,10 +68,7 @@ func TestAgreementReferencesStayWithinShopAndCustomer(t *testing.T) {
 }
 
 func TestAgreementKeepsPlanTermsSnapshotAfterTemplateEdit(t *testing.T) {
-	databaseURL := os.Getenv("DATABASE_URL")
-	if databaseURL == "" {
-		t.Skip("DATABASE_URL is required for Postgres integration tests")
-	}
+	databaseURL := integrationDatabaseURL(t)
 
 	ctx := context.Background()
 	db, err := openDB(ctx, databaseURL)
@@ -123,10 +117,7 @@ func TestAgreementKeepsPlanTermsSnapshotAfterTemplateEdit(t *testing.T) {
 }
 
 func TestGenerateRenewalTasksCreatesCycleAwareMilestonesIdempotently(t *testing.T) {
-	databaseURL := os.Getenv("DATABASE_URL")
-	if databaseURL == "" {
-		t.Skip("DATABASE_URL is required for Postgres integration tests")
-	}
+	databaseURL := integrationDatabaseURL(t)
 
 	ctx := context.Background()
 	db, err := openDB(ctx, databaseURL)
@@ -175,10 +166,7 @@ func TestGenerateRenewalTasksCreatesCycleAwareMilestonesIdempotently(t *testing.
 }
 
 func TestRenewedTaskRollsAgreementAndRetiresCycle(t *testing.T) {
-	databaseURL := os.Getenv("DATABASE_URL")
-	if databaseURL == "" {
-		t.Skip("DATABASE_URL is required for Postgres integration tests")
-	}
+	databaseURL := integrationDatabaseURL(t)
 	ctx := context.Background()
 	db, err := openDB(ctx, databaseURL)
 	if err != nil {
@@ -235,10 +223,7 @@ func TestRenewedTaskRollsAgreementAndRetiresCycle(t *testing.T) {
 }
 
 func TestQueueRenewalDigestsIsDailyAndIdempotent(t *testing.T) {
-	databaseURL := os.Getenv("DATABASE_URL")
-	if databaseURL == "" {
-		t.Skip("DATABASE_URL is required for Postgres integration tests")
-	}
+	databaseURL := integrationDatabaseURL(t)
 	ctx := context.Background()
 	db, err := openDB(ctx, databaseURL)
 	if err != nil {
@@ -278,10 +263,7 @@ func TestQueueRenewalDigestsIsDailyAndIdempotent(t *testing.T) {
 }
 
 func TestCompletedVisitCannotExceedAgreementEntitlement(t *testing.T) {
-	databaseURL := os.Getenv("DATABASE_URL")
-	if databaseURL == "" {
-		t.Skip("DATABASE_URL is required for Postgres integration tests")
-	}
+	databaseURL := integrationDatabaseURL(t)
 	ctx := context.Background()
 	db, err := openDB(ctx, databaseURL)
 	if err != nil {
@@ -364,4 +346,17 @@ func createTestUser(t *testing.T, ctx context.Context, db *DB, shopID, email str
 func insertTestUser(ctx context.Context, db *DB, shopID, email string) error {
 	_, err := db.Pool.Exec(ctx, `INSERT INTO users (shop_id, email, password_hash) VALUES ($1, $2, 'test')`, shopID, email)
 	return err
+}
+
+func integrationDatabaseURL(t *testing.T) string {
+	t.Helper()
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL != "" {
+		return databaseURL
+	}
+	if os.Getenv("CLUBDUE_REQUIRE_POSTGRES_INTEGRATION") == "1" {
+		t.Fatal("DATABASE_URL is required when Postgres integration tests are required")
+	}
+	t.Skip("DATABASE_URL is required for Postgres integration tests")
+	return ""
 }
