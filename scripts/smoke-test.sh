@@ -61,6 +61,28 @@ if [ "$TARGET" = "staging" ]; then
   RENEWALS_HTML="$(curl -fsS -b "$COOKIE_JAR" "${CLUBDUE_URL}/renewals")"
   [[ "$RENEWALS_HTML" == *'Renewal queue'* ]]
   echo "  ✓ renewal queue"
+  RENEWAL_TASK_ID="$(printf '%s' "$RENEWALS_HTML" | sed -n 's/.*name="task_id" value="\([^"]*\)".*/\1/p' | head -1)"
+  [ -n "$RENEWAL_TASK_ID" ]
+  RENEWAL_STATUS="$(curl -fsS -b "$COOKIE_JAR" -c "$COOKIE_JAR" -o /dev/null -w '%{http_code}' -X POST \
+    --data-urlencode "csrf_token=$CSRF_TOKEN" \
+    --data-urlencode "task_id=$RENEWAL_TASK_ID" \
+    --data-urlencode 'status=contacted' \
+    --data-urlencode 'notes=staging smoke verification' \
+    "${CLUBDUE_URL}/renewals")"
+  [ "$RENEWAL_STATUS" = "303" ]
+  echo "  ✓ renewal outcome mutation"
+  VISITS_HTML="$(curl -fsS -b "$COOKIE_JAR" "${CLUBDUE_URL}/visits?filter=due")"
+  [[ "$VISITS_HTML" == *'Visit due-list'* ]]
+  VISIT_ID="$(printf '%s' "$VISITS_HTML" | sed -n 's/.*name="visit_id" value="\([^"]*\)".*/\1/p' | head -1)"
+  [ -n "$VISIT_ID" ]
+  VISIT_STATUS="$(curl -fsS -b "$COOKIE_JAR" -c "$COOKIE_JAR" -o /dev/null -w '%{http_code}' -X POST \
+    --data-urlencode "csrf_token=$CSRF_TOKEN" \
+    --data-urlencode 'filter=due' \
+    --data-urlencode "visit_id=$VISIT_ID" \
+    --data-urlencode 'action=scheduled' \
+    "${CLUBDUE_URL}/visits?filter=due")"
+  [ "$VISIT_STATUS" = "303" ]
+  echo "  ✓ visit handoff mutation"
   VISITS_CSV="$(curl -fsS -b "$COOKIE_JAR" "${CLUBDUE_URL}/visits/export.csv")"
   [[ "$VISITS_CSV" == customer_name,* ]]
   echo "  ✓ visit CSV export"

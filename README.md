@@ -85,7 +85,8 @@ Staging and production on the pantry DO droplet (Pantry/Headscale untouched):
 
 Push to `main` → staging auto-deploy. Production is manual after review.
 
-See [docs/DEPLOY.md](docs/DEPLOY.md) and [docs/RELEASE-WORKFLOW.md](docs/RELEASE-WORKFLOW.md).
+See [docs/DEPLOY.md](docs/DEPLOY.md), [docs/RELEASE-WORKFLOW.md](docs/RELEASE-WORKFLOW.md),
+and the [pilot operations runbook](docs/OPERATIONS-RUNBOOK.md).
 
 ## MVP boundaries
 
