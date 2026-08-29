@@ -105,7 +105,10 @@ assert_safe_vhost() {
     END { print count + 0 }
   ' "$SITE_PATH")"
   upstream_count="$(grep -Ec "proxy_pass[[:space:]]+http://127\\.0\\.0\\.1:(${PORT}|${ALT_PORT});" "$SITE_PATH" || true)"
-  [ "$server_count" = 1 ] || fail "ClubDue nginx vhost cannot be identified safely"
+  # Certbot commonly keeps both an HTTP redirect block and an HTTPS proxy
+  # block in one vhost file, so the domain can legitimately appear twice.
+  # The single managed proxy upstream is the traffic-switch safety boundary.
+  [ "$server_count" -ge 1 ] || fail "ClubDue nginx vhost cannot be identified safely"
   [ "$upstream_count" = 1 ] || fail "ClubDue nginx vhost has no unique managed ClubDue upstream"
   if grep -Eq "proxy_pass[[:space:]]+http://127\\.0\\.0\\.1:(8080|8081);" "$SITE_PATH"; then
     fail "ClubDue nginx vhost references a reserved service port"

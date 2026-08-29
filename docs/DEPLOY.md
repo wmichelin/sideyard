@@ -49,8 +49,10 @@ The initial rollout accepts the legacy stable names (`clubdue` or
 `clubdue-staging`) on the base port and converts them into the `*-previous`
 slot after the candidate is live. It does not create or rewrite an arbitrary
 nginx site: the expected `/etc/nginx/sites-available/<domain>` file must be
-enabled through the matching `sites-enabled` link, contain exactly one matching
-`server_name`, and contain exactly one ClubDue proxy upstream. Any mismatch,
+enabled through the matching `sites-enabled` link, contain the matching
+`server_name`, and contain exactly one ClubDue proxy upstream. A Certbot HTTP
+redirect plus HTTPS proxy may legitimately produce two `server_name` entries.
+Any mismatch,
 nginx validation failure, or candidate readiness failure aborts before the
 active proxy is changed.
 
