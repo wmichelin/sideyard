@@ -179,7 +179,7 @@ func TestHomeownerRenewalUsesScopedCardSpacing(t *testing.T) {
 		"max-width: 42rem;",
 		"padding: 1.25rem;",
 		".renewal-card .section-title {",
-		"padding: 0 0 0.75rem;",
+		"padding: 0 0 1rem;",
 		".renewal-link-actions {",
 		"margin-top: 1rem;",
 		".renewal-link-panel .section-title {",
