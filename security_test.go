@@ -46,6 +46,9 @@ func TestEveryMutationRouteRejectsMissingCSRF(t *testing.T) {
 			if response.Code != http.StatusForbidden {
 				t.Fatalf("POST %s without CSRF = %d, want %d", path, response.Code, http.StatusForbidden)
 			}
+			if response.Header().Get("X-Request-ID") == "" {
+				t.Fatalf("POST %s without CSRF did not receive a request ID", path)
+			}
 		})
 	}
 }

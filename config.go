@@ -25,6 +25,7 @@ type RuntimeLimits struct {
 	ReadTimeout         time.Duration
 	WriteTimeout        time.Duration
 	IdleTimeout         time.Duration
+	ShutdownTimeout     time.Duration
 	AuthMaxAttempts     int
 	AuthThrottleWindow  time.Duration
 }
@@ -58,6 +59,7 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 			ReadTimeout:         15 * time.Second,
 			WriteTimeout:        20 * time.Second,
 			IdleTimeout:         60 * time.Second,
+			ShutdownTimeout:     10 * time.Second,
 			AuthMaxAttempts:     5,
 			AuthThrottleWindow:  5 * time.Minute,
 		},
@@ -117,6 +119,9 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 	}
 	if config.RuntimeLimits.IdleTimeout, err = parsePositiveDuration(getenv("HTTP_IDLE_TIMEOUT"), config.RuntimeLimits.IdleTimeout); err != nil {
 		return Config{}, fmt.Errorf("HTTP_IDLE_TIMEOUT must be a positive duration")
+	}
+	if config.RuntimeLimits.ShutdownTimeout, err = parsePositiveDuration(getenv("HTTP_SHUTDOWN_TIMEOUT"), config.RuntimeLimits.ShutdownTimeout); err != nil {
+		return Config{}, fmt.Errorf("HTTP_SHUTDOWN_TIMEOUT must be a positive duration")
 	}
 	if config.RuntimeLimits.AuthMaxAttempts, err = parsePositiveInt(getenv("AUTH_MAX_ATTEMPTS"), config.RuntimeLimits.AuthMaxAttempts); err != nil {
 		return Config{}, fmt.Errorf("AUTH_MAX_ATTEMPTS must be a positive integer")

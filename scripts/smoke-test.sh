@@ -13,6 +13,10 @@ echo "Smoke-testing ${CLUBDUE_ENV} at ${CLUBDUE_URL} ..."
 
 curl -fsS "${CLUBDUE_URL}/healthz" | grep -qx ok
 echo "  ✓ /healthz"
+curl -fsS "${CLUBDUE_URL}/livez" | grep -qx ok
+echo "  ✓ /livez"
+curl -fsS "${CLUBDUE_URL}/readyz" | grep -qx ok
+echo "  ✓ /readyz"
 
 if [ "$TARGET" = "staging" ]; then
   COOKIE_JAR="$(mktemp)"

@@ -59,6 +59,26 @@ func userFromContext(ctx context.Context) *User {
 }
 
 func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
+	s.handleLivez(w, nil)
+}
+
+func (s *Server) handleLivez(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("ok"))
+}
+
+func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
+	if s.demo || s.store == nil || s.store.db == nil || s.store.db.Pool == nil {
+		http.Error(w, "not ready", http.StatusServiceUnavailable)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+	if err := s.store.db.Pool.Ping(ctx); err != nil {
+		log.Printf("readiness check failed request_id=%s", requestIDFromContext(r.Context()))
+		http.Error(w, "not ready", http.StatusServiceUnavailable)
+		return
+	}
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok"))
 }

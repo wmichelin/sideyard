@@ -397,6 +397,29 @@ func TestLoginRotatesExistingSessionsAndKeepsFailuresGeneric(t *testing.T) {
 	}
 }
 
+func TestReadyzReflectsPostgresAvailability(t *testing.T) {
+	databaseURL := integrationDatabaseURL(t)
+	ctx := context.Background()
+	db, err := openDB(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{store: &Store{db: db}}
+	readyRequest := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	readyResponse := httptest.NewRecorder()
+	server.handleReadyz(readyResponse, readyRequest)
+	if readyResponse.Code != http.StatusOK {
+		t.Fatalf("readyz with Postgres = %d %q", readyResponse.Code, readyResponse.Body.String())
+	}
+
+	db.Close()
+	readyResponse = httptest.NewRecorder()
+	server.handleReadyz(readyResponse, readyRequest)
+	if readyResponse.Code != http.StatusServiceUnavailable {
+		t.Fatalf("readyz with closed Postgres = %d, want %d", readyResponse.Code, http.StatusServiceUnavailable)
+	}
+}
+
 func withAgreementField(in CreateAgreementInput, update func(*CreateAgreementInput)) CreateAgreementInput {
 	update(&in)
 	return in

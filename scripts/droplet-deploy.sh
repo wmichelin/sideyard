@@ -76,8 +76,8 @@ if [ "$CONTAINER" = "clubdue-staging" ]; then
   # on replacing the isolated container; the workflow's next step smoke-tests
   # the public staging URL.
   for attempt in $(seq 1 15); do
-    if curl -fsS "http://127.0.0.1:${PORT}/healthz" >/dev/null; then
-      echo "==> Staging container healthy at http://127.0.0.1:${PORT}/healthz"
+    if curl -fsS "http://127.0.0.1:${PORT}/readyz" >/dev/null; then
+      echo "==> Staging container ready at http://127.0.0.1:${PORT}/readyz"
       exit 0
     fi
     sleep 1
@@ -121,8 +121,8 @@ else
 fi
 
 for attempt in $(seq 1 15); do
-  if curl -fsS "http://127.0.0.1:${PORT}/healthz" >/dev/null; then
-    echo "==> Healthy at http://127.0.0.1:${PORT}/healthz"
+  if curl -fsS "http://127.0.0.1:${PORT}/readyz" >/dev/null; then
+    echo "==> Ready at http://127.0.0.1:${PORT}/readyz"
     exit 0
   fi
   sleep 1

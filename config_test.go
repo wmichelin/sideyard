@@ -66,6 +66,11 @@ func TestLoadConfig(t *testing.T) {
 			env:     map[string]string{"MAX_REQUEST_BODY_BYTES": "1024", "MAX_MULTIPART_MEMORY_BYTES": "1025"},
 			wantErr: "MAX_MULTIPART_MEMORY_BYTES must not exceed MAX_REQUEST_BODY_BYTES",
 		},
+		{
+			name:    "shutdown timeout must be positive",
+			env:     map[string]string{"HTTP_SHUTDOWN_TIMEOUT": "0s"},
+			wantErr: "HTTP_SHUTDOWN_TIMEOUT must be a positive duration",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -7,8 +7,11 @@ import (
 	"html/template"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 )
 
@@ -36,6 +39,8 @@ func run(config Config, args []string) error {
 		}
 		return runProvisionOwner(config)
 	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	tmpl, err := template.ParseFS(templateFS, "templates/*.html")
 	if err != nil {
@@ -48,6 +53,7 @@ func run(config Config, args []string) error {
 	}
 
 	srv := &Server{tmpl: tmpl, config: config, demo: config.DemoMode(), throttle: newAuthThrottle(config.RuntimeLimits)}
+	closeResources := func() {}
 
 	if !srv.demo {
 		ctx := context.Background()
@@ -55,38 +61,41 @@ func run(config Config, args []string) error {
 		if err != nil {
 			return err
 		}
-		defer db.Close()
+		closeResources = db.Close
 
 		auth := newAuth(db, config.SessionSecret, srv.secureCookies())
 		if err := auth.bootstrapShop(ctx, config.BootstrapOwner); err != nil {
+			closeResources()
 			return fmt.Errorf("bootstrap shop: %w", err)
 		}
 
 		srv.auth = auth
 		srv.store = &Store{db: db}
 		if err := srv.store.SyncAllVisitDues(ctx); err != nil {
-			log.Printf("sync visit dues: %v", err)
+			log.Printf("renewal maintenance failed phase=startup operation=sync_visit_dues error=%v", err)
 		}
-		if err := srv.store.GenerateAllRenewalTasks(ctx, time.Now()); err != nil {
-			log.Printf("generate renewal tasks: %v", err)
-		}
-		if err := srv.store.QueueRenewalDigests(ctx, time.Now()); err != nil {
-			log.Printf("queue renewal digests: %v", err)
-		}
-		go runDailyRenewalGeneration(srv.store)
+		runRenewalMaintenance(ctx, srv.store, time.Now, "startup")
+		go runDailyRenewalGeneration(ctx, srv.store, 24*time.Hour, time.Now)
 		log.Print("ClubDue running with Postgres")
 	} else {
 		log.Print("ClubDue running in demo mode (set DATABASE_URL for Postgres)")
 	}
 
-	log.Printf("ClubDue listening on %s", config.Address)
-	return http.ListenAndServe(config.Address, srv.handler(static))
+	listener, err := net.Listen("tcp", config.Address)
+	if err != nil {
+		closeResources()
+		return fmt.Errorf("listen on %s: %w", config.Address, err)
+	}
+	log.Printf("ClubDue listening on %s", listener.Addr())
+	return serveHTTP(ctx, config, srv.handler(static), listener, closeResources)
 }
 
 func (s *Server) handler(static fs.FS) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(static))))
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
+	mux.HandleFunc("GET /livez", s.handleLivez)
+	mux.HandleFunc("GET /readyz", s.handleReadyz)
 	mux.HandleFunc("GET /login", s.handleLoginGet)
 	mux.HandleFunc("POST /login", s.handleLoginPost)
 	mux.HandleFunc("GET /signup", s.handleSignupGet)
@@ -133,7 +142,7 @@ func (s *Server) handler(static fs.FS) http.Handler {
 	mux.HandleFunc("GET /plan-templates/{id}", auth(s.handlePlanTemplateEdit))
 	mux.HandleFunc("POST /plan-templates/{id}", auth(s.handlePlanTemplateEdit))
 
-	return s.securityHandler(mux)
+	return s.requestIDHandler(s.securityHandler(s.completionLogHandler(mux)))
 }
 
 func runProvisionOwner(config Config) error {
@@ -156,17 +165,4 @@ func runProvisionOwner(config Config) error {
 	}
 	log.Printf("owner %s completed", action)
 	return nil
-}
-
-func runDailyRenewalGeneration(store *Store) {
-	ticker := time.NewTicker(24 * time.Hour)
-	defer ticker.Stop()
-	for range ticker.C {
-		if err := store.GenerateAllRenewalTasks(context.Background(), time.Now()); err != nil {
-			log.Printf("generate renewal tasks: %v", err)
-		}
-		if err := store.QueueRenewalDigests(context.Background(), time.Now()); err != nil {
-			log.Printf("queue renewal digests: %v", err)
-		}
-	}
 }
