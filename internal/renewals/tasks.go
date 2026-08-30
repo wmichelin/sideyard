@@ -1,9 +1,11 @@
-package clubdue
+package renewals
 
 import (
 	"context"
 	"fmt"
 	"time"
+
+	"github.com/wmichelin/clubdue/internal/activation"
 )
 
 type RenewalTask struct {
@@ -40,8 +42,16 @@ func renewalDueState(days int) string {
 	}
 }
 
-func (s *Store) GenerateRenewalTasks(ctx context.Context, shopID string, asOf time.Time) error {
-	rows, err := s.db.Pool.Query(ctx, `
+func CycleStart(anniversary, today time.Time, termMonths int) (time.Time, error) {
+	return renewalCycleStart(anniversary, today, termMonths)
+}
+
+func DueState(days int) string {
+	return renewalDueState(days)
+}
+
+func (s *Service) GenerateRenewalTasks(ctx context.Context, shopID string, asOf time.Time) error {
+	rows, err := s.pool.Query(ctx, `
 		SELECT id, anniversary_date, plan_snapshot_term_months
 		FROM agreements
 		WHERE shop_id = $1 AND status = 'active'`, shopID)
@@ -67,7 +77,7 @@ func (s *Store) GenerateRenewalTasks(ctx context.Context, shopID string, asOf ti
 			continue
 		}
 		for _, milestone := range []int{90, 60, 30, 14, 7} {
-			if _, err := s.db.Pool.Exec(ctx, `
+			if _, err := s.pool.Exec(ctx, `
 				INSERT INTO renewal_tasks (shop_id, agreement_id, cycle_start_date, due_at, milestone_days)
 				VALUES ($1, $2, $3, $4, $5)
 				ON CONFLICT (shop_id, agreement_id, cycle_start_date, milestone_days) DO NOTHING`,
@@ -80,8 +90,8 @@ func (s *Store) GenerateRenewalTasks(ctx context.Context, shopID string, asOf ti
 	return rows.Err()
 }
 
-func (s *Store) GenerateAllRenewalTasks(ctx context.Context, asOf time.Time) error {
-	rows, err := s.db.Pool.Query(ctx, `SELECT id FROM shops`)
+func (s *Service) GenerateAllRenewalTasks(ctx context.Context, asOf time.Time) error {
+	rows, err := s.pool.Query(ctx, `SELECT id FROM shops`)
 	if err != nil {
 		return err
 	}
@@ -101,9 +111,9 @@ func (s *Store) GenerateAllRenewalTasks(ctx context.Context, asOf time.Time) err
 // QueueRenewalDigests snapshots the due, actionable task IDs once per shop and
 // day. It intentionally does not send anything; a configured delivery worker
 // can later claim the durable outbox record.
-func (s *Store) QueueRenewalDigests(ctx context.Context, asOf time.Time) error {
+func (s *Service) QueueRenewalDigests(ctx context.Context, asOf time.Time) error {
 	digestDate := time.Date(asOf.UTC().Year(), asOf.UTC().Month(), asOf.UTC().Day(), 0, 0, 0, 0, time.UTC)
-	_, err := s.db.Pool.Exec(ctx, `
+	_, err := s.pool.Exec(ctx, `
 		INSERT INTO renewal_digest_outbox (shop_id, digest_date, task_ids)
 		SELECT t.shop_id, $1::date, ARRAY_AGG(t.id ORDER BY t.due_at, t.id)
 		FROM renewal_tasks t
@@ -113,9 +123,9 @@ func (s *Store) QueueRenewalDigests(ctx context.Context, asOf time.Time) error {
 	return err
 }
 
-func (s *Store) ListRenewalTasks(ctx context.Context, shopID string) ([]RenewalTask, error) {
-	asOf := s.nowUTC()
-	rows, err := s.db.Pool.Query(ctx, `
+func (s *Service) ListRenewalTasks(ctx context.Context, shopID string) ([]RenewalTask, error) {
+	asOf := s.now()
+	rows, err := s.pool.Query(ctx, `
 		SELECT t.id, a.id, c.id, c.name, COALESCE(c.email, ''), COALESCE(c.phone, ''),
 			COALESCE(p.address_line1 || ', ' || p.city || ', ' || p.state || ' ' || p.postal_code, ''),
 			a.plan_snapshot_name, a.anniversary_date, t.due_at, t.milestone_days,
@@ -144,11 +154,11 @@ func (s *Store) ListRenewalTasks(ctx context.Context, shopID string) ([]RenewalT
 	}
 	return out, rows.Err()
 }
-func (s *Store) UpdateRenewalTask(ctx context.Context, shopID, id, status, notes string) error {
+func (s *Service) UpdateRenewalTask(ctx context.Context, shopID, id, status, notes string) error {
 	if status != "open" && status != "contacted" && status != "renewed" && status != "lost" {
 		return fmt.Errorf("invalid status")
 	}
-	tx, err := s.db.Pool.Begin(ctx)
+	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
@@ -179,7 +189,7 @@ func (s *Store) UpdateRenewalTask(ctx context.Context, shopID, id, status, notes
 		WHERE shop_id = $1 AND id = $2`, shopID, id, status, notes); err != nil {
 		return err
 	}
-	if err := recordPilotActivationTx(ctx, tx, shopID, pilotEventFirstRenewalAction); err != nil {
+	if err := activation.RecordTx(ctx, tx, shopID, activation.EventFirstRenewalAction); err != nil {
 		return err
 	}
 
