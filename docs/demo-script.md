@@ -30,7 +30,7 @@ Open **Plan templates** and add a plan if needed. Then open **Customers** and ad
 
 ## 3:15–4:00 — Bring in existing agreements
 
-Open **Import**, upload `internal/clubdue/testdata/sample-import.csv`, and select **Preview import**. Call out the dry-run actions and error count. Choose **Commit import** to apply valid rows. Re-uploading the same file updates matching external IDs instead of creating duplicates.
+Open **Import**, upload `internal/app/testdata/sample-import.csv`, and select **Preview import**. Call out the dry-run actions and error count. Choose **Commit import** to apply valid rows. Re-uploading the same file updates matching external IDs instead of creating duplicates.
 
 ## 4:00–5:00 — Send a homeowner renewal link
 

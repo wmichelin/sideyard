@@ -4,11 +4,11 @@ import (
 	"log"
 	"os"
 
-	"github.com/wmichelin/clubdue/internal/clubdue"
+	"github.com/wmichelin/clubdue/internal/app"
 )
 
 func main() {
-	if err := clubdue.Run(os.Args[1:]); err != nil {
+	if err := app.Run(os.Args[1:]); err != nil {
 		log.Fatal(err)
 	}
 }

@@ -43,7 +43,7 @@ Without `DATABASE_URL`, ClubDue runs an in-memory legacy sample screen instead o
 
 - **Dashboard** — active agreements, renewals due this month, lapsed month-to-date, and overdue visits, with direct links to the work queues.
 - **Agreement book** — create customers and plan templates, then create or edit an agreement with renewal date, status, price, and entitled/used visits.
-- **CSV import** — upload a fixed-format file, inspect a dry-run, and commit it. Re-imports use `external_id` to update rather than duplicate records. Try [`sample-import.csv`](internal/clubdue/testdata/sample-import.csv).
+- **CSV import** — upload a fixed-format file, inspect a dry-run, and commit it. Re-imports use `external_id` to update rather than duplicate records. Try [`sample-import.csv`](internal/app/testdata/sample-import.csv).
 - **Renewals** — work deterministic 90/60/30/14/7-day tasks with customer contact details, property, agreement links, clear upcoming/due/past-due state, and recorded outcomes. Imported overdue agreements remain in the overdue cycle until an explicit outcome is recorded.
 - **Visits** — track seasonal spring/fall due work, bulk mark it handed off to Jobber or completed, and export a Jobber-ready CSV. A Jobber handoff is not an appointment time.
 - **Homeowner renewals** — from an agreement edit page, create a 30-day renewal link. Staging exposes only a clearly non-charging test stub; production asks the homeowner to contact the shop because online payment is unavailable.

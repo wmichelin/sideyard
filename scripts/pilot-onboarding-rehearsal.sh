@@ -10,7 +10,7 @@ APP="clubdue-pilot-rehearsal-app"
 IMAGE="clubdue-pilot-rehearsal:local"
 PORT=18084
 WORK_DIR="$(mktemp -d)"
-FIXTURE="$ROOT/internal/clubdue/testdata/pilot-concierge-import.csv"
+FIXTURE="$ROOT/internal/app/testdata/pilot-concierge-import.csv"
 
 cleanup() {
   docker rm -f "$APP" "$DB" >/dev/null 2>&1 || true

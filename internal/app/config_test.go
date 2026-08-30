@@ -1,4 +1,4 @@
-package clubdue
+package app
 
 import (
 	"html/template"
