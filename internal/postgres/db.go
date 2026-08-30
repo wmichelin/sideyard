@@ -1,4 +1,5 @@
-package clubdue
+// Package postgres owns ClubDue's Postgres connection and migration boundary.
+package postgres
 
 import (
 	"context"
@@ -23,7 +24,8 @@ type DB struct {
 	Pool *pgxpool.Pool
 }
 
-func openDB(ctx context.Context, databaseURL string) (*DB, error) {
+// Open connects to Postgres and applies the embedded migrations.
+func Open(ctx context.Context, databaseURL string) (*DB, error) {
 	cfg, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("parse database url: %w", err)
@@ -57,6 +59,19 @@ func (db *DB) Close() {
 }
 
 func (db *DB) migrate(ctx context.Context) error {
+	conn, err := db.Pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire migration lock connection: %w", err)
+	}
+	defer conn.Release()
+
+	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock(hashtext('clubdue-schema-migrations'))`); err != nil {
+		return fmt.Errorf("acquire migration lock: %w", err)
+	}
+	defer func() {
+		_, _ = conn.Exec(context.WithoutCancel(ctx), `SELECT pg_advisory_unlock(hashtext('clubdue-schema-migrations'))`)
+	}()
+
 	return db.migrateWithFS(ctx, migrationFS)
 }
 

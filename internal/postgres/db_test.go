@@ -1,9 +1,10 @@
-package clubdue
+package postgres
 
 import (
 	"context"
 	"fmt"
 	"io/fs"
+	"os"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -112,6 +113,19 @@ func newMigrationTestDB(t *testing.T, ctx context.Context) *DB {
 		admin.Close()
 	})
 	return &DB{Pool: pool}
+}
+
+func integrationDatabaseURL(t *testing.T) string {
+	t.Helper()
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL != "" {
+		return databaseURL
+	}
+	if os.Getenv("CLUBDUE_REQUIRE_POSTGRES_INTEGRATION") == "1" {
+		t.Fatal("DATABASE_URL is required when Postgres integration tests are required")
+	}
+	t.Skip("DATABASE_URL is required for Postgres integration tests")
+	return ""
 }
 
 func assertMigrationChecksumsRecorded(t *testing.T, ctx context.Context, db *DB) {
