@@ -1,4 +1,4 @@
-package clubdue
+package visits
 
 import (
 	"testing"
