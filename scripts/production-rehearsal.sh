@@ -10,7 +10,7 @@ SOURCE_DB="clubdue-production-rehearsal-db"
 RESTORE_DB="clubdue-production-rehearsal-restore-db"
 APP="clubdue-production-rehearsal-app"
 IMAGE="clubdue-production-rehearsal:local"
-PORT="18083"
+PORT="28083"
 WORK_DIR="$(mktemp -d)"
 
 cleanup() {
@@ -42,13 +42,13 @@ done
 run_deploy_helper clubdue-staging 8082 -e CLUBDUE_DEPLOY_VALIDATE_ONLY=1 >/dev/null
 
 [ "$(run_deploy_helper clubdue 8083 -e CLUBDUE_DEPLOY_TEST_PLAN=candidate)" = \
-  'candidate=18083 active=8083 failure=preserve-active' ]
+  'candidate=28083 active=8083 failure=preserve-active' ]
 [ "$(run_deploy_helper clubdue 8083 -e CLUBDUE_DEPLOY_TEST_PLAN=promote)" = \
-  'proxy=18083 active=18083 previous=8083' ]
+  'proxy=28083 active=28083 previous=8083' ]
 [ "$(run_deploy_helper clubdue 8083 -e CLUBDUE_DEPLOY_TEST_PLAN=next-promote)" = \
-  'release-previous=8083 candidate=8083 active=8083 previous=18083' ]
+  'release-previous=8083 candidate=8083 active=8083 previous=28083' ]
 [ "$(run_deploy_helper clubdue 8083 -e CLUBDUE_DEPLOY_TEST_PLAN=rollback)" = \
-  'proxy=8083 active=8083 previous=18083' ]
+  'proxy=8083 active=8083 previous=28083' ]
 
 wait_for_postgres() {
   local container="$1"

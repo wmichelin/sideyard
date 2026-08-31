@@ -16,9 +16,13 @@ After the P1.1 production infrastructure contract exists, place
 environment file, then run a one-off image on the isolated ClubDue network:
 
 ```bash
+set -a
+. /opt/clubdue/production.env
+set +a
 docker run --rm --network clubdue-production-net \
   --env-file /opt/clubdue/production.env \
   --env-file /root/clubdue-owner-provision.env \
+  -e "DATABASE_URL=postgres://clubdue:${POSTGRES_PASSWORD}@clubdue-production-db:5432/clubdue?sslmode=disable" \
   ghcr.io/wmichelin/clubdue:<reviewed-sha> provision-owner
 ```
 

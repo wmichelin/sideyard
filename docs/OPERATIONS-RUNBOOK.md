@@ -58,7 +58,7 @@ the staging demo account locally and must never be aimed at production.
 This recovery path changes only the ClubDue nginx upstream; it does not touch
 Pantry, Headscale, Postgres data, backups, or credentials. A normal rollout
 leaves one `clubdue-previous` container running on the other ClubDue loopback
-port (`8083`/`18083`). After the required production approvals:
+port (`8083`/`28083`). After the required production approvals:
 
 1. Record the incident time, current image ID, retained previous image ID, and
    both local ports.

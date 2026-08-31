@@ -5,7 +5,7 @@ ClubDue runs on the **same DigitalOcean droplet as Pantry**, in isolated contain
 | Env | URL | Container | Port | Image tag |
 |-----|-----|-----------|------|-----------|
 | **Staging** | https://clubdue-staging.michelindigitalmedia.com | `clubdue-staging-current` | `127.0.0.1:8082` or `:18082` | `:staging` |
-| **Production** | https://clubdue.michelindigitalmedia.com | `clubdue-current` | `127.0.0.1:8083` or `:18083` | promoted `:latest`; deployed by reviewed immutable digest |
+| **Production** | https://clubdue.michelindigitalmedia.com | `clubdue-current` | `127.0.0.1:8083` or `:28083` | promoted `:latest`; deployed by reviewed immutable digest |
 
 Pantry (`:8080`) and Headscale (`127.0.0.1:8081`) are untouched.
 
@@ -20,7 +20,7 @@ approved workflow uses only these production-specific resources:
 | Docker network | `clubdue-production-net` | `clubdue-staging-net` |
 | Postgres container | `clubdue-production-db` | `clubdue-staging-db` |
 | Postgres volume | `clubdue-production-pgdata` | `clubdue-staging-pgdata` |
-| App containers / local ports | `clubdue-current` + one `clubdue-previous` / `127.0.0.1:8083` and `:18083` | `clubdue-staging-current` + one `clubdue-staging-previous` / `127.0.0.1:8082` and `:18082` |
+| App containers / local ports | `clubdue-current` + one `clubdue-previous` / `127.0.0.1:8083` and `:28083` | `clubdue-staging-current` + one `clubdue-staging-previous` / `127.0.0.1:8082` and `:18082` |
 | Root-only environment file | `/opt/clubdue/production.env` | `/opt/clubdue/staging-db.env` |
 
 Never copy the staging environment file, database credentials, session secret,

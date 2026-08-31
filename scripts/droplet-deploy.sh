@@ -14,7 +14,9 @@ validate_target() {
   case "$PORT" in 8080|8081) fail "ClubDue may not target reserved port ${PORT}" ;; esac
   case "$CONTAINER:$PORT" in
     clubdue-staging:8082) ALT_PORT=18082 ;;
-    clubdue:8083) ALT_PORT=18083 ;;
+    # Pantry staging owns 127.0.0.1:18083. Keep ClubDue's rollback slot
+    # isolated so a production candidate never competes for that listener.
+    clubdue:8083) ALT_PORT=28083 ;;
     *) fail "unsupported ClubDue deployment target ${CONTAINER} on ${PORT}" ;;
   esac
 }
@@ -59,7 +61,7 @@ container_port() {
   local mapping
   mapping="$(docker port "$1" 8080/tcp 2>/dev/null || true)"
   case "$mapping" in
-    127.0.0.1:8082|127.0.0.1:18082|127.0.0.1:8083|127.0.0.1:18083) printf '%s\n' "${mapping##*:}" ;;
+    127.0.0.1:8082|127.0.0.1:18082|127.0.0.1:8083|127.0.0.1:28083) printf '%s\n' "${mapping##*:}" ;;
     *) fail "$1 does not expose a supported ClubDue loopback port" ;;
   esac
 }
