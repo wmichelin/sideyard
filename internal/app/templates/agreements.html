@@ -2,9 +2,9 @@
 <header class="page-header">
   <div>
     <h2 class="page-title">Agreements</h2>
-    <p class="page-subtitle">Maintenance plan ledger for your shop.</p>
+    <p class="page-subtitle">Recurring service-plan ledger for your business.</p>
   </div>
-  <a href="/agreements/new" class="primary-btn">+ New agreement</a>
+  {{ if not .Nav.User.IsDemo }}<a href="/agreements/new" class="primary-btn">+ New agreement</a>{{ end }}
 </header>
 <div class="link-row filter-row"><a href="/agreements" class="secondary-btn">All</a><a href="/agreements?filter=active" class="secondary-btn">Active</a><a href="/agreements?renew_days=30" class="secondary-btn">Renewing in 30 days</a><a href="/agreements?renew_days=90" class="secondary-btn">Renewing in 90 days</a></div>
 
@@ -17,7 +17,7 @@
           <th>Property</th>
           <th>Plan</th>
           <th>Anniversary</th>
-          <th>Visits</th>
+          <th>Included services</th>
           <th>Price</th>
           <th>Status</th>
         </tr>

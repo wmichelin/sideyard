@@ -522,6 +522,11 @@ func (s *Store) DashboardStats(ctx context.Context, shopID string) (DashboardSta
 		return stats, err
 	}
 	stats.VisitsOverdue, err = s.CountVisitsOverdue(ctx, shopID)
+	if err != nil {
+		return stats, err
+	}
+	serviceOverdue, err := s.CountServiceOccurrencesOverdue(ctx, shopID)
+	stats.VisitsOverdue += serviceOverdue
 	return stats, err
 }
 

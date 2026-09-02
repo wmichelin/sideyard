@@ -28,7 +28,8 @@
       </label>
       <button type="submit" class="primary-btn full-width">Sign in</button>
     </form>
-    <p class="auth-footer"><a href="/signup">Create a shop account</a></p>
+    {{ if .PublicDemo }}<p class="demo-entry-link"><a href="/demo" class="secondary-btn full-width">Explore a landscaping demo</a></p>{{ end }}
+    {{ if .SignupOpen }}<p class="auth-footer"><a href="/signup">Create a shop account</a></p>{{ end }}
     {{ end }}
   </div>
 </body>

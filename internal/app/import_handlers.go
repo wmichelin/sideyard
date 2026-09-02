@@ -15,6 +15,10 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 		s.renderImportUpload(w, r, user, "")
 		return
 	}
+	if user.IsDemo {
+		http.Error(w, "File uploads are disabled in the public demo.", http.StatusForbidden)
+		return
+	}
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -31,9 +35,10 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) renderImportUpload(w http.ResponseWriter, r *http.Request, user *User, errMsg string) {
 	s.renderLayout(w, r, "Import — ClubDue", "import_content", map[string]any{
-		"Nav":   NavData{Active: "import", User: user},
-		"Step":  "upload",
-		"Error": errMsg,
+		"Nav":    NavData{Active: "import", User: user},
+		"Step":   "upload",
+		"Error":  errMsg,
+		"IsDemo": user.IsDemo,
 	})
 }
 
@@ -55,9 +60,17 @@ func (s *Server) handleImportDryRun(w http.ResponseWriter, r *http.Request, user
 	}
 	defer file.Close()
 
-	raw, err := io.ReadAll(file)
+	// Preview currently carries its exact source payload into the commit form.
+	// Base64 plus form encoding expands it, so use a conservative half-request
+	// raw limit and fail during preview rather than unpredictably at commit.
+	maxRawBytes := s.config.RuntimeLimits.MaxRequestBodyBytes / 2
+	raw, err := io.ReadAll(io.LimitReader(file, maxRawBytes+1))
 	if err != nil {
 		s.renderImportUpload(w, r, user, "Could not read file.")
+		return
+	}
+	if int64(len(raw)) > maxRawBytes {
+		s.renderImportUpload(w, r, user, "CSV is too large for a reliable preview and commit. Split it into smaller files.")
 		return
 	}
 

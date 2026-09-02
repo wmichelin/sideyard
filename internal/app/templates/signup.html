@@ -10,7 +10,11 @@
   <div class="auth-card">
     <p class="eyebrow">Maintenance agreements</p>
     <h1 class="title">Create your shop</h1>
-    <p class="subtitle">One shop account per HVAC/home-services business.</p>
+    {{ if .Closed }}
+    <p class="subtitle">Pilot enrollment is currently invitation-only.</p>
+    <p class="auth-footer"><a href="/login">Return to sign in</a></p>
+    {{ else }}
+    <p class="subtitle">One account per recurring home-service business.</p>
     {{ if .Error }}<p class="error-banner">{{ .Error }}</p>{{ end }}
     <form method="post" action="/signup" class="form-stack">
       {{ template "csrf_field" . }}
@@ -29,6 +33,7 @@
       <button type="submit" class="primary-btn full-width">Create shop</button>
     </form>
     <p class="auth-footer"><a href="/login">Already have an account? Sign in</a></p>
+    {{ end }}
   </div>
 </body>
 </html>

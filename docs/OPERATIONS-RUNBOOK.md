@@ -25,10 +25,33 @@ After every push to `main`, wait for its exact Deploy Staging workflow and run:
 ./scripts/smoke-test.sh staging
 ```
 
-The staging smoke seeds only the isolated demo shop, performs CSRF-aware login,
-checks liveness/readiness, dashboard and agreements, saves a non-final renewal
-outcome, records a Jobber handoff, and verifies the visit CSV export. It uses
-the staging demo account locally and must never be aimed at production.
+The staging smoke checks liveness/readiness, verifies signup and development
+routes are closed, and proves the former shared demo login is retired. It then
+creates two independent ephemeral landscaping tenants, completes recurring
+work, saves a finite renewal outcome, proves setup writes are blocked, checks
+tenant isolation, and verifies the service-work CSV export. It uses fictional
+staging fixtures only and must never be aimed at production. A failed workflow
+smoke automatically switches traffic back to the retained previous staging
+container and leaves the workflow failed for investigation. Staging rollback
+also requires the retained release's `demo-sandbox-v1` safety marker. During
+the first transition from the former shared demo, an unmarked rollback is
+deliberately refused so the old unrestricted routes cannot be reopened; use a
+reviewed fix-forward instead.
+
+Public-demo operations:
+
+- `ENABLE_PUBLIC_DEMO=1` is valid only with `APP_ENV=staging`; remove it and
+  redeploy for the immediate kill switch.
+- Workspaces and sessions expire together after four hours. New demo creation
+  opportunistically deletes expired tenants through a narrowly scoped cascade.
+- The active-workspace cap is 100. A capacity response creates no session and
+  should prompt review of expiry cleanup and database health, not a cap bypass.
+- Never enable uploads/connectors or put real customer information into a demo
+  workspace. Logs record only request IDs and aggregate creation/failure text.
+- `ENABLE_DEV_ROUTES` is development-only. Do not restore the retired shared
+  staging account; provision allowlisted pilot owners through the audited path.
+- Production smoke and the production rehearsal must continue to prove
+  `/demo` returns 404.
 
 ## Backup, restore, and rollback
 
@@ -84,10 +107,10 @@ Production requires both explicit approval in chat and the GitHub production
 environment review described in [RELEASE-WORKFLOW.md](RELEASE-WORKFLOW.md).
 Staging verification is necessary but is never approval to promote.
 
-The current pilot is intentionally limited: one trusted owner, assisted
-onboarding, manual payment contact, CSV-only Jobber handoff, no real email, and
-no automatic appointment scheduling. A "handed off" visit is not an appointment
-time, and the production homeowner renewal page has no payment action. Treat
+The current real-data pilot is intentionally limited: trusted owners, assisted
+onboarding, manual payment contact, CSV-only generic handoff, no real email,
+and no automatic appointment scheduling. A "handed off" service is not an
+appointment time, and the production customer renewal page has no payment action. Treat
 customer data, credential recovery, exports, backups, and deletion requests as
 operator-owned procedures. Policy or legal terms require human approval; this
 document does not present them as approved.

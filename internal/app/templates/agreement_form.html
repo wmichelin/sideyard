@@ -2,7 +2,7 @@
 <header class="page-header">
   <div>
     <h2 class="page-title">{{ if .IsEdit }}Edit agreement{{ else }}New agreement{{ end }}</h2>
-    <p class="page-subtitle">Track anniversary, visits, and renewal status.</p>
+    <p class="page-subtitle">Track renewal terms, included services, and recurring work.</p>
   </div>
   <a href="/agreements" class="secondary-btn">Back to list</a>
 </header>
@@ -11,6 +11,7 @@
 
 <form method="post" action="{{ if .IsEdit }}/agreements/{{ .Form.ID }}{{ else }}/agreements{{ end }}" class="form-panel">
   {{ template "csrf_field" . }}
+  <fieldset class="form-fieldset"{{ if .Nav.User.IsDemo }} disabled{{ end }}>
   <label>
     <span>Customer</span>
     <select name="customer_id" required>
@@ -59,11 +60,11 @@
 
   <div class="form-row">
     <label>
-      <span>Visits entitled</span>
+      <span>Included services</span>
       <input type="number" name="visits_entitled" min="0" value="{{ .Form.VisitsEntitled }}">
     </label>
     <label>
-      <span>Visits used</span>
+      <span>Included services used</span>
       <input type="number" name="visits_used" min="0" value="{{ .Form.VisitsUsed }}">
     </label>
     <label>
@@ -76,14 +77,51 @@
     <span>Notes</span>
     <textarea name="notes" rows="3">{{ .Form.Notes }}</textarea>
   </label>
-
-  <button type="submit" class="primary-btn">{{ if .IsEdit }}Save changes{{ else }}Create agreement{{ end }}</button>
+  </fieldset>
+  {{ if .Nav.User.IsDemo }}<p class="empty-note demo-read-only-note">Agreement terms are read-only in the public demo.</p>{{ else }}<button type="submit" class="primary-btn">{{ if .IsEdit }}Save changes{{ else }}Create agreement{{ end }}</button>{{ end }}
 </form>
 
 {{ if .IsEdit }}
+<section class="panel">
+  <h3 class="section-title">Recurring services</h3>
+  <p class="empty-note">Add work that repeats independently of this plan’s renewal date—for example weekly mowing, biweekly property care, or monthly irrigation checks.</p>
+  {{ if not .Nav.User.IsDemo }}
+  <form method="post" action="/agreements/{{ .Form.ID }}/service-schedules" class="form-stack">
+    {{ template "csrf_field" . }}
+    <div class="form-row">
+      <label><span>Service name</span><input name="service_name" required placeholder="Weekly lawn care"></label>
+      <label><span>Every</span><input type="number" name="cadence_interval" min="1" max="365" value="1" required></label>
+      <label><span>Cadence</span><select name="cadence_unit"><option value="week">Week(s)</option><option value="day">Day(s)</option><option value="month">Month(s)</option></select></label>
+      <label><span>Starts</span><input type="date" name="starts_on" value="{{ .ServiceStartDate }}" required></label>
+      <label><span>Ends (optional)</span><input type="date" name="ends_on"></label>
+    </div>
+    <label class="checkbox-label"><input type="checkbox" name="counts_toward_entitlement" value="1"> Count completions toward this agreement’s included services</label>
+    <button type="submit" class="secondary-btn">Add recurring service</button>
+  </form>
+  {{ end }}
+
+  {{ if .Schedules }}
+  <div class="schedule-list">
+    {{ range .Schedules }}
+    <div class="schedule-row">
+      <div><strong>{{ .ServiceName }}</strong><span class="contact-detail">{{ .CadenceLabel }} from {{ .StartsOnLabel }}{{ if .EndsOnLabel }} through {{ .EndsOnLabel }}{{ end }}</span></div>
+      <form method="post" action="/service-schedules/{{ .ID }}" class="inline-form">
+        {{ template "csrf_field" $ }}
+        <input type="hidden" name="agreement_id" value="{{ $.Form.ID }}">
+        {{ if .Active }}<button name="action" value="pause" class="ghost-btn">Pause</button>{{ else }}<button name="action" value="resume" class="secondary-btn">Resume</button>{{ end }}
+      </form>
+    </div>
+    {{ end }}
+  </div>
+  {{ end }}
+</section>
+
 <section class="panel renewal-link-panel">
-  <h3 class="section-title">Homeowner renewal link</h3>
-  <p class="empty-note">Creates a 30-day customer renewal link. Production asks the customer to contact the shop; staging keeps a clearly non-charging payment test stub.</p>
+  <h3 class="section-title">Customer renewal link</h3>
+  {{ if .Nav.User.IsDemo }}
+  <p class="empty-note">Renewal-link creation is locked in the public demo.</p>
+  {{ else }}
+  <p class="empty-note">Creates a 30-day customer renewal link. Production asks the customer to contact the business; staging keeps a clearly non-charging payment test stub.</p>
   <form method="post" action="/agreements/{{ .Form.ID }}/renewal-link" class="renewal-link-actions" data-renewal-link-form>
     {{ template "csrf_field" . }}
     <button type="submit" class="secondary-btn">Create renewal link</button>
@@ -91,6 +129,7 @@
   <p class="renewal-link" data-renewal-link-result{{ if not .Form.RenewalURL }} hidden{{ end }}><a href="{{ .Form.RenewalURL }}" data-renewal-link target="_blank" rel="noopener">{{ .Form.RenewalURL }}</a></p>
   <p class="renewal-link-status" data-renewal-link-status role="status" hidden></p>
   <script src="/static/renewal-link.js" defer></script>
+  {{ end }}
 </section>
 {{ end }}
 {{ end }}

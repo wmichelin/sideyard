@@ -20,19 +20,74 @@ echo "  ✓ /readyz"
 
 if [ "$TARGET" = "staging" ]; then
   COOKIE_JAR="$(mktemp)"
-  trap 'rm -f "$COOKIE_JAR"' EXIT
+  DEMO_COOKIE_JAR="$(mktemp)"
+  SECOND_DEMO_COOKIE_JAR="$(mktemp)"
+  SECOND_DEMO_REPLAY_JAR="$(mktemp)"
+  trap 'rm -f "$COOKIE_JAR" "$DEMO_COOKIE_JAR" "$SECOND_DEMO_COOKIE_JAR" "$SECOND_DEMO_REPLAY_JAR"' EXIT
+  curl -fsS "${CLUBDUE_URL}/rollback-safetyz" | grep -qx demo-sandbox-v1
+  echo "  ✓ rollback safety marker"
   LOGIN_PAGE="$(curl -fsS -c "$COOKIE_JAR" "${CLUBDUE_URL}/login")"
   CSRF_TOKEN="$(printf '%s' "$LOGIN_PAGE" | sed -n 's/.*name="csrf_token" value="\([^"]*\)".*/\1/p' | head -1)"
   [ -n "$CSRF_TOKEN" ]
-  curl -fsS -b "$COOKIE_JAR" -c "$COOKIE_JAR" -X POST \
-    --data-urlencode "csrf_token=$CSRF_TOKEN" "${CLUBDUE_URL}/dev/seed" >/dev/null
-  LOGIN_STATUS="$(curl -fsS -b "$COOKIE_JAR" -c "$COOKIE_JAR" -o /dev/null -w '%{http_code}' \
+  [[ "$LOGIN_PAGE" == *'Explore a landscaping demo'* ]]
+  SIGNUP_PAGE="$(curl -fsS "${CLUBDUE_URL}/signup")"
+  [[ "$SIGNUP_PAGE" == *'invitation'* ]]
+  DEV_SEED_STATUS="$(curl -sS -b "$COOKIE_JAR" -o /dev/null -w '%{http_code}' -X POST \
+    --data-urlencode "csrf_token=$CSRF_TOKEN" "${CLUBDUE_URL}/dev/seed")"
+  [ "$DEV_SEED_STATUS" = "404" ]
+  LEGACY_LOGIN_STATUS="$(curl -fsS -b "$COOKIE_JAR" -c "$COOKIE_JAR" -o /dev/null -w '%{http_code}' \
     --data-urlencode "csrf_token=$CSRF_TOKEN" \
     --data-urlencode 'email=owner@demo.local' \
     --data-urlencode 'password=demo1234' "${CLUBDUE_URL}/login")"
-  [ "$LOGIN_STATUS" = "303" ]
-  echo "  ✓ staging login"
-  HTML="$(curl -fsS -b "$COOKIE_JAR" "${CLUBDUE_URL}/dashboard")"
+  [ "$LEGACY_LOGIN_STATUS" = "200" ]
+  echo "  ✓ staging signup/dev routes closed and legacy shared login retired"
+
+  DEMO_PAGE="$(curl -fsS -c "$DEMO_COOKIE_JAR" "${CLUBDUE_URL}/demo")"
+  DEMO_CSRF_TOKEN="$(printf '%s' "$DEMO_PAGE" | sed -n 's/.*name="csrf_token" value="\([^"]*\)".*/\1/p' | head -1)"
+  [ -n "$DEMO_CSRF_TOKEN" ]
+  DEMO_STATUS="$(curl -fsS -b "$DEMO_COOKIE_JAR" -c "$DEMO_COOKIE_JAR" -o /dev/null -w '%{http_code}' \
+    --data-urlencode "csrf_token=$DEMO_CSRF_TOKEN" "${CLUBDUE_URL}/demo/session")"
+  [ "$DEMO_STATUS" = "303" ]
+  DEMO_HTML="$(curl -fsS -b "$DEMO_COOKIE_JAR" "${CLUBDUE_URL}/dashboard")"
+  [[ "$DEMO_HTML" == *'Evergreen Lawn &amp; Landscape'* ]]
+  [[ "$DEMO_HTML" == *'Fictional public demo'* ]]
+  HTML="$DEMO_HTML"
+
+  DEMO_WORK_BEFORE="$(curl -fsS -b "$DEMO_COOKIE_JAR" "${CLUBDUE_URL}/visits?filter=due")"
+  DEMO_DUE_COUNT="$(printf '%s' "$DEMO_WORK_BEFORE" | grep -o 'name="occurrence_id"' | wc -l | tr -d ' ')"
+  DEMO_OCCURRENCE_ID="$(printf '%s' "$DEMO_WORK_BEFORE" | sed -n 's/.*name="occurrence_id" value="\([^"]*\)".*/\1/p' | head -1)"
+  [ -n "$DEMO_OCCURRENCE_ID" ]
+  DEMO_WORK_STATUS="$(curl -fsS -b "$DEMO_COOKIE_JAR" -c "$DEMO_COOKIE_JAR" -o /dev/null -w '%{http_code}' -X POST \
+    --data-urlencode "csrf_token=$DEMO_CSRF_TOKEN" \
+    --data-urlencode 'filter=due' \
+    --data-urlencode "occurrence_id=$DEMO_OCCURRENCE_ID" \
+    --data-urlencode 'action=completed' \
+    "${CLUBDUE_URL}/visits?filter=due")"
+  [ "$DEMO_WORK_STATUS" = "303" ]
+  DEMO_WORK_AFTER="$(curl -fsS -b "$DEMO_COOKIE_JAR" "${CLUBDUE_URL}/visits?filter=due")"
+  DEMO_DUE_AFTER="$(printf '%s' "$DEMO_WORK_AFTER" | grep -o 'name="occurrence_id"' | wc -l | tr -d ' ')"
+  [ "$DEMO_DUE_AFTER" -lt "$DEMO_DUE_COUNT" ]
+  BLOCKED_SETUP_STATUS="$(curl -sS -b "$DEMO_COOKIE_JAR" -o /dev/null -w '%{http_code}' -X POST \
+    --data-urlencode "csrf_token=$DEMO_CSRF_TOKEN" \
+    --data-urlencode 'name=Unbounded setup attempt' "${CLUBDUE_URL}/customers")"
+  [ "$BLOCKED_SETUP_STATUS" = "403" ]
+
+  SECOND_DEMO_PAGE="$(curl -fsS -c "$SECOND_DEMO_COOKIE_JAR" "${CLUBDUE_URL}/demo")"
+  SECOND_DEMO_CSRF_TOKEN="$(printf '%s' "$SECOND_DEMO_PAGE" | sed -n 's/.*name="csrf_token" value="\([^"]*\)".*/\1/p' | head -1)"
+  [ -n "$SECOND_DEMO_CSRF_TOKEN" ]
+  SECOND_DEMO_STATUS="$(curl -fsS -b "$SECOND_DEMO_COOKIE_JAR" -c "$SECOND_DEMO_COOKIE_JAR" -o /dev/null -w '%{http_code}' \
+    --data-urlencode "csrf_token=$SECOND_DEMO_CSRF_TOKEN" "${CLUBDUE_URL}/demo/session")"
+  [ "$SECOND_DEMO_STATUS" = "303" ]
+  SECOND_DEMO_WORK="$(curl -fsS -b "$SECOND_DEMO_COOKIE_JAR" "${CLUBDUE_URL}/visits?filter=due")"
+  SECOND_DEMO_DUE_COUNT="$(printf '%s' "$SECOND_DEMO_WORK" | grep -o 'name="occurrence_id"' | wc -l | tr -d ' ')"
+  [ "$SECOND_DEMO_DUE_COUNT" = "$DEMO_DUE_COUNT" ]
+  cp "$SECOND_DEMO_COOKIE_JAR" "$SECOND_DEMO_REPLAY_JAR"
+  SECOND_DEMO_LOGOUT_STATUS="$(curl -fsS -b "$SECOND_DEMO_COOKIE_JAR" -c "$SECOND_DEMO_COOKIE_JAR" -o /dev/null -w '%{http_code}' -X POST \
+    --data-urlencode "csrf_token=$SECOND_DEMO_CSRF_TOKEN" "${CLUBDUE_URL}/logout")"
+  [ "$SECOND_DEMO_LOGOUT_STATUS" = "303" ]
+  SECOND_DEMO_DASHBOARD_STATUS="$(curl -fsS -b "$SECOND_DEMO_REPLAY_JAR" -o /dev/null -w '%{http_code}' "${CLUBDUE_URL}/dashboard")"
+  [ "$SECOND_DEMO_DASHBOARD_STATUS" = "303" ]
+  echo "  ✓ isolated one-click demo, bounded mutations, and tenant separation"
 else
   : "${CLUBDUE_SMOKE_EMAIL:?Set CLUBDUE_SMOKE_EMAIL from a GitHub environment secret}"
   : "${CLUBDUE_SMOKE_PASSWORD:?Set CLUBDUE_SMOKE_PASSWORD from a GitHub environment secret}"
@@ -48,6 +103,9 @@ else
   [ "$LOGIN_STATUS" = "303" ]
   echo "  ✓ production login"
   HTML="$(curl -fsS -b "$COOKIE_JAR" "${CLUBDUE_URL}/dashboard")"
+  DEMO_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' "${CLUBDUE_URL}/demo")"
+  [ "$DEMO_STATUS" = "404" ]
+  echo "  ✓ public demo disabled in production"
 fi
 echo "$HTML" | grep -q 'ClubDue'
 echo "  ✓ dashboard title"
@@ -55,37 +113,25 @@ echo "  ✓ dashboard title"
 if [ "$TARGET" = "staging" ]; then
   echo "$HTML" | grep -q 'Active agreements'
   echo "  ✓ dashboard metrics"
-  AGREEMENTS_HTML="$(curl -fsS -b "$COOKIE_JAR" "${CLUBDUE_URL}/agreements")"
-  [[ "$AGREEMENTS_HTML" == *'Alex Rivera'* ]]
-  echo "  ✓ seeded agreement book"
-  RENEWALS_HTML="$(curl -fsS -b "$COOKIE_JAR" "${CLUBDUE_URL}/renewals")"
+  AGREEMENTS_HTML="$(curl -fsS -b "$DEMO_COOKIE_JAR" "${CLUBDUE_URL}/agreements")"
+  [[ "$AGREEMENTS_HTML" == *'Maya Thompson'* ]]
+  echo "  ✓ fictional landscaping agreement book"
+  RENEWALS_HTML="$(curl -fsS -b "$DEMO_COOKIE_JAR" "${CLUBDUE_URL}/renewals")"
   [[ "$RENEWALS_HTML" == *'Renewal queue'* ]]
   echo "  ✓ renewal queue"
   RENEWAL_TASK_ID="$(printf '%s' "$RENEWALS_HTML" | sed -n 's/.*name="task_id" value="\([^"]*\)".*/\1/p' | head -1)"
   [ -n "$RENEWAL_TASK_ID" ]
-  RENEWAL_STATUS="$(curl -fsS -b "$COOKIE_JAR" -c "$COOKIE_JAR" -o /dev/null -w '%{http_code}' -X POST \
-    --data-urlencode "csrf_token=$CSRF_TOKEN" \
+  RENEWAL_STATUS="$(curl -fsS -b "$DEMO_COOKIE_JAR" -c "$DEMO_COOKIE_JAR" -o /dev/null -w '%{http_code}' -X POST \
+    --data-urlencode "csrf_token=$DEMO_CSRF_TOKEN" \
     --data-urlencode "task_id=$RENEWAL_TASK_ID" \
     --data-urlencode 'status=contacted' \
     --data-urlencode 'notes=staging smoke verification' \
     "${CLUBDUE_URL}/renewals")"
   [ "$RENEWAL_STATUS" = "303" ]
   echo "  ✓ renewal outcome mutation"
-  VISITS_HTML="$(curl -fsS -b "$COOKIE_JAR" "${CLUBDUE_URL}/visits?filter=due")"
-  [[ "$VISITS_HTML" == *'Visit due-list'* ]]
-  VISIT_ID="$(printf '%s' "$VISITS_HTML" | sed -n 's/.*name="visit_id" value="\([^"]*\)".*/\1/p' | head -1)"
-  [ -n "$VISIT_ID" ]
-  VISIT_STATUS="$(curl -fsS -b "$COOKIE_JAR" -c "$COOKIE_JAR" -o /dev/null -w '%{http_code}' -X POST \
-    --data-urlencode "csrf_token=$CSRF_TOKEN" \
-    --data-urlencode 'filter=due' \
-    --data-urlencode "visit_id=$VISIT_ID" \
-    --data-urlencode 'action=scheduled' \
-    "${CLUBDUE_URL}/visits?filter=due")"
-  [ "$VISIT_STATUS" = "303" ]
-  echo "  ✓ visit handoff mutation"
-  VISITS_CSV="$(curl -fsS -b "$COOKIE_JAR" "${CLUBDUE_URL}/visits/export.csv")"
+  VISITS_CSV="$(curl -fsS -b "$DEMO_COOKIE_JAR" "${CLUBDUE_URL}/visits/export.csv")"
   [[ "$VISITS_CSV" == customer_name,* ]]
-  echo "  ✓ visit CSV export"
+  echo "  ✓ service-work CSV export"
 else
   echo "$HTML" | grep -q 'Active agreements'
   echo "  ✓ dashboard metrics"

@@ -35,6 +35,7 @@ type VisitDueRow struct {
 	CustomerName    string
 	CustomerPhone   string
 	PropertyAddress string
+	PlanName        string
 	Season          string
 	DueYear         int
 	Status          VisitStatus
@@ -163,6 +164,7 @@ func (s *Service) ListVisitDues(ctx context.Context, shopID string, dueOnly bool
 			c.name,
 			COALESCE(c.phone, ''),
 			COALESCE(p.address_line1 || ', ' || p.city || ', ' || p.state || ' ' || p.postal_code, ''),
+			a.plan_snapshot_name,
 			vd.season,
 			vd.due_year,
 			vd.status,
@@ -192,7 +194,7 @@ func (s *Service) ListVisitDues(ctx context.Context, shopID string, dueOnly bool
 		var status string
 		if err := rows.Scan(
 			&v.ID, &v.AgreementID, &v.CustomerName, &v.CustomerPhone,
-			&v.PropertyAddress, &v.Season, &v.DueYear, &status,
+			&v.PropertyAddress, &v.PlanName, &v.Season, &v.DueYear, &status,
 			&v.ScheduledAt, &v.CompletedAt, &v.Notes,
 		); err != nil {
 			return nil, err
@@ -314,7 +316,7 @@ func (s *Service) VisitExportRows(ctx context.Context, shopID string, dueOnly bo
 			CustomerName: v.CustomerName,
 			Phone:        v.CustomerPhone,
 			Address:      v.PropertyAddress,
-			ServiceType:  "HVAC tune-up",
+			ServiceType:  v.PlanName,
 			Notes:        notes,
 		})
 	}
@@ -348,7 +350,7 @@ func visitStatusLabel(s VisitStatus) string {
 	case VisitDue:
 		return "Due"
 	case VisitScheduled:
-		return "Handed off to Jobber"
+		return "Handed off"
 	case VisitCompleted:
 		return "Completed"
 	default:

@@ -1,6 +1,6 @@
 # Controlled pilot guide
 
-ClubDue is a maintenance-agreement ledger pilot, not a billing, dispatch, or
+ClubDue is a recurring-service commitment-ledger pilot, not a billing, dispatch, or
 customer-messaging system. This guide is an operating proposal; contractual,
 privacy, retention, consent, and legal terms require human approval before a
 real pilot begins.
@@ -21,6 +21,13 @@ real pilot begins.
 - **Success signal:** the owner imports a reconciled book, completes a first
   renewal or visit action, returns on a later day, and reports whether manual
   handoff stays below the agreed weekly double-entry limit.
+
+The original HVAC pilot remains supported. A landscaping design-partner track
+uses the same tenant/customer/property/agreement core plus recurring service
+schedules. Its research thesis, interview questions, four-week usage gates,
+and explicit product non-goals are in
+[PRODUCT-MARKET-FIT-PATH.md](PRODUCT-MARKET-FIT-PATH.md). A public fictional
+demo is not a real-data pilot and is never an approved place for customer data.
 
 ## Assisted onboarding and first run
 
@@ -88,6 +95,9 @@ handoff only.
 **Does activation telemetry identify homeowners?** No. It captures one
 first-occurrence milestone per shop for pilot learning.
 
-**Can an operator accept every spreadsheet?** No. The present importer needs
-the documented fixed columns and a stable external ID; resolve mappings and
-exceptions manually before commit.
+**Can an operator accept every spreadsheet?** No. The present importer accepts
+the documented required columns plus optional contact/plan fields, common
+Google Sheets CSV formatting, and a stable external ID. It does not infer
+arbitrary headings or connect directly to Google. Resolve mappings and
+exceptions manually before commit, and do not claim fit for the landscaping
+partner until an authorized sanitized sheet reconciles successfully.

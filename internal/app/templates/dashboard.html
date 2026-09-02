@@ -4,7 +4,7 @@
     <h2 class="page-title">Monday dashboard</h2>
     <p class="page-subtitle">Active agreements, renewals due, and MRR at a glance.</p>
   </div>
-  <a href="/agreements/new" class="primary-btn">+ New agreement</a>
+  {{ if not .Nav.User.IsDemo }}<a href="/agreements/new" class="primary-btn">+ New agreement</a>{{ end }}
 </header>
 
 <section class="stats">
@@ -24,9 +24,9 @@
     <span class="stat-meta"><a href="/renewals">{{ .Stats.RenewalsDue90 }} in the next 90 days</a></span>
   </div>
   <div class="stat-card">
-    <span class="stat-label">Visits overdue</span>
+    <span class="stat-label">Services overdue</span>
     <span class="stat-value{{ if gt .Stats.VisitsOverdue 0 }} outstanding{{ end }}">{{ .Stats.VisitsOverdue }}</span>
-    <span class="stat-meta"><a href="/visits">View due-list</a></span>
+    <span class="stat-meta"><a href="/visits">View service work</a></span>
   </div>
 </section>
 
@@ -34,7 +34,7 @@
   <h3 class="section-title">Quick links</h3>
   <div class="link-row dashboard-quick-links">
     <a href="/renewals" class="secondary-btn">Renewal queue</a>
-    <a href="/visits" class="secondary-btn">Visit due-list</a>
+    <a href="/visits" class="secondary-btn">Service work</a>
     <a href="/agreements" class="secondary-btn">All agreements</a>
     <a href="/customers" class="secondary-btn">Customers</a>
   </div>

@@ -62,6 +62,18 @@ func run(config Config, args []string) error {
 		}
 		closeResources = db.Close
 
+		srv.store = &Store{db: db}
+		if config.Environment == EnvironmentStaging {
+			retired, err := srv.store.RetireLegacySharedDemo(ctx)
+			if err != nil {
+				closeResources()
+				return fmt.Errorf("retire legacy staging demo: %w", err)
+			}
+			if retired > 0 {
+				log.Print("Retired legacy shared staging demo tenant")
+			}
+		}
+
 		auth := newAuth(db, config.SessionSecret, srv.secureCookies())
 		if err := auth.bootstrapShop(ctx, config.BootstrapOwner); err != nil {
 			closeResources()
@@ -69,7 +81,6 @@ func run(config Config, args []string) error {
 		}
 
 		srv.auth = auth
-		srv.store = &Store{db: db}
 		if err := srv.store.SyncAllVisitDues(ctx); err != nil {
 			log.Printf("renewal maintenance failed phase=startup operation=sync_visit_dues error=%v", err)
 		}
@@ -95,11 +106,16 @@ func (s *Server) handler(static fs.FS) http.Handler {
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
 	mux.HandleFunc("GET /livez", s.handleLivez)
 	mux.HandleFunc("GET /readyz", s.handleReadyz)
+	mux.HandleFunc("GET /rollback-safetyz", s.handleRollbackSafety)
 	mux.HandleFunc("GET /login", s.handleLoginGet)
 	mux.HandleFunc("POST /login", s.handleLoginPost)
 	mux.HandleFunc("GET /signup", s.handleSignupGet)
 	mux.HandleFunc("POST /signup", s.handleSignupPost)
 	mux.HandleFunc("POST /logout", s.handleLogout)
+	if s.config.EnablePublicDemo && !s.demo {
+		mux.HandleFunc("GET /demo", s.handlePublicDemoGet)
+		mux.HandleFunc("POST /demo/session", s.handlePublicDemoPost)
+	}
 	mux.HandleFunc("GET /renew/{token}", s.handleHomeownerRenewal)
 	mux.HandleFunc("POST /renew/{token}", s.handleHomeownerRenewalPayment)
 	if s.config.EnableDevRoutes && !s.demo {
@@ -122,6 +138,8 @@ func (s *Server) handler(static fs.FS) http.Handler {
 	mux.HandleFunc("GET /agreements/{id}", auth(s.handleAgreementEdit))
 	mux.HandleFunc("POST /agreements/{id}", auth(s.handleAgreementUpdate))
 	mux.HandleFunc("POST /agreements/{id}/renewal-link", auth(s.handleAgreementRenewalLink))
+	mux.HandleFunc("POST /agreements/{id}/service-schedules", auth(s.handleServiceScheduleCreate))
+	mux.HandleFunc("POST /service-schedules/{id}", auth(s.handleServiceScheduleUpdate))
 	mux.HandleFunc("GET /renewals", auth(s.handleRenewals))
 	mux.HandleFunc("POST /renewals", auth(s.handleRenewals))
 	mux.HandleFunc("GET /customers", auth(s.handleCustomers))
@@ -142,6 +160,12 @@ func (s *Server) handler(static fs.FS) http.Handler {
 	mux.HandleFunc("POST /plan-templates/{id}", auth(s.handlePlanTemplateEdit))
 
 	return s.requestIDHandler(s.securityHandler(s.completionLogHandler(mux)))
+}
+
+func (s *Server) handleRollbackSafety(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write([]byte("demo-sandbox-v1\n"))
 }
 
 func runProvisionOwner(config Config) error {

@@ -12,7 +12,7 @@
     <header class="header">
       <div>
         <p class="eyebrow">{{ .Renewal.ShopName }}</p>
-        <h1 class="title">Renew your maintenance plan</h1>
+        <h1 class="title">Renew your service plan</h1>
         <p class="subtitle">Hi {{ .Renewal.CustomerName }}, review your plan and renewal options below.</p>
       </div>
     </header>
@@ -31,7 +31,7 @@
         </form>
         {{ end }}
       {{ else }}
-      <p class="empty-note">Online payment is not available. Contact {{ .Renewal.ShopName }} to renew your plan; the shop will confirm the next steps directly.</p>
+      <p class="empty-note">Online payment is not available. Contact {{ .Renewal.ShopName }} to renew your plan; the business will confirm the next steps directly.</p>
       {{ end }}
     </section>
   </main>

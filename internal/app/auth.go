@@ -26,6 +26,7 @@ type User struct {
 	Email    string
 	Role     string
 	ShopName string
+	IsDemo   bool
 }
 
 type Auth struct {
@@ -167,6 +168,16 @@ func (a *Auth) signup(ctx context.Context, shopName, email, password string) (st
 		return "", err
 	}
 	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('clubdue-signup-email:' || $1))`, email); err != nil {
+		return "", err
+	}
+	var emailExists bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE lower(email) = $1)`, email).Scan(&emailExists); err != nil {
+		return "", err
+	}
+	if emailExists {
+		return "", errors.New("email already registered")
+	}
 
 	var shopID string
 	if err := tx.QueryRow(ctx,
@@ -222,29 +233,45 @@ func (a *Auth) login(ctx context.Context, email, password string) (string, error
 }
 
 func (a *Auth) createSession(ctx context.Context, userID string) (string, error) {
+	return a.createSessionUntil(ctx, userID, a.sessionExpiry())
+}
+
+func (a *Auth) createSessionUntil(ctx context.Context, userID string, expires time.Time) (string, error) {
 	token, err := randomToken(32)
 	if err != nil {
 		return "", err
 	}
 	tokenHash := hashToken(token, a.sessionSecret)
-	expires := a.sessionExpiry()
-
-	_, err = a.db.Pool.Exec(ctx, `
+	tx, err := a.db.Pool.Begin(ctx)
+	if err != nil {
+		return "", fmt.Errorf("begin session: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE expires_at <= $1`, a.nowUTC()); err != nil {
+		return "", fmt.Errorf("clean expired sessions: %w", err)
+	}
+	_, err = tx.Exec(ctx, `
 		INSERT INTO sessions (user_id, token_hash, expires_at) VALUES ($1, $2, $3)`,
 		userID, tokenHash, expires,
 	)
 	if err != nil {
 		return "", fmt.Errorf("create session: %w", err)
 	}
+	if err := tx.Commit(ctx); err != nil {
+		return "", fmt.Errorf("commit session: %w", err)
+	}
 	return token, nil
 }
 
-func (a *Auth) logout(ctx context.Context, token string) {
+func (a *Auth) logout(ctx context.Context, token string) error {
 	if token == "" {
-		return
+		return nil
 	}
 	tokenHash := hashToken(token, a.sessionSecret)
-	_, _ = a.db.Pool.Exec(ctx, `DELETE FROM sessions WHERE token_hash = $1`, tokenHash)
+	if _, err := a.db.Pool.Exec(ctx, `DELETE FROM sessions WHERE token_hash = $1`, tokenHash); err != nil {
+		return fmt.Errorf("revoke session: %w", err)
+	}
+	return nil
 }
 
 func (a *Auth) userFromRequest(ctx context.Context, r *http.Request) (*User, error) {
@@ -256,12 +283,13 @@ func (a *Auth) userFromRequest(ctx context.Context, r *http.Request) (*User, err
 
 	var u User
 	err = a.db.Pool.QueryRow(ctx, `
-		SELECT u.id, u.shop_id, u.email, u.role, s.name
+		SELECT u.id, u.shop_id, u.email, u.role, s.name, s.kind = 'demo_sandbox'
 		FROM sessions sess
 		JOIN users u ON u.id = sess.user_id
 		JOIN shops s ON s.id = u.shop_id
 		WHERE sess.token_hash = $1 AND sess.expires_at > $2
-		`, tokenHash, a.nowUTC()).Scan(&u.ID, &u.ShopID, &u.Email, &u.Role, &u.ShopName)
+		  AND (s.expires_at IS NULL OR s.expires_at > $2)
+		`, tokenHash, a.nowUTC()).Scan(&u.ID, &u.ShopID, &u.Email, &u.Role, &u.ShopName, &u.IsDemo)
 	if err != nil {
 		return nil, errors.New("unauthenticated")
 	}
@@ -269,6 +297,10 @@ func (a *Auth) userFromRequest(ctx context.Context, r *http.Request) (*User, err
 }
 
 func (a *Auth) setSessionCookie(w http.ResponseWriter, token string) {
+	a.setSessionCookieFor(w, token, sessionTTL)
+}
+
+func (a *Auth) setSessionCookieFor(w http.ResponseWriter, token string, ttl time.Duration) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    token,
@@ -276,7 +308,7 @@ func (a *Auth) setSessionCookie(w http.ResponseWriter, token string) {
 		HttpOnly: true,
 		Secure:   a.secureCookies,
 		SameSite: http.SameSiteLaxMode,
-		MaxAge:   int(sessionTTL.Seconds()),
+		MaxAge:   int(ttl.Seconds()),
 	})
 }
 

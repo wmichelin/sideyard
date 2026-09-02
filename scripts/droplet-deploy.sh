@@ -162,6 +162,10 @@ if [ "$DEPLOY_MODE" = rollback ]; then
   previous_port="$(container_port "$PREVIOUS_CONTAINER")"
   [ "$current_port" != "$previous_port" ] || fail "current and previous ClubDue releases share a port"
   wait_for_ready "$previous_port" || fail "retained previous ClubDue release is not ready"
+  if [ "$CONTAINER" = clubdue-staging ]; then
+    rollback_marker="$(curl -fsS "http://127.0.0.1:${previous_port}/rollback-safetyz" 2>/dev/null || true)"
+    [ "$rollback_marker" = "demo-sandbox-v1" ] || fail "retained staging release predates demo-sandbox safety; refusing unsafe rollback"
+  fi
   switch_proxy "$previous_port"
   docker rename "$CURRENT_CONTAINER" "$CANDIDATE_CONTAINER"
   docker rename "$PREVIOUS_CONTAINER" "$CURRENT_CONTAINER"
@@ -184,7 +188,7 @@ if [ "$CONTAINER" = clubdue-staging ]; then
   fi
   set -a; . "$ENV_FILE"; set +a
   ensure_database "$NETWORK" "$DB" "$VOLUME"
-  APP_ENV=( -e APP_ENV=staging -e ENABLE_DEV_ROUTES=1 )
+  APP_ENV=( -e APP_ENV=staging -e ENABLE_PUBLIC_DEMO=1 )
 else
   ENV_FILE=/opt/clubdue/production.env
   NETWORK=clubdue-production-net; DB=clubdue-production-db; VOLUME=clubdue-production-pgdata

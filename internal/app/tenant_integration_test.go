@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -115,6 +116,78 @@ func TestAgreementKeepsPlanTermsSnapshotAfterTemplateEdit(t *testing.T) {
 	}
 	if agreement.PlanName != "Gold 2026" {
 		t.Fatalf("agreement list/detail used live template name %q", agreement.PlanName)
+	}
+}
+
+func TestSignupEmailCannotCreateMultipleTenantIdentities(t *testing.T) {
+	databaseURL := integrationDatabaseURL(t)
+	ctx := context.Background()
+	db, err := openDB(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	auth := newAuth(db, strings.Repeat("s", 32), false)
+	stamp := time.Now().UTC().Format("20060102150405.000000000")
+	email := "signup-" + stamp + "@example.test"
+	firstShop := "Signup One " + stamp
+	secondShop := "Signup Two " + stamp
+	if _, err := auth.signup(ctx, firstShop, email, "valid-password"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := auth.signup(ctx, secondShop, strings.ToUpper(email), "valid-password"); err == nil {
+		t.Fatal("duplicate signup email created a second tenant identity")
+	}
+	var users, shops int
+	if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM users WHERE lower(email) = $1`, email).Scan(&users); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM shops WHERE name IN ($1, $2)`, firstShop, secondShop).Scan(&shops); err != nil {
+		t.Fatal(err)
+	}
+	if users != 1 || shops != 1 {
+		t.Fatalf("duplicate signup leaked identities: users=%d shops=%d", users, shops)
+	}
+}
+
+func TestRetireLegacySharedDemoIsNarrowAndIdempotent(t *testing.T) {
+	databaseURL := integrationDatabaseURL(t)
+	ctx := context.Background()
+	db, err := openDB(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	store := &Store{db: db}
+	stamp := time.Now().UTC().Format("20060102150405.000000000")
+	controlShop := createTestShop(t, ctx, db, "legacy-control-"+stamp)
+	var legacyShop string
+	if err := db.Pool.QueryRow(ctx, `INSERT INTO shops (name, slug) VALUES ('Legacy shared demo', 'demo-hvac-shop') RETURNING id`).Scan(&legacyShop); err != nil {
+		t.Fatal(err)
+	}
+	if err := insertTestUser(ctx, db, legacyShop, "owner@demo.local"); err != nil {
+		t.Fatal(err)
+	}
+	retired, err := store.RetireLegacySharedDemo(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retired != 1 {
+		t.Fatalf("retired shops = %d, want 1", retired)
+	}
+	var legacyRemaining, controlRemaining int
+	if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM shops WHERE id = $1`, legacyShop).Scan(&legacyRemaining); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM shops WHERE id = $1`, controlShop).Scan(&controlRemaining); err != nil {
+		t.Fatal(err)
+	}
+	if legacyRemaining != 0 || controlRemaining != 1 {
+		t.Fatalf("legacy cleanup scope: legacy=%d control=%d", legacyRemaining, controlRemaining)
+	}
+	retired, err = store.RetireLegacySharedDemo(ctx)
+	if err != nil || retired != 0 {
+		t.Fatalf("idempotent cleanup = %d, %v", retired, err)
 	}
 }
 
@@ -417,6 +490,342 @@ func TestReadyzReflectsPostgresAvailability(t *testing.T) {
 	server.handleReadyz(readyResponse, readyRequest)
 	if readyResponse.Code != http.StatusServiceUnavailable {
 		t.Fatalf("readyz with closed Postgres = %d, want %d", readyResponse.Code, http.StatusServiceUnavailable)
+	}
+}
+
+func TestRecurringServiceOccurrencesAreIdempotentTenantScopedAndFinal(t *testing.T) {
+	databaseURL := integrationDatabaseURL(t)
+	ctx := context.Background()
+	db, err := openDB(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	now := time.Date(2034, time.March, 15, 12, 0, 0, 0, time.UTC)
+	store := &Store{db: db, clock: fixedClock{now: now}}
+	stamp := time.Now().UTC().Format("20060102150405.000000000")
+	shopOne := createTestShop(t, ctx, db, "service-one-"+stamp)
+	shopTwo := createTestShop(t, ctx, db, "service-two-"+stamp)
+	customerID := createTestCustomer(t, ctx, db, shopOne, "Landscape Customer")
+	propertyID := createTestProperty(t, ctx, db, shopOne, customerID, "14 Green Way")
+	planID := createTestPlan(t, ctx, db, shopOne, "Recurring Landscape Plan")
+	agreementID, err := store.CreateAgreement(ctx, shopOne, CreateAgreementInput{
+		CustomerID: customerID, PropertyID: propertyID, PlanTemplateID: planID,
+		Status: AgreementActive, AnniversaryDate: now.AddDate(1, 0, 0), PriceCents: 18500,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scheduleID, err := store.CreateServiceSchedule(ctx, shopOne, ServiceScheduleInput{
+		AgreementID: agreementID, ExternalID: "weekly-landscape", ServiceName: "Weekly mow, edge & blow",
+		CadenceUnit: "week", CadenceInterval: 1, StartsOn: now.AddDate(0, 0, -14),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var firstCount int
+	if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM service_occurrences WHERE shop_id = $1 AND schedule_id = $2`, shopOne, scheduleID).Scan(&firstCount); err != nil {
+		t.Fatal(err)
+	}
+	if firstCount < 10 {
+		t.Fatalf("generated occurrences = %d, want bounded lookback and horizon", firstCount)
+	}
+	if err := store.serviceWorkService().GenerateScheduleOccurrences(ctx, shopOne, scheduleID); err != nil {
+		t.Fatal(err)
+	}
+	var secondCount int
+	if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM service_occurrences WHERE shop_id = $1 AND schedule_id = $2`, shopOne, scheduleID).Scan(&secondCount); err != nil {
+		t.Fatal(err)
+	}
+	if secondCount != firstCount {
+		t.Fatalf("repeated generation changed count from %d to %d", firstCount, secondCount)
+	}
+
+	occurrences, err := store.ListServiceOccurrences(ctx, shopOne, true)
+	if err != nil || len(occurrences) == 0 {
+		t.Fatalf("list occurrences = %d, %v", len(occurrences), err)
+	}
+	occurrenceID := occurrences[0].ID
+	if err := store.UpdateServiceOccurrences(ctx, shopOne,
+		[]string{occurrenceID, "00000000-0000-0000-0000-000000000000"}, "completed", "must roll back"); err == nil {
+		t.Fatal("bulk update with a missing occurrence unexpectedly succeeded")
+	}
+	var statusAfterFailedBatch string
+	if err := db.Pool.QueryRow(ctx, `SELECT status FROM service_occurrences WHERE id = $1`, occurrenceID).Scan(&statusAfterFailedBatch); err != nil {
+		t.Fatal(err)
+	}
+	if statusAfterFailedBatch != "due" {
+		t.Fatalf("failed bulk update partially committed status %q", statusAfterFailedBatch)
+	}
+	if err := store.UpdateServiceOccurrence(ctx, shopTwo, occurrenceID, "completed", "cross tenant"); err == nil {
+		t.Fatal("cross-tenant service outcome was accepted")
+	}
+	if err := store.UpdateServiceOccurrence(ctx, shopOne, occurrenceID, "completed", "finished from phone"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateServiceOccurrence(ctx, shopOne, occurrenceID, "completed", "retry"); err != nil {
+		t.Fatalf("idempotent completion retry failed: %v", err)
+	}
+	if err := store.UpdateServiceOccurrence(ctx, shopOne, occurrenceID, "skipped", "rewrite"); err == nil {
+		t.Fatal("final completed outcome was rewritten")
+	}
+	futureNow := now.AddDate(0, 0, 200)
+	futureStore := &Store{db: db, clock: fixedClock{now: futureNow}}
+	if err := futureStore.serviceWorkService().GenerateScheduleOccurrences(ctx, shopOne, scheduleID); err != nil {
+		t.Fatal(err)
+	}
+	var recoveredGap int
+	if err := db.Pool.QueryRow(ctx, `
+		SELECT count(*) FROM service_occurrences
+		WHERE shop_id = $1 AND schedule_id = $2
+		  AND due_on > $3::date + 90 AND due_on < $4::date - 30`,
+		shopOne, scheduleID, now, futureNow).Scan(&recoveredGap); err != nil {
+		t.Fatal(err)
+	}
+	if recoveredGap == 0 {
+		t.Fatal("long-outage recurrence gap was silently skipped")
+	}
+	if err := futureStore.SetServiceScheduleActive(ctx, shopOne, scheduleID, false); err != nil {
+		t.Fatal(err)
+	}
+	resumeNow := futureNow.AddDate(0, 0, 100)
+	resumeStore := &Store{db: db, clock: fixedClock{now: resumeNow}}
+	if err := resumeStore.SetServiceScheduleActive(ctx, shopOne, scheduleID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := resumeStore.serviceWorkService().GenerateScheduleOccurrences(ctx, shopOne, scheduleID); err != nil {
+		t.Fatal(err)
+	}
+	var pausedIntervalWork int
+	if err := db.Pool.QueryRow(ctx, `
+		SELECT count(*) FROM service_occurrences
+		WHERE shop_id = $1 AND schedule_id = $2
+		  AND due_on >= $3::date AND due_on < $4::date`,
+		shopOne, scheduleID, futureNow, resumeNow).Scan(&pausedIntervalWork); err != nil {
+		t.Fatal(err)
+	}
+	if pausedIntervalWork != 0 {
+		t.Fatalf("pause/resume backfilled %d bogus obligations", pausedIntervalWork)
+	}
+	if _, err := db.Pool.Exec(ctx, `UPDATE agreements SET status = 'cancelled' WHERE shop_id = $1 AND id = $2`, shopOne, agreementID); err != nil {
+		t.Fatal(err)
+	}
+	dueAfterCancellation, err := store.ListServiceOccurrences(ctx, shopOne, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dueAfterCancellation) != 0 {
+		t.Fatalf("cancelled agreement still exposed %d due occurrences", len(dueAfterCancellation))
+	}
+	exportRows, err := store.ServiceOccurrenceExportRows(ctx, shopOne, true)
+	if err != nil || len(exportRows) != 0 {
+		t.Fatalf("cancelled service export = %+v, %v", exportRows, err)
+	}
+	allExportRows, err := store.ServiceOccurrenceExportRows(ctx, shopOne, false)
+	if err != nil || len(allExportRows) == 0 || allExportRows[0].ServiceType != "Weekly mow, edge & blow" {
+		t.Fatalf("service history export = %+v, %v", allExportRows, err)
+	}
+}
+
+func TestPublicDemoCreatesIsolatedExpiringFictionalTenants(t *testing.T) {
+	databaseURL := integrationDatabaseURL(t)
+	ctx := context.Background()
+	db, err := openDB(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	now := time.Date(2035, time.April, 8, 9, 0, 0, 0, time.UTC)
+	clock := fixedClock{now: now}
+	store := &Store{db: db, clock: clock}
+	first, err := store.SeedPublicDemo(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := store.SeedPublicDemo(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.ShopID == second.ShopID || first.UserID == second.UserID {
+		t.Fatal("public demo visitors shared a tenant or user")
+	}
+	if !first.ExpiresAt.Equal(now.Add(publicDemoTTL)) {
+		t.Fatalf("demo expiry = %s", first.ExpiresAt)
+	}
+	for _, result := range []PublicDemoResult{first, second} {
+		var kind string
+		var customers, schedules int
+		if err := db.Pool.QueryRow(ctx, `SELECT kind FROM shops WHERE id = $1`, result.ShopID).Scan(&kind); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM customers WHERE shop_id = $1`, result.ShopID).Scan(&customers); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM service_schedules WHERE shop_id = $1`, result.ShopID).Scan(&schedules); err != nil {
+			t.Fatal(err)
+		}
+		if kind != "demo_sandbox" || customers != 3 || schedules != 3 {
+			t.Fatalf("demo fixture kind=%q customers=%d schedules=%d", kind, customers, schedules)
+		}
+	}
+	auth := newAuthWithClock(db, "demo-session-secret", false, clock)
+	token, err := auth.createSessionUntil(ctx, first.UserID, first.ExpiresAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
+	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: token})
+	user, err := auth.userFromRequest(ctx, request)
+	if err != nil || !user.IsDemo || user.ShopID != first.ShopID {
+		t.Fatalf("demo session user = %+v, %v", user, err)
+	}
+	if err := auth.logout(ctx, token); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := auth.userFromRequest(ctx, request); err == nil {
+		t.Fatal("server accepted a revoked demo session token")
+	}
+	var firstAgreementID string
+	if err := db.Pool.QueryRow(ctx, `SELECT id FROM agreements WHERE shop_id = $1 ORDER BY id LIMIT 1`, first.ShopID).Scan(&firstAgreementID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CreateRenewalLink(ctx, first.ShopID, firstAgreementID, "expiring-demo-link", now.Add(30*24*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	expiredStore := &Store{db: db, clock: fixedClock{now: now.Add(publicDemoTTL)}}
+	if _, err := expiredStore.GetHomeownerRenewal(ctx, "expiring-demo-link"); err == nil {
+		t.Fatal("public renewal link outlived its demo sandbox")
+	}
+	if err := expiredStore.CleanupExpiredPublicDemos(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var remaining int
+	if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM shops WHERE id IN ($1, $2)`, first.ShopID, second.ShopID).Scan(&remaining); err != nil {
+		t.Fatal(err)
+	}
+	if remaining != 0 {
+		t.Fatalf("expired demo cleanup left %d sandboxes", remaining)
+	}
+}
+
+func TestLandscapingSheetsImportCreatesIdempotentRecurringWork(t *testing.T) {
+	databaseURL := integrationDatabaseURL(t)
+	ctx := context.Background()
+	db, err := openDB(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	now := time.Date(2026, time.September, 1, 12, 0, 0, 0, time.UTC)
+	store := &Store{db: db, clock: fixedClock{now: now}}
+	stamp := time.Now().UTC().Format("20060102150405.000000000")
+	shopID := createTestShop(t, ctx, db, "landscape-import-"+stamp)
+
+	fixture, err := os.Open("testdata/landscaping-google-sheets-template.csv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := parseImportCSV(fixture)
+	_ = fixture.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows[1].ServiceExternalID = "bespoke-service-key"
+	analysis, err := store.AnalyzeImport(ctx, shopID, rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if analysis.Summary.Errors != 0 || analysis.Summary.NewSchedules != 3 {
+		t.Fatalf("landscaping preview = %+v", analysis.Summary)
+	}
+	if _, err := store.CommitImport(ctx, shopID, rows); err != nil {
+		t.Fatal(err)
+	}
+	occurrences, err := store.ListServiceOccurrences(ctx, shopID, true)
+	if err != nil || len(occurrences) == 0 {
+		t.Fatalf("imported recurring work = %d, %v", len(occurrences), err)
+	}
+	var overdueID string
+	for _, occurrence := range occurrences {
+		if occurrence.IsOverdue && occurrence.ServiceName == rows[0].ServiceName {
+			overdueID = occurrence.ID
+			break
+		}
+	}
+	if overdueID == "" {
+		t.Fatal("fixture did not produce an unresolved overdue commitment")
+	}
+	if _, err := store.CommitImport(ctx, shopID, rows); err != nil {
+		t.Fatal(err)
+	}
+	var customers, agreements, schedules int
+	if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM customers WHERE shop_id = $1`, shopID).Scan(&customers); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM agreements WHERE shop_id = $1`, shopID).Scan(&agreements); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM service_schedules WHERE shop_id = $1`, shopID).Scan(&schedules); err != nil {
+		t.Fatal(err)
+	}
+	if customers != 3 || agreements != 3 || schedules != 3 {
+		t.Fatalf("re-import duplicated rows: customers=%d agreements=%d schedules=%d", customers, agreements, schedules)
+	}
+	if _, err := store.CreatePlanTemplate(ctx, shopID, "Imported Upgrade", "Should not replace captured terms", 9900, 12, 7); err != nil {
+		t.Fatal(err)
+	}
+	planMismatch := append([]ImportRow(nil), rows...)
+	planMismatch[0].PlanName = "Imported Upgrade"
+	if _, err := store.CommitImport(ctx, shopID, planMismatch); err == nil {
+		t.Fatal("re-import silently replaced immutable agreement plan terms")
+	}
+	var planTemplateID *string
+	var capturedPlan string
+	var capturedVisits, entitledVisits int
+	if err := db.Pool.QueryRow(ctx, `
+		SELECT plan_template_id, plan_snapshot_name, plan_snapshot_visits_per_year, visits_entitled
+		FROM agreements WHERE shop_id = $1 AND external_id = $2`, shopID, rows[0].ExternalID,
+	).Scan(&planTemplateID, &capturedPlan, &capturedVisits, &entitledVisits); err != nil {
+		t.Fatal(err)
+	}
+	if planTemplateID != nil || capturedPlan != "Custom plan" || capturedVisits != 0 || entitledVisits != 0 {
+		t.Fatalf("immutable terms changed: plan=%v snapshot=%q captured=%d entitled=%d", planTemplateID, capturedPlan, capturedVisits, entitledVisits)
+	}
+	rows[0].CadenceInterval = 2
+	if _, err := store.CommitImport(ctx, shopID, rows); err != nil {
+		t.Fatal(err)
+	}
+	var cadence int
+	if err := db.Pool.QueryRow(ctx, `
+		SELECT cadence_interval FROM service_schedules
+		WHERE shop_id = $1 AND external_id = $2`, shopID, rows[0].ServiceExternalID).Scan(&cadence); err != nil {
+		t.Fatal(err)
+	}
+	if cadence != 2 {
+		t.Fatalf("corrected recurrence cadence = %d, want 2", cadence)
+	}
+	var preservedStatus string
+	if err := db.Pool.QueryRow(ctx, `SELECT status FROM service_occurrences WHERE id = $1`, overdueID).Scan(&preservedStatus); err != nil {
+		t.Fatalf("corrected recurrence deleted unresolved overdue work: %v", err)
+	}
+	if preservedStatus != "due" {
+		t.Fatalf("corrected recurrence changed unresolved outcome to %q", preservedStatus)
+	}
+	omitted := append([]ImportRow(nil), rows...)
+	omitted[1].ServiceName = ""
+	omitted[1].ServiceExternalID = omitted[1].ExternalID + "-service"
+	if _, err := store.CommitImport(ctx, shopID, omitted); err == nil {
+		t.Fatal("re-import silently orphaned an existing recurring service")
+	}
+	rekeyed := append([]ImportRow(nil), rows...)
+	rekeyed[1].ServiceExternalID = "rekeyed-service"
+	if _, err := store.CommitImport(ctx, shopID, rekeyed); err == nil {
+		t.Fatal("re-import silently created a second service for an existing agreement")
+	}
+	reassigned := append([]ImportRow(nil), rows...)
+	reassigned[2].ServiceExternalID = rows[1].ServiceExternalID
+	if _, err := store.CommitImport(ctx, shopID, reassigned); err == nil {
+		t.Fatal("stable service identity was reassigned with its outcome history")
 	}
 }
 

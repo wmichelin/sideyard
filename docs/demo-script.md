@@ -1,39 +1,69 @@
-# ClubDue: five-minute shop-owner walkthrough
+# ClubDue: five-minute recurring-service walkthrough
 
-This script uses the included demo shop. Before presenting, follow the “Local demo in five minutes” steps in the [README](../README.md), seed the database, and sign in as `owner@demo.local`.
+For a prospect, open the permanent staging link:
 
-## 0:00–0:45 — Open the dashboard
+<https://clubdue-staging.michelindigitalmedia.com/demo>
 
-Start on **Dashboard**. Explain that this is the morning view for the agreement manager:
+It enters a fresh fictional landscaping workspace without credentials. The
+banner identifies the data as fictional and temporary. For the established
+local HVAC fixture, follow the README seed/login steps instead.
 
-- Active agreements shows the current book of business.
-- Renewals due this month and lapsed MTD highlight retention work.
-- Visits overdue points directly to unscheduled tune-ups.
+## 0:00–0:45 — Start with the morning question
 
-Click **Renewal queue** and then return to the dashboard.
+Open **Dashboard**. Frame ClubDue as a commitment book rather than another
+dispatch or accounting suite:
 
-## 0:45–1:30 — Review upcoming renewals
+- Active agreements is the current book of business.
+- Renewals due and lapsed plans expose retention work.
+- Services overdue links directly to commitments that need an outcome.
 
-On **Renewals**, show the actionable milestone rows. Each row includes the homeowner’s phone/email, property, linked agreement, anniversary, and an upcoming/due-today/past-due state. Imported overdue agreements stay visible in their overdue cycle until the owner records an outcome.
+The useful question is: “Who have we promised work to, and what is at risk of
+being forgotten?”
 
-Record a non-final **Contacted** outcome and note to show that queue work is
-saved. The app does not send or track outreach automatically, and a **Renewed**
-or **Lost** outcome remains an owner-recorded operational decision.
+## 0:45–1:45 — Work the recurring queue
 
-## 1:30–2:20 — Work visits and export to Jobber
+Open **Service work**. The fictional business includes weekly lawn care,
+biweekly property care, and monthly irrigation checks. Show the customer,
+property, actual service name, date, and due/overdue state.
 
-Open **Visits**. Point out spring/fall due windows and the overdue emphasis. Select one or two visits and use **Mark handed off to Jobber** or **Mark completed**. Explain that the handoff records the Jobber click/time, not a booked appointment. Then choose **Export CSV** to demonstrate the Jobber-paste export.
+Select one item and use **Mark completed** or **Mark skipped**. Refresh to show
+that the outcome is retained. Explain the boundary honestly: ClubDue is not
+optimizing routes, tracking GPS, or sending a technician automatically.
 
-## 2:20–3:15 — Add a plan, customer, and agreement
+## 1:45–2:35 — Inspect and change a recurring commitment
 
-Open **Plan templates** and add a plan if needed. Then open **Customers** and add a homeowner. Go to **Agreements → New agreement**, select the customer and plan, enter an anniversary date and price, then save. The agreement appears in the book with visit entitlement and status.
+Open the linked service plan. Under **Recurring services**, show the recurrence
+and start/end boundary. Add a small example or pause/resume the existing
+schedule. Recurrence is separate from renewal terms, so weekly work does not
+pretend to be a spring/fall entitlement.
 
-## 3:15–4:00 — Bring in existing agreements
+## 2:35–3:20 — Review renewal work
 
-Open **Import**, upload `internal/app/testdata/sample-import.csv`, and select **Preview import**. Call out the dry-run actions and error count. Choose **Commit import** to apply valid rows. Re-uploading the same file updates matching external IDs instead of creating duplicates.
+Open **Renewals**. Each row includes contact details, property, agreement,
+anniversary, and an upcoming/due/past-due state. Record a non-final
+**Contacted** outcome and a fictional note. ClubDue does not send outreach or
+decide that a customer paid; outcomes are explicit owner records.
 
-## 4:00–5:00 — Send a homeowner renewal link
+## 3:20–4:10 — Explain Sheets onboarding
 
-Open an agreement, scroll to **Homeowner renewal link**, and select **Create renewal link**. Open the generated link in a new tab. The customer-facing page shows the plan and price. Staging clearly labels its non-charging test stub; production instead asks the homeowner to contact the shop.
+Open **Import**. Uploads are disabled in the public demo so nobody can put real
+customer data into a public sandbox. Explain the real pilot flow:
 
-Close with the MVP boundary: the workflow makes customer contact and a manual payment handoff explicit today; production Stripe Checkout and verified webhooks are a future payment follow-up.
+1. Export an authorized, sanitized Google Sheet as CSV.
+2. Preview every row and correction.
+3. Reconcile counts.
+4. Commit only when errors are zero.
+5. Re-import with the same stable external IDs to update, not duplicate.
+
+Use `internal/app/testdata/landscaping-google-sheets-template.csv` in an
+authenticated, non-public pilot workspace.
+
+## 4:10–5:00 — Export and close on the boundary
+
+Return to **Service work** and choose **Export CSV**. The export carries each
+real service name for handoff to the owner's existing operational tool.
+
+Close with what is being tested: whether a focused, spreadsheet-compatible
+commitment loop prevents missed work with much less setup than a full suite.
+Routing, dispatch, invoicing, payments, automated messaging, and direct Google
+Sheets OAuth are deliberately not claimed.

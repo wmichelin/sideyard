@@ -7,10 +7,11 @@
   <a href="/plan-templates" class="secondary-btn">Back to plans</a>
 </header>
 
-{{ if .Error }}<p class="error-banner">Enter a name, non-negative price, and positive term and visit count.</p>{{ end }}
+{{ if .Error }}<p class="error-banner">Enter a name, non-negative price and included-service count, and a positive term.</p>{{ end }}
 
 <form method="post" class="form-panel">
   {{ template "csrf_field" . }}
+  <fieldset class="form-fieldset"{{ if .Nav.User.IsDemo }} disabled{{ end }}>
   <div class="form-row">
     <label>
       <span>Name</span>
@@ -25,14 +26,15 @@
       <input type="number" name="term_months" min="1" value="{{ .Plan.TermMonths }}">
     </label>
     <label>
-      <span>Visits per year</span>
-      <input type="number" name="visits_per_year" min="1" value="{{ .Plan.VisitsPerYear }}">
+      <span>Included services per year</span>
+      <input type="number" name="visits_per_year" min="0" value="{{ .Plan.VisitsPerYear }}">
     </label>
   </div>
   <label>
     <span>Description</span>
     <input type="text" name="description" value="{{ .Plan.Description }}">
   </label>
-  <button type="submit" class="primary-btn">Save plan</button>
+  </fieldset>
+  {{ if .Nav.User.IsDemo }}<p class="empty-note demo-read-only-note">Plan setup is read-only in the public demo.</p>{{ else }}<button type="submit" class="primary-btn">Save plan</button>{{ end }}
 </form>
 {{ end }}

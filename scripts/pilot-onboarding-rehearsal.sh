@@ -8,7 +8,7 @@ NETWORK="clubdue-pilot-rehearsal-net"
 DB="clubdue-pilot-rehearsal-db"
 APP="clubdue-pilot-rehearsal-app"
 IMAGE="clubdue-pilot-rehearsal:local"
-PORT=18084
+PORT="${CLUBDUE_PILOT_REHEARSAL_PORT:-18084}"
 WORK_DIR="$(mktemp -d)"
 FIXTURE="$ROOT/internal/app/testdata/pilot-concierge-import.csv"
 

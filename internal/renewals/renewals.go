@@ -52,6 +52,7 @@ func (s *Service) GetHomeownerRenewal(ctx context.Context, tokenHash string) (*H
 		JOIN customers c ON c.id = a.customer_id
 		JOIN shops sh ON sh.id = rl.shop_id
 		WHERE rl.token_hash = $1 AND rl.expires_at > $2
+		  AND (sh.expires_at IS NULL OR sh.expires_at > $2)
 		LIMIT 1`, tokenHash, s.now(),
 	).Scan(&renewal.CustomerName, &renewal.PlanName, &renewal.AnniversaryDate,
 		&renewal.PriceCents, &renewal.ShopName)

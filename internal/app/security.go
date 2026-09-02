@@ -70,6 +70,23 @@ func (t *authThrottle) success(key string) {
 	delete(t.attempts, key)
 }
 
+func (t *authThrottle) take(key string) bool {
+	now := t.now()
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.prune(now)
+	attempt := t.attempts[key]
+	if attempt.resetAt.IsZero() || !now.Before(attempt.resetAt) {
+		attempt = authAttempt{resetAt: now.Add(t.window)}
+	}
+	if attempt.failures >= t.maxAttempts {
+		return false
+	}
+	attempt.failures++
+	t.attempts[key] = attempt
+	return true
+}
+
 func (t *authThrottle) prune(now time.Time) {
 	for key, attempt := range t.attempts {
 		if !now.Before(attempt.resetAt) {
@@ -101,6 +118,16 @@ func (s *Server) authLimiter() *authThrottle {
 		return s.throttle
 	}
 	return newAuthThrottle(s.config.RuntimeLimits)
+}
+
+func (s *Server) publicDemoLimiter() *authThrottle {
+	s.demoThrottleOnce.Do(func() {
+		s.demoThrottle = newAuthThrottle(RuntimeLimits{
+			AuthMaxAttempts:    20,
+			AuthThrottleWindow: time.Minute,
+		})
+	})
+	return s.demoThrottle
 }
 
 func (s *Server) secureCookies() bool {

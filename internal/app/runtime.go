@@ -73,6 +73,12 @@ func runDailyRenewalGeneration(ctx context.Context, store *Store, interval time.
 
 func runRenewalMaintenance(ctx context.Context, store *Store, now func() time.Time, phase string) {
 	asOf := now()
+	if err := store.CleanupExpiredPublicDemos(ctx); err != nil {
+		log.Printf("demo maintenance failed phase=%s operation=cleanup_expired_sandboxes error=%v", phase, err)
+	}
+	if err := store.GenerateAllServiceOccurrences(ctx); err != nil {
+		log.Printf("service maintenance failed phase=%s operation=generate_occurrences error=%v", phase, err)
+	}
 	if err := store.GenerateAllRenewalTasks(ctx, asOf); err != nil {
 		log.Printf("renewal maintenance failed phase=%s operation=generate_tasks error=%v", phase, err)
 	}

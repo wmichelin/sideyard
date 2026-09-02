@@ -160,14 +160,26 @@ its containers, network, and temporary backup data on exit.
 
 Staging automatically provisions an isolated `clubdue-staging-db` Postgres container, the `clubdue-staging-pgdata` persistent volume, and the `clubdue-staging-net` network. Its generated database password and session secret stay in a root-only droplet file and are never committed or logged. Production is unchanged.
 
-After staging deploys, use the real application login at [https://clubdue-staging.michelindigitalmedia.com/login](https://clubdue-staging.michelindigitalmedia.com/login):
+The preferred prospect entry point is the permanent
+[one-click landscaping demo](https://clubdue-staging.michelindigitalmedia.com/demo).
+`GET /demo` is a no-store entry page; its CSRF-protected POST creates a fresh,
+fictional `demo_sandbox` tenant and a normal opaque session that expires with
+the workspace after four hours. Separate visitors cannot change one another's
+demo. Uploads are blocked, active sandboxes are capped, and expired sandboxes
+are removed by the normal cleanup path.
 
-```text
-owner@demo.local
-demo1234
-```
+The deploy helper sets `ENABLE_PUBLIC_DEMO=1` only for staging. Application
+startup rejects that flag in development or production, and production does
+not register either demo route. Disabling the staging flag is the immediate
+kill switch.
 
-The staging smoke test idempotently seeds this demonstration shop through the staging-only dev route.
+The former shared `owner@demo.local` staging tenant is retired at staging
+startup because its published password allowed unrestricted writes. Development
+seeding is rejected by staging configuration, and staging enrollment is closed
+unless an operator supplies `SIGNUP_ALLOWLIST`. The staging smoke uses only
+fresh, expiring demo tenants and proves their allowed mutations, blocked setup,
+and isolation. Production smoke uses approved environment secrets for a real
+pilot owner; no shared demo credentials are provisioned there.
 
 ## One-time setup
 
@@ -262,6 +274,9 @@ cp .env.example .env   # fill in DROPLET_HOST + GITHUB_TOKEN
 ./scripts/smoke-test.sh production
 ```
 
-Checks `/healthz`, dashboard HTML, and sample data.
+Checks liveness/readiness, authenticated dashboard behavior, and environment
+boundaries. Staging proves isolated one-click demo creation, finite allowed and
+blocked mutations, cross-visitor separation, and legacy-login retirement;
+production proves `/demo` is absent.
 
 See also [RELEASE-WORKFLOW.md](./RELEASE-WORKFLOW.md) for agent instructions.

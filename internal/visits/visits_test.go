@@ -28,7 +28,7 @@ func TestWriteVisitExportCSV(t *testing.T) {
 		CustomerName: "Alex",
 		Phone:        "555-0101",
 		Address:      "1 Main St",
-		ServiceType:  "HVAC tune-up",
+		ServiceType:  "Gold maintenance plan",
 		Notes:        "agreement abc spring 2026",
 	}}
 	if err := writeVisitExportCSV(&buf, rows); err != nil {

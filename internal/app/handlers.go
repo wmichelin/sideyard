@@ -9,17 +9,20 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 type Server struct {
-	tmpl     *template.Template
-	auth     *Auth
-	store    *Store
-	config   Config
-	demo     bool
-	throttle *authThrottle
-	clock    Clock
+	tmpl             *template.Template
+	auth             *Auth
+	store            *Store
+	config           Config
+	demo             bool
+	throttle         *authThrottle
+	demoThrottle     *authThrottle
+	demoThrottleOnce sync.Once
+	clock            Clock
 }
 
 func (s *Server) nowUTC() time.Time {
@@ -56,10 +59,46 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
 		}
+		if user.IsDemo && isStateChangingMethod(r.Method) {
+			if !publicDemoMutationAllowed(r) {
+				http.Error(w, "This setup change is locked in the public demo. Service and renewal outcomes remain interactive.", http.StatusForbidden)
+				return
+			}
+			if !s.publicDemoLimiter().take("public-demo-mutation:" + user.ID) {
+				w.Header().Set("Retry-After", "60")
+				http.Error(w, "The demo action limit was reached. Please try again in a minute.", http.StatusTooManyRequests)
+				return
+			}
+			clearPublicDemoFreeText(r)
+		}
 		if err := s.store.RecordReturningPilotUse(r.Context(), user.ShopID); err != nil {
 			log.Printf("pilot activation returning use: %v", err)
 		}
 		next(w, r.WithContext(contextWithUser(r.Context(), user)))
+	}
+}
+
+func clearPublicDemoFreeText(r *http.Request) {
+	if r.Form != nil {
+		r.Form.Set("notes", "")
+	}
+	if r.PostForm != nil {
+		r.PostForm.Set("notes", "")
+	}
+}
+
+func publicDemoMutationAllowed(r *http.Request) bool {
+	switch {
+	case r.URL.Path == "/visits":
+		action := r.FormValue("action")
+		return action == "completed" || action == "skipped" || action == "scheduled"
+	case r.URL.Path == "/renewals":
+		return r.FormValue("status") == "contacted"
+	case strings.HasPrefix(r.URL.Path, "/service-schedules/"):
+		action := r.FormValue("action")
+		return action == "pause" || action == "resume"
+	default:
+		return false
 	}
 }
 
@@ -114,12 +153,17 @@ func (s *Server) handleSignupGet(w http.ResponseWriter, r *http.Request) {
 		"Error":    "",
 		"ShopName": "",
 		"Email":    "",
+		"Closed":   !s.config.SignupOpen(),
 	})
 }
 
 func (s *Server) handleSignupPost(w http.ResponseWriter, r *http.Request) {
 	if s.demo {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+	if user, _ := s.auth.userFromRequest(r.Context(), r); user != nil {
+		http.Error(w, "Sign out before creating another approved account.", http.StatusForbidden)
 		return
 	}
 	if err := r.ParseForm(); err != nil {
@@ -133,7 +177,7 @@ func (s *Server) handleSignupPost(w http.ResponseWriter, r *http.Request) {
 	throttleKey := authThrottleKey(r, "signup")
 	if !throttle.allowed(throttleKey) {
 		s.render(w, r, "signup.html", map[string]any{
-			"Error": "Too many attempts. Please try again later.", "ShopName": shopName, "Email": email,
+			"Error": "Too many attempts. Please try again later.", "ShopName": shopName, "Email": email, "Closed": !s.config.SignupOpen(),
 		})
 		return
 	}
@@ -143,6 +187,7 @@ func (s *Server) handleSignupPost(w http.ResponseWriter, r *http.Request) {
 			"Error":    "This email is not approved for pilot enrollment.",
 			"ShopName": shopName,
 			"Email":    email,
+			"Closed":   !s.config.SignupOpen(),
 		})
 		return
 	}
@@ -153,6 +198,7 @@ func (s *Server) handleSignupPost(w http.ResponseWriter, r *http.Request) {
 			"Error":    err.Error(),
 			"ShopName": shopName,
 			"Email":    email,
+			"Closed":   !s.config.SignupOpen(),
 		})
 		return
 	}
@@ -185,9 +231,11 @@ func (s *Server) handleLoginGet(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.render(w, r, "login.html", map[string]any{
-		"Error": "",
-		"Email": "",
-		"Demo":  s.demo,
+		"Error":      "",
+		"Email":      "",
+		"Demo":       s.demo,
+		"PublicDemo": s.config.EnablePublicDemo,
+		"SignupOpen": s.config.SignupOpen(),
 	})
 }
 
@@ -206,7 +254,7 @@ func (s *Server) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 	throttleKey := authThrottleKey(r, "login")
 	if !throttle.allowed(throttleKey) {
 		s.render(w, r, "login.html", map[string]any{
-			"Error": "Too many attempts. Please try again later.", "Email": email, "Demo": false,
+			"Error": "Too many attempts. Please try again later.", "Email": email, "Demo": false, "PublicDemo": s.config.EnablePublicDemo, "SignupOpen": s.config.SignupOpen(),
 		})
 		return
 	}
@@ -215,8 +263,7 @@ func (s *Server) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 		throttle.failure(throttleKey)
 		s.render(w, r, "login.html", map[string]any{
 			"Error": "Invalid email or password.",
-			"Email": email,
-			"Demo":  false,
+			"Email": email, "Demo": false, "PublicDemo": s.config.EnablePublicDemo, "SignupOpen": s.config.SignupOpen(),
 		})
 		return
 	}
@@ -228,7 +275,11 @@ func (s *Server) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	if !s.demo {
 		if cookie, err := r.Cookie(sessionCookieName); err == nil {
-			s.auth.logout(r.Context(), cookie.Value)
+			if err := s.auth.logout(r.Context(), cookie.Value); err != nil {
+				log.Printf("logout failed request_id=%s error=%v", requestIDFromContext(r.Context()), err)
+				http.Error(w, "Could not sign out safely. Please try again.", http.StatusServiceUnavailable)
+				return
+			}
 		}
 		s.auth.clearSessionCookie(w)
 	}
@@ -387,18 +438,29 @@ func (s *Server) renderAgreementForm(w http.ResponseWriter, r *http.Request, use
 		http.Error(w, "server error", http.StatusInternalServerError)
 		return
 	}
+	var schedules []ServiceSchedule
+	if form.ID != "" {
+		schedules, err = s.store.ListServiceSchedules(r.Context(), user.ShopID, form.ID)
+		if err != nil {
+			log.Printf("list service schedules: %v", err)
+			http.Error(w, "server error", http.StatusInternalServerError)
+			return
+		}
+	}
 
 	title := "New agreement — ClubDue"
 	if form.ID != "" {
 		title = "Edit agreement — ClubDue"
 	}
 	s.renderLayout(w, r, title, "agreement_form_content", map[string]any{
-		"Nav":        NavData{Active: "agreements", User: user},
-		"Form":       form,
-		"Customers":  customers,
-		"Plans":      plans,
-		"Properties": properties,
-		"IsEdit":     form.ID != "",
+		"Nav":              NavData{Active: "agreements", User: user},
+		"Form":             form,
+		"Customers":        customers,
+		"Plans":            plans,
+		"Properties":       properties,
+		"Schedules":        schedules,
+		"ServiceStartDate": s.nowUTC().Format("2006-01-02"),
+		"IsEdit":           form.ID != "",
 	})
 }
 
@@ -566,8 +628,8 @@ func (s *Server) handlePlanTemplates(w http.ResponseWriter, r *http.Request) {
 		if name != "" {
 			price, _ := strconv.Atoi(r.FormValue("price_cents"))
 			visits, _ := strconv.Atoi(r.FormValue("visits_per_year"))
-			if visits == 0 {
-				visits = 2
+			if visits < 0 {
+				visits = 0
 			}
 			termMonths, _ := strconv.Atoi(r.FormValue("term_months"))
 			if termMonths <= 0 {
@@ -623,7 +685,7 @@ func (s *Server) handlePlanTemplateEdit(w http.ResponseWriter, r *http.Request) 
 		price, _ := strconv.Atoi(r.FormValue("price_cents"))
 		termMonths, _ := strconv.Atoi(r.FormValue("term_months"))
 		visits, _ := strconv.Atoi(r.FormValue("visits_per_year"))
-		if name != "" && price >= 0 && termMonths > 0 && visits > 0 {
+		if name != "" && price >= 0 && termMonths > 0 && visits >= 0 {
 			err = s.store.UpdatePlanTemplate(r.Context(), user.ShopID, id, name,
 				r.FormValue("description"), price, termMonths, visits)
 			if err == nil {

@@ -1,8 +1,8 @@
 {{ define "visits_content" }}
 <header class="page-header">
   <div>
-    <h2 class="page-title">Visit due-list</h2>
-    <p class="page-subtitle">Seasonal tune-ups to hand off to Jobber. This records a handoff, not an appointment time.</p>
+    <h2 class="page-title">Service work</h2>
+    <p class="page-subtitle">Recurring and seasonal commitments that are due, overdue, completed, or ready to hand off.</p>
   </div>
   <a href="/visits/export.csv{{ if not .DueOnly }}?filter=all{{ end }}" class="secondary-btn">Export CSV</a>
 </header>
@@ -15,16 +15,42 @@
 <form method="post" action="/visits?filter={{ if .DueOnly }}due{{ else }}all{{ end }}">
   {{ template "csrf_field" . }}
   <input type="hidden" name="filter" value="{{ if .DueOnly }}due{{ else }}all{{ end }}">
+  <section class="table-section">
+    <h3 class="section-title">Recurring services</h3>
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th><input type="checkbox" id="select-service-all" title="Select all recurring services" aria-label="Select all recurring services"></th><th>Customer</th><th>Property</th><th>Service</th><th>Due</th><th>Status</th></tr></thead>
+        <tbody>
+          {{ range .ServiceOccurrences }}
+          <tr{{ if .IsOverdue }} class="overdue-row"{{ end }}>
+            <td>{{ if .Actionable }}<input type="checkbox" name="occurrence_id" value="{{ .ID }}" class="service-check" aria-label="Select {{ .ServiceName }} for {{ .CustomerName }} due {{ .DueOnLabel }}">{{ end }}</td>
+            <td class="name-cell">{{ .CustomerName }}</td><td class="muted">{{ .PropertyAddress }}</td>
+            <td><a href="/agreements/{{ .AgreementID }}">{{ .ServiceName }}<span class="link-detail">Open service plan</span></a></td>
+            <td>{{ .DueOnLabel }}</td>
+            <td><span class="badge {{ .Status }}{{ if .IsOverdue }} overdue{{ end }}">{{ .StatusLabel }}</span></td>
+          </tr>
+          {{ else }}<tr><td colspan="6" class="empty-cell">No recurring service work in this view. Add a recurring service from an agreement.</td></tr>{{ end }}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {{ if .ServiceOccurrences }}<div class="link-row bulk-actions"><button type="submit" name="action" value="skipped" class="secondary-btn">Mark skipped</button><button type="submit" name="action" value="completed" class="primary-btn">Mark completed</button></div>{{ end }}
+</form>
+
+<form method="post" action="/visits?filter={{ if .DueOnly }}due{{ else }}all{{ end }}">
+  {{ template "csrf_field" . }}
+  <input type="hidden" name="filter" value="{{ if .DueOnly }}due{{ else }}all{{ end }}">
 
   <section class="table-section">
+    <h3 class="section-title">Seasonal plan visits</h3>
     <div class="table-wrap">
       <table class="table">
         <thead>
           <tr>
-            <th><input type="checkbox" id="select-all" title="Select all"></th>
+            <th><input type="checkbox" id="select-all" title="Select all seasonal visits" aria-label="Select all seasonal visits"></th>
             <th>Customer</th>
             <th>Property</th>
-            <th>Season</th>
+            <th>Service</th>
             <th>Due window</th>
             <th>Status</th>
           </tr>
@@ -32,10 +58,10 @@
         <tbody>
           {{ range .Visits }}
           <tr{{ if .IsOverdue }} class="overdue-row"{{ end }}>
-            <td><input type="checkbox" name="visit_id" value="{{ .ID }}" class="visit-check"></td>
+            <td><input type="checkbox" name="visit_id" value="{{ .ID }}" class="visit-check" aria-label="Select {{ .PlanName }} {{ .Season }} service for {{ .CustomerName }}"></td>
             <td class="name-cell">{{ .CustomerName }}</td>
             <td class="muted">{{ .PropertyAddress }}</td>
-            <td>{{ .Season }}</td>
+            <td>{{ .PlanName }}<span class="contact-detail">{{ .Season }}</span></td>
             <td>{{ .WindowLabel }}</td>
             <td><span class="badge {{ .Status }}{{ if .IsOverdue }} overdue{{ end }}">{{ .StatusLabel }}{{ if .IsOverdue }} (overdue){{ end }}</span></td>
           </tr>
@@ -49,7 +75,7 @@
 
   {{ if .Visits }}
   <div class="link-row bulk-actions">
-    <button type="submit" name="action" value="scheduled" class="secondary-btn">Mark handed off to Jobber</button>
+    <button type="submit" name="action" value="scheduled" class="secondary-btn">Mark handed off</button>
     <button type="submit" name="action" value="completed" class="primary-btn">Mark completed</button>
   </div>
   {{ end }}

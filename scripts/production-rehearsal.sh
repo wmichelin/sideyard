@@ -141,6 +141,8 @@ printf '%s' "$second_dashboard" | grep -q 'Dashboard — ClubDue'
 
 dev_route_status="$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:${PORT}/dev/seed")"
 [ "$dev_route_status" = "404" ]
+public_demo_status="$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:${PORT}/demo")"
+[ "$public_demo_status" = "404" ]
 
 export CLUBDUE_BACKUP_DB_CONTAINER="$SOURCE_DB"
 export CLUBDUE_BACKUP_DIR="$WORK_DIR/backups"

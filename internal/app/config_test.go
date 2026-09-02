@@ -18,11 +18,12 @@ func TestLoadConfig(t *testing.T) {
 		"PUBLIC_URL":     "https://staging.example.test",
 	}
 	cases := []struct {
-		name        string
-		env         map[string]string
-		wantErr     string
-		wantDemo    bool
-		wantAddress string
+		name           string
+		env            map[string]string
+		wantErr        string
+		wantDemo       bool
+		wantAddress    string
+		wantPublicDemo bool
 	}{
 		{
 			name:        "development defaults to local demo",
@@ -35,6 +36,15 @@ func TestLoadConfig(t *testing.T) {
 			env:         validStaging,
 			wantDemo:    false,
 			wantAddress: ":8080",
+		},
+		{
+			name: "staging may enable isolated public demos",
+			env: map[string]string{
+				"APP_ENV": "staging", "DATABASE_URL": validStaging["DATABASE_URL"],
+				"SESSION_SECRET": strongSecret, "PUBLIC_URL": validStaging["PUBLIC_URL"],
+				"ENABLE_PUBLIC_DEMO": "1",
+			},
+			wantAddress: ":8080", wantPublicDemo: true,
 		},
 		{
 			name:    "production rejects missing database",
@@ -54,7 +64,26 @@ func TestLoadConfig(t *testing.T) {
 		{
 			name:    "production rejects development routes",
 			env:     map[string]string{"APP_ENV": "production", "DATABASE_URL": validStaging["DATABASE_URL"], "SESSION_SECRET": strongSecret, "PUBLIC_URL": "https://clubdue.example.test", "ENABLE_DEV_ROUTES": "true"},
-			wantErr: "ENABLE_DEV_ROUTES is not allowed",
+			wantErr: "ENABLE_DEV_ROUTES is allowed only in development",
+		},
+		{
+			name:    "staging rejects development routes",
+			env:     map[string]string{"APP_ENV": "staging", "DATABASE_URL": validStaging["DATABASE_URL"], "SESSION_SECRET": strongSecret, "PUBLIC_URL": validStaging["PUBLIC_URL"], "ENABLE_DEV_ROUTES": "true"},
+			wantErr: "ENABLE_DEV_ROUTES is allowed only in development",
+		},
+		{
+			name: "production rejects public demo access",
+			env: map[string]string{
+				"APP_ENV": "production", "DATABASE_URL": validStaging["DATABASE_URL"],
+				"SESSION_SECRET": strongSecret, "PUBLIC_URL": "https://clubdue.example.test",
+				"ENABLE_PUBLIC_DEMO": "true",
+			},
+			wantErr: "ENABLE_PUBLIC_DEMO is allowed only in staging",
+		},
+		{
+			name:    "development rejects public demo access",
+			env:     map[string]string{"ENABLE_PUBLIC_DEMO": "true"},
+			wantErr: "ENABLE_PUBLIC_DEMO is allowed only in staging",
 		},
 		{
 			name:    "runtime limits must be positive",
@@ -90,7 +119,25 @@ func TestLoadConfig(t *testing.T) {
 			if config.DemoMode() != tc.wantDemo || config.Address != tc.wantAddress {
 				t.Fatalf("config = %+v, want demo=%t address=%q", config, tc.wantDemo, tc.wantAddress)
 			}
+			if config.EnablePublicDemo != tc.wantPublicDemo {
+				t.Fatalf("public demo = %t, want %t", config.EnablePublicDemo, tc.wantPublicDemo)
+			}
 		})
+	}
+}
+
+func TestSignupPoliciesByEnvironment(t *testing.T) {
+	development := Config{Environment: EnvironmentDevelopment}
+	if !development.SignupOpen() || !development.SignupAllowed("anyone@example.test") {
+		t.Fatal("development signup should remain open")
+	}
+	staging := Config{Environment: EnvironmentStaging}
+	if staging.SignupOpen() || staging.SignupAllowed("anyone@example.test") {
+		t.Fatal("staging signup should be invitation-only by default")
+	}
+	staging.SignupAllowlist = map[string]struct{}{"invited@example.test": {}}
+	if !staging.SignupOpen() || !staging.SignupAllowed(" INVITED@example.test ") || staging.SignupAllowed("other@example.test") {
+		t.Fatal("staging signup allowlist was not enforced")
 	}
 }
 

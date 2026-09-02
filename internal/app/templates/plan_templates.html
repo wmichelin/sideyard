@@ -2,18 +2,18 @@
 <header class="page-header">
   <div>
     <h2 class="page-title">Plan templates</h2>
-    <p class="page-subtitle">Reusable maintenance plans (price, term, and visit count).</p>
+    <p class="page-subtitle">Reusable maintenance plans with price, term, and included seasonal services.</p>
   </div>
 </header>
 
-<section class="panel">
+{{ if not .Nav.User.IsDemo }}<section class="panel">
   <h3 class="section-title">Add plan template</h3>
   <form method="post" action="/plan-templates" class="form-stack">
     {{ template "csrf_field" . }}
     <div class="form-row">
       <label>
         <span>Name</span>
-        <input type="text" name="name" required placeholder="Gold HVAC Plan">
+        <input type="text" name="name" required placeholder="Weekly lawn care">
       </label>
       <label>
         <span>Price (cents)</span>
@@ -24,17 +24,17 @@
         <input type="number" name="term_months" min="1" value="12">
       </label>
       <label>
-        <span>Visits per year</span>
-        <input type="number" name="visits_per_year" min="1" value="2">
+        <span>Included services per year</span>
+        <input type="number" name="visits_per_year" min="0" value="0">
       </label>
     </div>
     <label>
       <span>Description</span>
-      <input type="text" name="description" placeholder="Spring + fall tune-ups">
+      <input type="text" name="description" placeholder="Mow, edge, and blow March through November">
     </label>
     <button type="submit" class="primary-btn">Add plan</button>
   </form>
-</section>
+</section>{{ end }}
 
 <section class="table-section">
   <div class="table-wrap">
@@ -45,7 +45,7 @@
           <th>Description</th>
           <th>Price</th>
           <th>Term</th>
-          <th>Visits/yr</th>
+          <th>Services/yr</th>
           <th></th>
         </tr>
       </thead>
@@ -57,7 +57,7 @@
           <td>{{ .PriceFmt }}</td>
           <td>{{ .TermMonths }} mo</td>
           <td>{{ .VisitsPerYear }}</td>
-          <td><a href="/plan-templates/{{ .ID }}" class="secondary-btn">Edit</a></td>
+          <td><a href="/plan-templates/{{ .ID }}" class="secondary-btn">{{ if $.Nav.User.IsDemo }}View{{ else }}Edit{{ end }}</a></td>
         </tr>
         {{ else }}
         <tr><td colspan="6" class="empty-cell">No plan templates yet.</td></tr>

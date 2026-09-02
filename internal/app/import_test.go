@@ -28,6 +28,29 @@ func TestSampleImportFixture(t *testing.T) {
 	}
 }
 
+func TestLandscapingSheetsFixtureIncludesImportableRecurringServices(t *testing.T) {
+	f, err := os.Open("testdata/landscaping-google-sheets-template.csv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	rows, err := parseImportCSV(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("landscaping rows = %d, want 3", len(rows))
+	}
+	for _, row := range rows {
+		if row.Error != "" || row.ServiceName == "" || row.ServiceExternalID == "" || row.ServiceStartsOn.IsZero() {
+			t.Fatalf("invalid landscaping row: %+v", row)
+		}
+	}
+	if rows[1].CadenceUnit != "week" || rows[1].CadenceInterval != 2 {
+		t.Fatalf("biweekly cadence normalized to %d %s", rows[1].CadenceInterval, rows[1].CadenceUnit)
+	}
+}
+
 func TestParseImportCSV(t *testing.T) {
 	csv := `external_id,customer_name,email,phone,address_line1,city,state,postal_code,plan_name,anniversary_date,status,price_cents
 csv-1001,Morgan Walsh,morgan@example.com,555-0201,142 Oak Lane,Denver,CO,80202,Gold HVAC Plan,2026-09-15,active,24900
@@ -71,6 +94,100 @@ func TestParseImportCSV_validationError(t *testing.T) {
 	}
 	if rows[0].Error == "" {
 		t.Fatal("expected validation error on row")
+	}
+}
+
+func TestParseGoogleSheetsCSVWithOptionalColumnsCurrencyAndCommonDate(t *testing.T) {
+	csv := "\ufeffcustomer_name,external_id,address_line1,city,state,postal_code,anniversary_date,price,extra_notes\r\n" +
+		`Maya Thompson,land-001,184 Willow Lane,Columbus,OH,43215,9/15/2026,"$1,850.50",gate code kept separately` + "\r\n"
+	rows, err := parseImportCSV(strings.NewReader(csv))
+	if err != nil {
+		t.Fatalf("parse Sheets export: %v", err)
+	}
+	if len(rows) != 1 || rows[0].Error != "" {
+		t.Fatalf("Sheets rows = %+v", rows)
+	}
+	if rows[0].PriceCents != 185050 || !rows[0].AnniversaryDate.Equal(time.Date(2026, 9, 15, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("normalized Sheets row = %+v", rows[0])
+	}
+}
+
+func TestParseImportCSVRejectsDuplicateExternalIDBeforeCommit(t *testing.T) {
+	csv := `external_id,customer_name,address_line1,city,state,postal_code,anniversary_date
+same,Maya Thompson,1 Main St,Columbus,OH,43215,2026-09-15
+same,Daniel Brooks,2 Main St,Columbus,OH,43215,2026-10-15
+`
+	rows, err := parseImportCSV(strings.NewReader(csv))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 || rows[0].Error != "" || rows[1].Error != "duplicate external_id in file" {
+		t.Fatalf("duplicate rows = %+v", rows)
+	}
+}
+
+func TestParseImportCSVRejectsIncompleteOrReversedServiceRecurrence(t *testing.T) {
+	for _, row := range []string{
+		"svc-1,Maya,1 Main,Columbus,OH,43215,2026-09-15,Weekly mowing,,week,,",
+		"svc-2,Maya,1 Main,Columbus,OH,43215,2026-09-15,Weekly mowing,1,week,2026-10-01,2026-09-01",
+	} {
+		csv := "external_id,customer_name,address_line1,city,state,postal_code,anniversary_date,service_name,cadence_interval,cadence_unit,service_start_date,service_end_date\n" + row + "\n"
+		rows, err := parseImportCSV(strings.NewReader(csv))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rows) != 1 || rows[0].Error == "" {
+			t.Fatalf("unsafe recurrence accepted: %+v", rows)
+		}
+	}
+}
+
+func TestParseImportCSVRejectsDuplicateServiceIdentity(t *testing.T) {
+	csv := `external_id,customer_name,address_line1,city,state,postal_code,anniversary_date,service_external_id,service_name,cadence_unit,service_start_date
+agreement-1,Maya,1 Main,Columbus,OH,43215,2026-09-15,same-service,Mowing,week,2026-03-01
+agreement-2,Daniel,2 Main,Columbus,OH,43215,2026-10-15,same-service,Edging,week,2026-03-01
+`
+	rows, err := parseImportCSV(strings.NewReader(csv))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 || rows[1].Error != "duplicate service_external_id in file" {
+		t.Fatalf("duplicate service identities = %+v", rows)
+	}
+}
+
+func TestParseImportCSVTreatsBiweeklyAsAnUnambiguousTwoWeekCadence(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		interval  string
+		wantError bool
+		wantEvery int
+	}{
+		{name: "implicit", interval: "", wantEvery: 2},
+		{name: "explicit two", interval: "2", wantEvery: 2},
+		{name: "conflicting one", interval: "1", wantError: true},
+		{name: "conflicting three", interval: "3", wantError: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			csv := "external_id,customer_name,address_line1,city,state,postal_code,anniversary_date,service_name,cadence_interval,cadence_unit,service_start_date\n" +
+				"agreement-1,Maya,1 Main,Columbus,OH,43215,2026-09-15,Mowing," + tc.interval + ",biweekly,2026-03-01\n"
+			rows, err := parseImportCSV(strings.NewReader(csv))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(rows) != 1 {
+				t.Fatalf("rows = %d", len(rows))
+			}
+			if tc.wantError {
+				if rows[0].Error == "" {
+					t.Fatalf("conflicting biweekly interval accepted: %+v", rows[0])
+				}
+				return
+			}
+			if rows[0].Error != "" || rows[0].CadenceUnit != "week" || rows[0].CadenceInterval != tc.wantEvery {
+				t.Fatalf("biweekly cadence = %+v", rows[0])
+			}
+		})
 	}
 }
 

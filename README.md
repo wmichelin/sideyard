@@ -1,6 +1,10 @@
 # ClubDue
 
-ClubDue is an HVAC/home-services maintenance-agreement ledger. It keeps the agreement book, renewal work, seasonal visits, and an import-friendly homeowner list in one small app beside Jobber or a spreadsheet.
+ClubDue is a recurring home-service commitment ledger. It keeps customers,
+service locations, plan terms, renewals, and recurring work in one small app
+beside a spreadsheet, calendar, billing tool, or field-service suite. The same
+neutral core supports the established HVAC workflow and a landscaping
+design-partner workflow.
 
 It is a single Go binary with embedded HTML/CSS and Postgres.
 
@@ -37,18 +41,28 @@ It is a single Go binary with embedded HTML/CSS and Postgres.
 
 `ENABLE_DEV_ROUTES=1` is required for the seed route and is already present in `.env.example`. The app loads `.env` without replacing already-set environment variables.
 
+On deployed staging, a prospect can instead open the permanent
+[one-click landscaping demo](https://clubdue-staging.michelindigitalmedia.com/demo).
+It creates a fresh fictional workspace for that browser, expires after four
+hours, and requires no shared credentials. It is deliberately unavailable in
+production.
+
 Without `DATABASE_URL`, ClubDue runs an in-memory legacy sample screen instead of the full agreement workflow.
 
 ## Feature tour
 
-- **Dashboard** — active agreements, renewals due this month, lapsed month-to-date, and overdue visits, with direct links to the work queues.
-- **Agreement book** — create customers and plan templates, then create or edit an agreement with renewal date, status, price, and entitled/used visits.
-- **CSV import** — upload a fixed-format file, inspect a dry-run, and commit it. Re-imports use `external_id` to update rather than duplicate records. Try [`sample-import.csv`](internal/app/testdata/sample-import.csv).
+- **Dashboard** — active agreements, renewals due this month, lapsed month-to-date, and overdue service commitments, with direct links to the work queues.
+- **Agreement book** — create customers and service templates, then create or edit a plan with renewal date, status, price, and optional included-service entitlement.
+- **Recurring services** — attach daily, every-N-weeks, or monthly work to a plan, optionally end-date it, then pause or resume it without changing renewal terms.
+- **CSV import** — export Google Sheets as CSV, inspect a mandatory dry-run, and commit it. Re-imports use `external_id` to update rather than duplicate records. Reordered/extra columns, BOM/CRLF files, common US/ISO dates, blank optional fields, and dollar prices are accepted. Try [`landscaping-google-sheets-template.csv`](internal/app/testdata/landscaping-google-sheets-template.csv).
 - **Renewals** — work deterministic 90/60/30/14/7-day tasks with customer contact details, property, agreement links, clear upcoming/due/past-due state, and recorded outcomes. Imported overdue agreements remain in the overdue cycle until an explicit outcome is recorded.
-- **Visits** — track seasonal spring/fall due work, bulk mark it handed off to Jobber or completed, and export a Jobber-ready CSV. A Jobber handoff is not an appointment time.
+- **Service work** — work recurring landscaping/service occurrences beside the established seasonal HVAC queue; complete, skip, pause, resume, or export work using its actual service name. A generic handoff is not an appointment time.
 - **Homeowner renewals** — from an agreement edit page, create a 30-day renewal link. Staging exposes only a clearly non-charging test stub; production asks the homeowner to contact the shop because online payment is unavailable.
 
 For a guided owner presentation, use [docs/demo-script.md](docs/demo-script.md).
+For the researched market thesis, evidence gates, design-partner plan, and
+technical evolution path, use
+[docs/PRODUCT-MARKET-FIT-PATH.md](docs/PRODUCT-MARKET-FIT-PATH.md).
 For the deliberately limited one-owner pilot, its privacy boundaries, onboarding
 checklist, feedback cadence, and honest FAQ, see [docs/CONTROLLED-PILOT.md](docs/CONTROLLED-PILOT.md).
 
@@ -60,9 +74,10 @@ checklist, feedback cadence, and honest FAQ, see [docs/CONTROLLED-PILOT.md](docs
 | `DATABASE_URL` | Postgres connection string |
 | `SESSION_SECRET` | Required secret for session and homeowner-link hashes |
 | `PUBLIC_URL` | HTTPS public URL required in staging and production |
-| `ENABLE_DEV_ROUTES` | Set to `1` to enable `POST /dev/seed` locally |
+| `ENABLE_DEV_ROUTES` | Set to `1` to enable `POST /dev/seed` locally; rejected by staging and production |
+| `ENABLE_PUBLIC_DEMO` | Staging-only one-click isolated demo; startup rejects it in every other environment |
 | `BOOTSTRAP_EMAIL` / `BOOTSTRAP_PASSWORD` / `BOOTSTRAP_SHOP_NAME` | Optional owner created for an otherwise empty database (`SHOP_NAME` remains a local compatibility alias) |
-| `SIGNUP_ALLOWLIST` | Comma-separated production pilot enrollment allowlist |
+| `SIGNUP_ALLOWLIST` | Comma-separated staging/production pilot enrollment allowlist; enrollment is closed there when empty |
 
 For audited, operator-run pilot owner provisioning or password recovery, see
 [owner provisioning](docs/OWNER-PROVISIONING.md). Never place production owner
@@ -93,3 +108,10 @@ and the [pilot operations runbook](docs/OPERATIONS-RUNBOOK.md).
 ## MVP boundaries
 
 The staging payment screen is deliberately a test stub: it does not collect card data, charge a card, or mark an agreement paid. Production has no payment CTA and directs homeowners to contact the shop. Stripe Checkout plus a verified webhook remains a future, separately approved integration.
+
+ClubDue does not yet provide route optimization, dispatch, GPS tracking,
+invoicing/accounting, automated messaging, or a direct Google Sheets OAuth
+connection. The landscaping importer currently expects the documented CSV
+profile and a stable source ID. A real design-partner onboarding begins with an
+authorized sanitized sheet and assisted reconciliation; it is not safe to
+claim arbitrary-sheet compatibility before that evidence exists.

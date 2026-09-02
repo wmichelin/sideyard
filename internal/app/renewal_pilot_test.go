@@ -195,7 +195,7 @@ func TestRenewalAndVisitTemplatesUseAccessiblePilotLanguage(t *testing.T) {
 	if strings.Contains(string(agreements), "onclick=") || !strings.Contains(string(agreements), `href="/agreements/{{ .ID }}"`) {
 		t.Fatal("agreement list still relies on click-only rows")
 	}
-	if !strings.Contains(string(visits), "Mark handed off to Jobber") || visitStatusLabel(VisitScheduled) != "Handed off to Jobber" {
+	if !strings.Contains(string(visits), "Mark handed off") || visitStatusLabel(VisitScheduled) != "Handed off" {
 		t.Fatal("visit handoff language is not truthful")
 	}
 }

@@ -41,7 +41,7 @@ jobs:
         uses: appleboy/ssh-action@v1.2.0
         env:
           CONTAINER: clubdue-staging
-          IMAGE: ghcr.io/wmichelin/clubdue:staging
+          IMAGE: ghcr.io/wmichelin/clubdue:${{ github.sha }}
           PORT: "8082"
           DOMAIN: clubdue-staging.michelindigitalmedia.com
           GHCR_USER: ${{ github.repository_owner }}
@@ -58,4 +58,26 @@ jobs:
           script_path: scripts/droplet-deploy.sh
 
       - name: Smoke test staging
+        id: smoke
+        continue-on-error: true
         run: ./scripts/smoke-test.sh staging
+
+      - name: Roll back staging after a failed smoke test
+        if: ${{ steps.smoke.outcome == 'failure' }}
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          CONTAINER: clubdue-staging
+          PORT: "8082"
+          DOMAIN: clubdue-staging.michelindigitalmedia.com
+          CLUBDUE_DEPLOY_MODE: rollback
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: root
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          envs: CONTAINER,PORT,DOMAIN,CLUBDUE_DEPLOY_MODE
+          script_stop: false
+          script_path: scripts/droplet-deploy.sh
+
+      - name: Fail deployment after rollback
+        if: ${{ always() && steps.smoke.outcome == 'failure' }}
+        run: exit 1

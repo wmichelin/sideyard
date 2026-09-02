@@ -3,6 +3,7 @@ package renewals
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/wmichelin/clubdue/internal/activation"
@@ -157,6 +158,10 @@ func (s *Service) ListRenewalTasks(ctx context.Context, shopID string) ([]Renewa
 func (s *Service) UpdateRenewalTask(ctx context.Context, shopID, id, status, notes string) error {
 	if status != "open" && status != "contacted" && status != "renewed" && status != "lost" {
 		return fmt.Errorf("invalid status")
+	}
+	notes = strings.TrimSpace(notes)
+	if len(notes) > 2000 {
+		return fmt.Errorf("renewal notes must not exceed 2000 bytes")
 	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {

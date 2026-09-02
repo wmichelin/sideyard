@@ -29,6 +29,18 @@ func TestLivezStaysProcessOnlyAndReadyzRequiresDatabase(t *testing.T) {
 	}
 }
 
+func TestRollbackSafetyMarkerAttestsDemoSandboxAwareRelease(t *testing.T) {
+	server := &Server{}
+	response := httptest.NewRecorder()
+	server.handleRollbackSafety(response, httptest.NewRequest(http.MethodGet, "/rollback-safetyz", nil))
+	if response.Code != http.StatusOK || response.Body.String() != "demo-sandbox-v1\n" {
+		t.Fatalf("rollback marker = %d %q", response.Code, response.Body.String())
+	}
+	if response.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("rollback marker cache policy = %q", response.Header().Get("Cache-Control"))
+	}
+}
+
 func TestHTTPServerUsesConfiguredTimeouts(t *testing.T) {
 	config := Config{RuntimeLimits: RuntimeLimits{
 		ReadHeaderTimeout: 3 * time.Second,

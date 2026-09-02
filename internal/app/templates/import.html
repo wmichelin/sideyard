@@ -2,16 +2,24 @@
 <header class="page-header">
   <div>
     <h2 class="page-title">CSV import</h2>
-    <p class="page-subtitle">Upload maintenance agreements from a spreadsheet export.</p>
+    <p class="page-subtitle">Upload recurring service plans from a Google Sheets or spreadsheet CSV export.</p>
   </div>
 </header>
 
 {{ if eq .Step "upload" }}
 {{ if .Error }}<p class="error-banner">{{ .Error }}</p>{{ end }}
 
+{{ if .IsDemo }}
+<section class="panel">
+  <h3 class="section-title">Uploads are disabled in the public demo</h3>
+  <p class="empty-note">The demo uses fictional landscaping data. A real pilot starts with an assisted, reconciled CSV export from Google Sheets.</p>
+</section>
+{{ else }}
+
 <section class="panel">
   <h3 class="section-title">Required columns</h3>
-  <p class="muted import-columns">external_id, customer_name, email, phone, address_line1, city, state, postal_code, plan_name, anniversary_date (YYYY-MM-DD), status, price_cents</p>
+  <p class="muted import-columns"><strong>Required:</strong> external_id, customer_name, address_line1, city, state, postal_code, anniversary_date. <strong>Optional customer/plan:</strong> email, phone, plan_name, status, and either price_cents or price (dollars). <strong>Optional recurring work:</strong> service_name, cadence_interval, cadence_unit, service_start_date, service_end_date, and service_external_id. A service needs its name, cadence unit, and start date; interval defaults to 1. Units accept day/week/month plus daily, weekly, biweekly, or monthly. Dates may be YYYY-MM-DD or M/D/YYYY.</p>
+  <p class="muted">Start from <code>internal/app/testdata/landscaping-google-sheets-template.csv</code>. Leave plan_name blank unless the matching plan template already exists.</p>
 </section>
 
 <section class="panel">
@@ -26,6 +34,8 @@
     <button type="submit" class="primary-btn">Preview import</button>
   </form>
 </section>
+
+{{ end }}
 
 {{ else if eq .Step "preview" }}
 <section class="stats">
@@ -46,6 +56,11 @@
     <span class="stat-value">{{ .Summary.UpdatedAgreements }}</span>
   </div>
   <div class="stat-card">
+    <span class="stat-label">Recurring services</span>
+    <span class="stat-value">{{ .Summary.NewSchedules }} new</span>
+    <span class="stat-meta">{{ .Summary.UpdatedSchedules }} updated</span>
+  </div>
+  <div class="stat-card">
     <span class="stat-label">Errors</span>
     <span class="stat-value{{ if gt .Summary.Errors 0 }} outstanding{{ end }}">{{ .Summary.Errors }}</span>
     <span class="stat-meta">{{ .Summary.Skipped }} skipped</span>
@@ -63,6 +78,7 @@
           <th>Customer</th>
           <th>Address</th>
           <th>Plan</th>
+          <th>Recurring service</th>
           <th>Anniversary</th>
           <th>Action</th>
         </tr>
@@ -75,6 +91,7 @@
           <td class="name-cell">{{ .CustomerName }}</td>
           <td class="muted">{{ .AddressLine1 }}, {{ .City }}</td>
           <td>{{ .PlanName }}</td>
+          <td>{{ .ServiceName }}{{ if .ServiceName }}<span class="contact-detail">Every {{ .CadenceInterval }} {{ .CadenceUnit }}{{ if ne .CadenceInterval 1 }}s{{ end }}</span>{{ end }}</td>
           <td>{{ if .AnniversaryDate.IsZero }}{{ else }}{{ .AnniversaryDate.Format "2006-01-02" }}{{ end }}</td>
           <td>{{ if .Error }}<span class="badge cancelled">{{ .Error }}</span>{{ else }}{{ .Action }}{{ end }}</td>
         </tr>
@@ -101,6 +118,7 @@
   <h3 class="section-title">Import complete</h3>
   <p>{{ .Summary.NewCustomers }} new customers, {{ .Summary.UpdatedCustomers }} updated customers.</p>
   <p>{{ .Summary.NewAgreements }} new agreements, {{ .Summary.UpdatedAgreements }} updated agreements.</p>
+  <p>{{ .Summary.NewSchedules }} new recurring services, {{ .Summary.UpdatedSchedules }} updated recurring services.</p>
   <div class="link-row">
     <a href="/agreements" class="primary-btn">View agreements</a>
     <a href="/import" class="secondary-btn">Import another file</a>

@@ -29,12 +29,13 @@ func securityTestConfig() Config {
 func TestEveryMutationRouteRejectsMissingCSRF(t *testing.T) {
 	config := securityTestConfig()
 	config.EnableDevRoutes = true
+	config.EnablePublicDemo = true
 	server := &Server{config: config, throttle: newAuthThrottle(config.RuntimeLimits)}
 	handler := server.handler(fstest.MapFS{})
 
 	paths := []string{
-		"/login", "/signup", "/logout", "/renew/token", "/dev/seed",
-		"/agreements", "/agreements/id", "/agreements/id/renewal-link", "/renewals",
+		"/login", "/signup", "/logout", "/renew/token", "/dev/seed", "/demo/session",
+		"/agreements", "/agreements/id", "/agreements/id/renewal-link", "/agreements/id/service-schedules", "/service-schedules/id", "/renewals",
 		"/customers", "/customers/id", "/customers/id/delete", "/customers/id/properties",
 		"/properties/id/equipment", "/import", "/visits", "/plan-templates", "/plan-templates/id",
 	}
@@ -50,6 +51,80 @@ func TestEveryMutationRouteRejectsMissingCSRF(t *testing.T) {
 				t.Fatalf("POST %s without CSRF did not receive a request ID", path)
 			}
 		})
+	}
+}
+
+func TestPublicDemoGetDoesNotAuthenticateAndIsNotCacheable(t *testing.T) {
+	tmpl := template.Must(template.ParseFS(templateFS, "templates/*.html"))
+	server := &Server{config: securityTestConfig(), tmpl: tmpl}
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/demo", nil)
+	server.handlePublicDemoGet(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("GET /demo = %d", response.Code)
+	}
+	for _, cookie := range response.Result().Cookies() {
+		if cookie.Name == sessionCookieName {
+			t.Fatal("GET /demo minted an authenticated session")
+		}
+	}
+	if !strings.Contains(response.Header().Get("Cache-Control"), "no-store") || response.Header().Get("X-Robots-Tag") == "" {
+		t.Fatalf("demo headers = cache %q robots %q", response.Header().Get("Cache-Control"), response.Header().Get("X-Robots-Tag"))
+	}
+	if !strings.Contains(response.Body.String(), `action="/demo/session"`) || !strings.Contains(response.Body.String(), `name="csrf_token"`) {
+		t.Fatal("demo entry lacks its CSRF-protected session form")
+	}
+}
+
+func TestPublicDemoMutationAllowlistIsFinite(t *testing.T) {
+	allowed := []struct{ path, field, value string }{
+		{"/visits", "action", "completed"},
+		{"/visits", "action", "skipped"},
+		{"/renewals", "status", "contacted"},
+		{"/service-schedules/existing", "action", "pause"},
+		{"/service-schedules/existing", "action", "resume"},
+	}
+	for _, tc := range allowed {
+		form := url.Values{tc.field: {tc.value}}
+		request := httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(form.Encode()))
+		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if !publicDemoMutationAllowed(request) {
+			t.Fatalf("expected finite demo action %q %s=%s to be allowed", tc.path, tc.field, tc.value)
+		}
+	}
+	blocked := []struct{ path, field, value string }{
+		{"/customers", "name", "unbounded"},
+		{"/agreements", "status", "active"},
+		{"/agreements/id/renewal-link", "", ""},
+		{"/agreements/id/service-schedules", "service_name", "unbounded"},
+		{"/plan-templates", "name", "unbounded"},
+		{"/import", "step", "commit"},
+		{"/renewals", "status", "renewed"},
+		{"/service-schedules/existing", "action", "unexpected"},
+	}
+	for _, tc := range blocked {
+		form := url.Values{}
+		if tc.field != "" {
+			form.Set(tc.field, tc.value)
+		}
+		request := httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(form.Encode()))
+		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if publicDemoMutationAllowed(request) {
+			t.Fatalf("demo row-creating or setup action %q %s=%s was allowed", tc.path, tc.field, tc.value)
+		}
+	}
+}
+
+func TestPublicDemoFreeTextIsDiscardedBeforeMutation(t *testing.T) {
+	form := url.Values{"notes": {strings.Repeat("x", 4096)}, "status": {"contacted"}}
+	request := httptest.NewRequest(http.MethodPost, "/renewals", strings.NewReader(form.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if err := request.ParseForm(); err != nil {
+		t.Fatal(err)
+	}
+	clearPublicDemoFreeText(request)
+	if request.FormValue("notes") != "" || request.FormValue("status") != "contacted" {
+		t.Fatalf("demo form was not narrowed safely: %+v", request.Form)
 	}
 }
 
@@ -148,6 +223,19 @@ func TestAuthThrottleRecoversAfterWindow(t *testing.T) {
 	now = now.Add(time.Minute)
 	if !throttle.allowed(key) {
 		t.Fatal("throttle did not recover after its window")
+	}
+}
+
+func TestPublicDemoLimiterConsumesCapacityAtomically(t *testing.T) {
+	now := time.Date(2026, 9, 1, 4, 0, 0, 0, time.UTC)
+	limiter := newAuthThrottle(RuntimeLimits{AuthMaxAttempts: 2, AuthThrottleWindow: time.Minute})
+	limiter.now = func() time.Time { return now }
+	if !limiter.take("global") || !limiter.take("global") || limiter.take("global") {
+		t.Fatal("demo limiter did not enforce its exact allocation capacity")
+	}
+	now = now.Add(time.Minute)
+	if !limiter.take("global") {
+		t.Fatal("demo limiter did not recover after its window")
 	}
 }
 

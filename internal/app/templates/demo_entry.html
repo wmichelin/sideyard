@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Start the ClubDue demo</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/demo-entry.js" defer></script>
+</head>
+<body class="auth-page">
+  <main class="auth-card">
+    <p class="eyebrow">Recurring service operations</p>
+    <h1 class="title">Your private demo is starting</h1>
+    {{ if .Error }}
+    <p class="error-banner" role="alert">{{ .Error }}</p>
+    <p class="auth-footer"><a href="/demo">Try again</a></p>
+    {{ else }}
+    <p class="subtitle">We’re creating an isolated landscaping workspace with fictional customers. No credentials required.</p>
+    <form method="post" action="/demo/session" class="form-stack" data-demo-entry>
+      {{ template "csrf_field" . }}
+      <button type="submit" class="primary-btn full-width">Enter demo</button>
+    </form>
+    <p class="auth-footer">The workspace expires after four hours. Do not upload real customer data.</p>
+    {{ end }}
+  </main>
+</body>
+</html>

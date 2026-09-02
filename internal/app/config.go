@@ -37,16 +37,17 @@ type OwnerCredentials struct {
 }
 
 type Config struct {
-	Environment     Environment
-	Address         string
-	DatabaseURL     string
-	SessionSecret   string
-	PublicURL       *url.URL
-	EnableDevRoutes bool
-	SignupAllowlist map[string]struct{}
-	BootstrapOwner  OwnerCredentials
-	ProvisionOwner  OwnerCredentials
-	RuntimeLimits   RuntimeLimits
+	Environment      Environment
+	Address          string
+	DatabaseURL      string
+	SessionSecret    string
+	PublicURL        *url.URL
+	EnableDevRoutes  bool
+	EnablePublicDemo bool
+	SignupAllowlist  map[string]struct{}
+	BootstrapOwner   OwnerCredentials
+	ProvisionOwner   OwnerCredentials
+	RuntimeLimits    RuntimeLimits
 }
 
 func LoadConfig(getenv func(string) string) (Config, error) {
@@ -86,6 +87,7 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 		config.SessionSecret = developmentSessionSecret
 	}
 	config.EnableDevRoutes = parseBool(getenv("ENABLE_DEV_ROUTES"))
+	config.EnablePublicDemo = parseBool(getenv("ENABLE_PUBLIC_DEMO"))
 	config.SignupAllowlist = parseEmailAllowlist(getenv("SIGNUP_ALLOWLIST"))
 	config.BootstrapOwner = ownerCredentialsFromEnv(getenv, "BOOTSTRAP")
 	if config.BootstrapOwner.ShopName == "" {
@@ -141,8 +143,11 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 			return Config{}, fmt.Errorf("PUBLIC_URL must be an HTTPS URL outside development")
 		}
 	}
-	if config.Environment == EnvironmentProduction && config.EnableDevRoutes {
-		return Config{}, fmt.Errorf("ENABLE_DEV_ROUTES is not allowed in production")
+	if config.Environment != EnvironmentDevelopment && config.EnableDevRoutes {
+		return Config{}, fmt.Errorf("ENABLE_DEV_ROUTES is allowed only in development")
+	}
+	if config.EnablePublicDemo && config.Environment != EnvironmentStaging {
+		return Config{}, fmt.Errorf("ENABLE_PUBLIC_DEMO is allowed only in staging")
 	}
 	return config, nil
 }
@@ -156,11 +161,15 @@ func (c Config) TestPaymentStubEnabled() bool {
 }
 
 func (c Config) SignupAllowed(email string) bool {
-	if c.Environment != EnvironmentProduction {
+	if c.Environment == EnvironmentDevelopment {
 		return true
 	}
 	_, allowed := c.SignupAllowlist[normalizeEmail(email)]
 	return allowed
+}
+
+func (c Config) SignupOpen() bool {
+	return c.Environment == EnvironmentDevelopment || len(c.SignupAllowlist) > 0
 }
 
 func (c Config) ValidateProvisionOwner() (OwnerCredentials, error) {
