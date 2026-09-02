@@ -15,8 +15,9 @@ import (
 )
 
 const (
-	importSourceCSV = "csv"
-	maxImportRows   = 10000
+	importSourceCSV     = "csv"
+	maxImportRows       = 10000
+	maxImportPriceCents = int64(1<<31 - 1)
 )
 
 var importCSVHeaders = []string{
@@ -96,6 +97,10 @@ type ImportCommitResult struct {
 }
 
 func parseImportCSV(r io.Reader) ([]ImportRow, error) {
+	return parseImportCSVWithLimits(r, maxImportRows, 0)
+}
+
+func parseImportCSVWithLimits(r io.Reader, maxRows, maxCellBytes int) ([]ImportRow, error) {
 	reader := csv.NewReader(r)
 	reader.TrimLeadingSpace = true
 	records, err := reader.ReadAll()
@@ -105,8 +110,17 @@ func parseImportCSV(r io.Reader) ([]ImportRow, error) {
 	if len(records) == 0 {
 		return nil, fmt.Errorf("csv file is empty")
 	}
-	if len(records)-1 > maxImportRows {
-		return nil, fmt.Errorf("csv file exceeds the %d-row pilot limit", maxImportRows)
+	if len(records)-1 > maxRows {
+		return nil, fmt.Errorf("csv file exceeds the %d-row limit", maxRows)
+	}
+	if maxCellBytes > 0 {
+		for _, record := range records {
+			for _, cell := range record {
+				if len(cell) > maxCellBytes {
+					return nil, fmt.Errorf("csv cell exceeds the %d-byte limit", maxCellBytes)
+				}
+			}
+		}
 	}
 
 	header := records[0]
@@ -193,11 +207,11 @@ func parseImportCSV(r io.Reader) ([]ImportRow, error) {
 			if priceCents == "" && priceDollars == "" {
 				row.PriceCents = 0
 			} else if priceCents != "" {
-				price, err := strconv.Atoi(priceCents)
+				price, err := strconv.ParseInt(priceCents, 10, 32)
 				if err != nil || price < 0 {
-					row.Error = "price_cents must be a non-negative integer"
+					row.Error = "price_cents must be between 0 and 2147483647"
 				} else {
-					row.PriceCents = price
+					row.PriceCents = int(price)
 				}
 			} else {
 				price, err := parseImportDollarCents(priceDollars)
@@ -326,7 +340,7 @@ func parseImportDollarCents(raw string) (int, error) {
 		return 0, fmt.Errorf("invalid dollar amount")
 	}
 	parts := strings.SplitN(value, ".", 2)
-	whole, err := strconv.Atoi(parts[0])
+	whole, err := strconv.ParseInt(parts[0], 10, 64)
 	if err != nil || whole < 0 {
 		return 0, fmt.Errorf("invalid dollar amount")
 	}
@@ -347,7 +361,14 @@ func parseImportDollarCents(raw string) (int, error) {
 			return 0, fmt.Errorf("invalid dollar amount")
 		}
 	}
-	return whole*100 + cents, nil
+	if whole > maxImportPriceCents/100 {
+		return 0, fmt.Errorf("invalid dollar amount")
+	}
+	total := whole*100 + int64(cents)
+	if total > maxImportPriceCents {
+		return 0, fmt.Errorf("invalid dollar amount")
+	}
+	return int(total), nil
 }
 
 func (row ImportRow) contentHash() string {

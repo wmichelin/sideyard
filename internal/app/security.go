@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 )
@@ -139,11 +138,20 @@ func (s *Server) securityHandler(next http.Handler) http.Handler {
 		setSecurityHeaders(w.Header())
 
 		if isStateChangingMethod(r.Method) {
-			if r.ContentLength > s.config.RuntimeLimits.MaxRequestBodyBytes {
+			requestLimit, publicDemoUser := s.requestBodyLimit(r)
+			if publicDemoUser != nil {
+				s.setPublicDemoHeaders(w)
+				if r.URL.Path != "/logout" && !s.publicDemoLimiter().take("public-demo-mutation:"+publicDemoUser.ID) {
+					w.Header().Set("Retry-After", "60")
+					http.Error(w, "The demo action limit was reached. Please try again in a minute.", http.StatusTooManyRequests)
+					return
+				}
+			}
+			if r.ContentLength > requestLimit {
 				http.Error(w, "request too large", http.StatusRequestEntityTooLarge)
 				return
 			}
-			r.Body = http.MaxBytesReader(w, r.Body, s.config.RuntimeLimits.MaxRequestBodyBytes)
+			r.Body = http.MaxBytesReader(w, r.Body, requestLimit)
 		}
 
 		csrfToken, err := s.csrfToken(w, r)
@@ -158,6 +166,23 @@ func (s *Server) securityHandler(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func (s *Server) requestBodyLimit(r *http.Request) (int64, *User) {
+	limit := s.config.RuntimeLimits.MaxRequestBodyBytes
+	if s.auth == nil || !s.config.EnablePublicDemo {
+		return limit, nil
+	}
+	user, err := s.auth.userFromRequest(r.Context(), r)
+	if err != nil || !user.IsDemo {
+		return limit, nil
+	}
+	if r.Method == http.MethodPost && r.URL.Path == "/import" {
+		if mediaType, ok := normalizedMediaType(r.Header.Get("Content-Type")); ok && mediaType == "multipart/form-data" {
+			return publicDemoMaxImportRequestBytes, user
+		}
+	}
+	return publicDemoMaxMutationFormBytes, user
 }
 
 func setSecurityHeaders(header http.Header) {
@@ -203,7 +228,8 @@ func csrfTokenFromContext(ctx context.Context) string {
 }
 
 func (s *Server) validCSRFToken(w http.ResponseWriter, r *http.Request, expected string) bool {
-	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+	mediaType, _ := normalizedMediaType(r.Header.Get("Content-Type"))
+	if mediaType == "multipart/form-data" {
 		if err := r.ParseMultipartForm(s.config.RuntimeLimits.MaxMultipartMemory); err != nil {
 			writeRequestParseError(w, err)
 			return false

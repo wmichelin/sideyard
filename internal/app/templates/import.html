@@ -9,17 +9,16 @@
 {{ if eq .Step "upload" }}
 {{ if .Error }}<p class="error-banner">{{ .Error }}</p>{{ end }}
 
-{{ if .IsDemo }}
 <section class="panel">
-  <h3 class="section-title">Uploads are disabled in the public demo</h3>
-  <p class="empty-note">The demo uses fictional landscaping data. A real pilot starts with an assisted, reconciled CSV export from Google Sheets.</p>
-</section>
-{{ else }}
-
-<section class="panel">
+  {{ if .IsDemo }}
+  <h3 class="section-title">Try a fictional CSV import</h3>
+  <p class="muted">Use fictional or redacted data only—do not upload real customer information. One <code>.csv</code> may contain up to 100 data rows, 128 KiB, and 2,000 bytes per cell. Preview creates no customer records; the exact CSV is protected server-side for up to 15 minutes so one commit can apply it.</p>
+  <p class="muted">Preview and commit each use one of this sandbox's 30 action slots. Before it expires, the sandbox accepts up to 500 imported rows and a combined 20,000 projected visits from active recurring services across committed imports.</p>
+  {{ else }}
   <h3 class="section-title">Required columns</h3>
+  {{ end }}
   <p class="muted import-columns"><strong>Required:</strong> external_id, customer_name, address_line1, city, state, postal_code, anniversary_date. <strong>Optional customer/plan:</strong> email, phone, plan_name, status, and either price_cents or price (dollars). <strong>Optional recurring work:</strong> service_name, cadence_interval, cadence_unit, service_start_date, service_end_date, and service_external_id. A service needs its name, cadence unit, and start date; interval defaults to 1. Units accept day/week/month plus daily, weekly, biweekly, or monthly. Dates may be YYYY-MM-DD or M/D/YYYY.</p>
-  <p class="muted">Start from <code>internal/app/testdata/landscaping-google-sheets-template.csv</code>. Leave plan_name blank unless the matching plan template already exists.</p>
+  <p class="muted">Download the <a href="/static/landscaping-demo-import.csv" download>fictional landscaping sample CSV</a>. Leave plan_name blank unless the matching plan template already exists.</p>
 </section>
 
 <section class="panel">
@@ -35,9 +34,13 @@
   </form>
 </section>
 
-{{ end }}
-
 {{ else if eq .Step "preview" }}
+{{ if .IsDemo }}
+<section class="panel">
+  <h3 class="section-title">Nothing has been saved yet</h3>
+  <p class="muted">Review the actions below. Commit uses this exact protected preview once; it expires after 15 minutes.</p>
+</section>
+{{ end }}
 <section class="stats">
   <div class="stat-card">
     <span class="stat-label">New customers</span>
@@ -107,7 +110,11 @@
   <form method="post" action="/import" class="inline-form">
     {{ template "csrf_field" . }}
     <input type="hidden" name="step" value="commit">
+    {{ if .IsDemo }}
+    <input type="hidden" name="preview_token" value="{{ .PreviewToken }}">
+    {{ else }}
     <input type="hidden" name="csv_data" value="{{ .CSVData }}">
+    {{ end }}
     <button type="submit" class="primary-btn">Commit import</button>
   </form>
   {{ end }}

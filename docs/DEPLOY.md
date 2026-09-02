@@ -169,10 +169,19 @@ recurring-service, renewal, and outcome forms remain interactive inside that
 isolated tenant; separate visitors cannot read or change one another's demo.
 Each sandbox admits at most 30 state-changing requests, including requests that
 later fail product validation. An admitted URL-encoded form must be at most 16
-KiB and each field value at most 2,000 bytes. CSV import and every multipart
-upload remain blocked. Active sandboxes are capped; at four hours the session
-and workspace stop resolving, and the normal cleanup path deletes the expired
-tenant and its child rows through the scoped cascade.
+KiB and each field value at most 2,000 bytes. The only upload exception is the
+exact `/import` preview-and-commit flow: preview accepts one `.csv` containing
+fictional or redacted data, at most 100 data rows, at most 128 KiB raw, and no
+cell over 2,000 bytes. A sandbox may admit at most 500 uploaded data rows across
+its lifetime. Across committed imports, it may also admit a combined 20,000
+projected recurring visits. Preview creates no customer, property, agreement,
+or service records; it holds the exact CSV server-side for at most 15 minutes
+behind an expiring, tenant-bound, single-use commit token. Preview and commit
+each consume one of the 30 saved-action slots. Every other multipart upload
+remains blocked. Active
+sandboxes are capped; at four hours the session and workspace stop resolving,
+the commit token is no longer usable, and the normal cleanup path deletes the
+expired tenant and its child rows through the scoped cascade.
 
 The deploy helper sets `ENABLE_PUBLIC_DEMO=1` only for staging. Application
 startup rejects that flag in development or production, and production does
@@ -184,9 +193,9 @@ startup because its published password allowed unrestricted writes. Development
 seeding is rejected by staging configuration, and staging enrollment is closed
 unless an operator supplies `SIGNUP_ALLOWLIST`. The staging smoke uses only
 fresh, expiring demo tenants and proves their bounded ordinary form writes,
-blocked CSV/multipart uploads, and isolation. Production smoke uses approved
-environment secrets for a real pilot owner; no shared demo credentials are
-provisioned there.
+bounded `/import` CSV preview and commit, rejection of all other multipart
+uploads, and isolation. Production smoke uses approved environment secrets for
+a real pilot owner; no shared demo credentials are provisioned there.
 
 ## One-time setup
 
@@ -252,19 +261,18 @@ main push ──► staging auto-deploy ──► agent smoke-tests ──► sh
    `:latest` for discoverability but deploys the immutable digest. GitHub
    environment approval is required if configured.
 
-Determine the exact reviewed staging image digest from its full commit SHA:
+Copy the exact commit SHA and immutable digest from the successful reviewed
+**Deploy Staging** run's **Staging build artifact** summary:
 
 ```bash
-STAGING_SHA=<full-sha-from-reviewed-Deploy-Staging-run>
-docker buildx imagetools inspect "ghcr.io/wmichelin/clubdue:${STAGING_SHA}" \
-  --format '{{ .Manifest.Digest }}'
 gh workflow run deploy-production.yml -f image_digest=sha256:<reviewed-digest>
 ```
 
 The production workflow accepts only `sha256:` followed by 64 lowercase
 hexadecimal characters. It pulls that exact `ghcr.io/wmichelin/clubdue@…`
 reference, rather than resolving a mutable `:staging` or commit tag at release
-time.
+time. Tag inspection may be used only as a comparison check; it is not the
+source of truth for promotion.
 
 ## Local deploy
 
@@ -283,7 +291,8 @@ cp .env.example .env   # fill in DROPLET_HOST + GITHUB_TOKEN
 
 Checks liveness/readiness, authenticated dashboard behavior, and environment
 boundaries. Staging proves isolated one-click demo creation, bounded ordinary
-form writes, blocked CSV/multipart uploads, cross-visitor separation, and
-legacy-login retirement; production proves `/demo` is absent.
+form writes, bounded `/import` CSV preview and commit, rejection of other
+multipart uploads, cross-visitor separation, and legacy-login retirement;
+production proves `/demo` is absent.
 
 See also [RELEASE-WORKFLOW.md](./RELEASE-WORKFLOW.md) for agent instructions.

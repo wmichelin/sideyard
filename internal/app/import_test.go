@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -51,6 +52,60 @@ func TestLandscapingSheetsFixtureIncludesImportableRecurringServices(t *testing.
 	}
 }
 
+func TestPublicDemoLandscapingFixtureFitsImportLimits(t *testing.T) {
+	f, err := os.Open("static/landscaping-demo-import.csv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	rows, err := parseImportCSVWithLimits(f, publicDemoMaxImportRows, publicDemoMaxImportCellBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("public demo sample rows = %d, want 3", len(rows))
+	}
+	for _, row := range rows {
+		if row.Error != "" || !strings.HasPrefix(row.ExternalID, "demo-csv-") || row.ServiceName == "" {
+			t.Fatalf("invalid public demo sample row: %+v", row)
+		}
+	}
+}
+
+func TestParseImportCSVWithPublicDemoRowAndCellLimits(t *testing.T) {
+	buildCSV := func(rowCount, nameBytes int) string {
+		var csv strings.Builder
+		csv.WriteString("external_id,customer_name,address_line1,city,state,postal_code,anniversary_date\n")
+		for i := range rowCount {
+			fmt.Fprintf(&csv, "limit-%03d,%s,1 Main St,Columbus,OH,43215,2030-01-01\n", i, strings.Repeat("x", nameBytes))
+		}
+		return csv.String()
+	}
+
+	rows, err := parseImportCSVWithLimits(
+		strings.NewReader(buildCSV(publicDemoMaxImportRows, publicDemoMaxImportCellBytes)),
+		publicDemoMaxImportRows,
+		publicDemoMaxImportCellBytes,
+	)
+	if err != nil || len(rows) != publicDemoMaxImportRows {
+		t.Fatalf("exact public demo limits = %d rows, %v", len(rows), err)
+	}
+	if _, err := parseImportCSVWithLimits(
+		strings.NewReader(buildCSV(publicDemoMaxImportRows+1, 1)),
+		publicDemoMaxImportRows,
+		publicDemoMaxImportCellBytes,
+	); err == nil || !strings.Contains(err.Error(), "100-row limit") {
+		t.Fatalf("row limit error = %v", err)
+	}
+	if _, err := parseImportCSVWithLimits(
+		strings.NewReader(buildCSV(1, publicDemoMaxImportCellBytes+1)),
+		publicDemoMaxImportRows,
+		publicDemoMaxImportCellBytes,
+	); err == nil || !strings.Contains(err.Error(), "2000-byte") {
+		t.Fatalf("cell limit error = %v", err)
+	}
+}
+
 func TestParseImportCSV(t *testing.T) {
 	csv := `external_id,customer_name,email,phone,address_line1,city,state,postal_code,plan_name,anniversary_date,status,price_cents
 csv-1001,Morgan Walsh,morgan@example.com,555-0201,142 Oak Lane,Denver,CO,80202,Gold HVAC Plan,2026-09-15,active,24900
@@ -94,6 +149,38 @@ func TestParseImportCSV_validationError(t *testing.T) {
 	}
 	if rows[0].Error == "" {
 		t.Fatal("expected validation error on row")
+	}
+}
+
+func TestParseImportCSVRejectsPricesOutsidePostgresIntegerRange(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		priceHeader string
+		price       string
+		wantError   bool
+	}{
+		{name: "max cents", priceHeader: "price_cents", price: "2147483647"},
+		{name: "cents overflow", priceHeader: "price_cents", price: "2147483648", wantError: true},
+		{name: "max dollars", priceHeader: "price", price: "21474836.47"},
+		{name: "dollars overflow", priceHeader: "price", price: "21474836.48", wantError: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			csv := "external_id,customer_name,address_line1,city,state,postal_code,anniversary_date," + tc.priceHeader + "\n" +
+				"bounded-price,Example,1 Main,Columbus,OH,43215,2030-01-01," + tc.price + "\n"
+			rows, err := parseImportCSV(strings.NewReader(csv))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(rows) != 1 {
+				t.Fatalf("rows = %d", len(rows))
+			}
+			if tc.wantError && rows[0].Error == "" {
+				t.Fatalf("overflowing price accepted: %+v", rows[0])
+			}
+			if !tc.wantError && (rows[0].Error != "" || int64(rows[0].PriceCents) != maxImportPriceCents) {
+				t.Fatalf("bounded price = %+v", rows[0])
+			}
+		})
 	}
 }
 

@@ -30,7 +30,7 @@
       </form>
     </aside>
     <main class="main">
-      {{ if .Nav.User.IsDemo }}<div class="demo-banner" role="status"><strong>Fictional public demo</strong> — changes are saved only inside this isolated workspace and deleted after four hours. CSV uploads remain disabled. Use fictional data only.</div>{{ end }}
+      {{ if .Nav.User.IsDemo }}<div class="demo-banner" role="status"><strong>Fictional public demo</strong> — changes are saved only inside this isolated workspace and deleted after four hours. CSV import accepts fictional or redacted data only; other uploads stay disabled.</div>{{ end }}
       {{ .Body }}
     </main>
   </div>

@@ -104,10 +104,16 @@ foundation alongside the existing HVAC workflow:
   tenant and a four-hour browser session without putting credentials or tokens
   in the URL. Each visitor is isolated and can use the ordinary product forms;
   the sandbox admits at most 30 state-changing requests, caps encoded forms at
-  16 KiB and individual values at 2,000 bytes, and continues to reject CSV and
-  multipart uploads. At four hours the tenant stops resolving and cleanup
-  deletes it by cascade. Production refuses the feature flag and does not
-  register the route.
+  16 KiB and individual values at 2,000 bytes, and permits only a bounded
+  `/import` preview and commit for one fictional or redacted `.csv`. The file is
+  capped at 100 data rows, 128 KiB raw, and 2,000 bytes per cell, with 500
+  admitted rows and a combined 20,000 projected recurring visits across
+  committed imports over the sandbox lifetime. Preview creates no product
+  records and holds the exact CSV server-side for at most 15 minutes behind an
+  expiring, tenant-bound, single-use commit token; preview and
+  commit each count toward the 30-action budget. All other multipart remains
+  blocked. At four hours the tenant stops resolving and cleanup deletes it by
+  cascade. Production refuses the feature flag and does not register the route.
 - The mobile navigation is compact enough that the work view is visible in the
   initial phone viewport.
 
@@ -264,8 +270,18 @@ The staging flag is the kill switch. Active demo workspaces are capped and use
 fictional data. Ordinary setup and workflow forms write only to the visitor's
 isolated tenant. Every admitted state-changing request consumes one of 30
 durable sandbox slots—even if product validation later rejects it—and is
-limited to a 16 KiB URL-encoded form with no field value over 2,000 bytes. CSV
-import and every multipart upload remain unavailable.
+limited to a 16 KiB URL-encoded form with no field value over 2,000 bytes.
+
+The sole upload boundary is the exact `/import` preview-and-commit flow. Preview
+accepts one `.csv` containing only fictional or redacted data, with at most 100
+data rows, 128 KiB of raw CSV, and 2,000 bytes in any cell. Across admitted
+commits, a sandbox may import at most 500 data rows and admit a combined 20,000
+projected recurring visits during its lifetime. Preview creates no customer,
+property, agreement, or service records; it holds the exact CSV server-side for
+at most 15 minutes. Commit requires an expiring token bound to that tenant and
+exact preview, and the token can be used only once. Preview
+and commit each consume one of the 30 sandbox action slots. All other multipart
+uploads remain unavailable.
 
 The session and tenant expire together after four hours. Expired workspaces no
 longer authenticate or resolve public renewal links, and cleanup deletes the
@@ -281,10 +297,11 @@ production design exists.
   public demo/development routes are absent.
 - Exact-commit CI and staging deploy success.
 - Staging smoke for one-click demo creation, bounded ordinary form writes,
-  blocked CSV/multipart uploads, cross-visitor isolation, dashboard, work
-  outcomes, export, liveness, and readiness. A failed smoke automatically rolls
-  staging traffic back only to a release carrying the demo-sandbox safety
-  marker; unsafe legacy rollback is refused.
+  bounded `/import` CSV preview and commit, rejection of every other multipart
+  upload, cross-visitor isolation, dashboard, work outcomes, export, liveness,
+  and readiness. A failed smoke automatically rolls staging traffic back only
+  to a release carrying the demo-sandbox safety marker; unsafe legacy rollback
+  is refused.
 - Desktop and phone browser acceptance, with request/log review and no secrets
   or customer data in evidence.
 - Explicit user approval before any production deployment.

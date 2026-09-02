@@ -26,6 +26,43 @@ func securityTestConfig() Config {
 	}
 }
 
+func demoImportMultipartRequest(t *testing.T, filename string, raw []byte, extras map[string][]byte) *http.Request {
+	t.Helper()
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("csrf_token", "known-token"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.WriteField("step", "dry_run"); err != nil {
+		t.Fatal(err)
+	}
+	file, err := writer.CreateFormFile("csv", filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.Write(raw); err != nil {
+		t.Fatal(err)
+	}
+	for name, contents := range extras {
+		file, err := writer.CreateFormFile(name, name+".csv")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := file.Write(contents); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/import", &body)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	if err := request.ParseMultipartForm(1 << 10); err != nil {
+		t.Fatal(err)
+	}
+	return request
+}
+
 func TestEveryMutationRouteRejectsMissingCSRF(t *testing.T) {
 	config := securityTestConfig()
 	config.EnableDevRoutes = true
@@ -105,9 +142,29 @@ func TestPublicDemoMutationAllowlistIsFinite(t *testing.T) {
 	for _, tc := range allowed {
 		request := httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.form.Encode()))
 		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if err := request.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
 		if !publicDemoMutationAllowed(request) {
 			t.Fatalf("expected registered demo mutation %q with %v to be allowed", tc.path, tc.form)
 		}
+	}
+	commitForm := url.Values{
+		"csrf_token":    {"known-token"},
+		"step":          {"commit"},
+		"preview_token": {"opaque-token"},
+	}
+	commitRequest := httptest.NewRequest(http.MethodPost, "/import", strings.NewReader(commitForm.Encode()))
+	commitRequest.Header.Set("Content-Type", "Application/X-Www-Form-Urlencoded; charset=UTF-8")
+	if err := commitRequest.ParseForm(); err != nil {
+		t.Fatal(err)
+	}
+	if !publicDemoMutationAllowed(commitRequest) {
+		t.Fatal("exact public demo import commit was blocked")
+	}
+	previewRequest := demoImportMultipartRequest(t, "sample.CSV", []byte("fictional"), nil)
+	if !publicDemoMutationAllowed(previewRequest) || !publicDemoMutationWithinLimits(previewRequest) {
+		t.Fatal("exact public demo import preview was blocked")
 	}
 	blocked := []struct {
 		method, path, contentType string
@@ -131,9 +188,34 @@ func TestPublicDemoMutationAllowlistIsFinite(t *testing.T) {
 	for _, tc := range blocked {
 		request := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.form.Encode()))
 		request.Header.Set("Content-Type", tc.contentType)
+		if tc.contentType == "application/x-www-form-urlencoded" {
+			if err := request.ParseForm(); err != nil {
+				t.Fatal(err)
+			}
+		}
 		if publicDemoMutationAllowed(request) {
 			t.Fatalf("unregistered demo mutation %s %q with %v was allowed", tc.method, tc.path, tc.form)
 		}
+	}
+	for name, request := range map[string]*http.Request{
+		"wrong extension": demoImportMultipartRequest(t, "sample.txt", []byte("fictional"), nil),
+		"extra file":      demoImportMultipartRequest(t, "sample.csv", []byte("fictional"), map[string][]byte{"attachment": []byte("extra")}),
+		"query value":     demoImportMultipartRequest(t, "sample.csv", []byte("fictional"), nil),
+		"duplicate step":  demoImportMultipartRequest(t, "sample.csv", []byte("fictional"), nil),
+	} {
+		if name == "query value" {
+			request.URL.RawQuery = "extra=value"
+		}
+		if name == "duplicate step" {
+			request.PostForm["step"] = append(request.PostForm["step"], "dry_run")
+		}
+		if publicDemoMutationAllowed(request) {
+			t.Fatalf("public demo import accepted %s", name)
+		}
+	}
+	overFile := demoImportMultipartRequest(t, "sample.csv", bytes.Repeat([]byte("x"), publicDemoMaxImportCSVBytes+1), nil)
+	if !publicDemoMutationAllowed(overFile) || publicDemoMutationWithinLimits(overFile) {
+		t.Fatal("public demo import file byte limit was not enforced separately from request shape")
 	}
 }
 

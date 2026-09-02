@@ -40,7 +40,7 @@ jobs:
           CLUBDUE_REQUIRE_POSTGRES_INTEGRATION: "1"
         run: >-
           go test -count=1 -v -run
-          '^(TestAgreementReferencesStayWithinShopAndCustomer|TestAgreementKeepsPlanTermsSnapshotAfterTemplateEdit|TestSignupEmailCannotCreateMultipleTenantIdentities|TestRetireLegacySharedDemoIsNarrowAndIdempotent|TestGenerateRenewalTasksCreatesCycleAwareMilestonesIdempotently|TestRenewedTaskRollsAgreementAndRetiresCycle|TestQueueRenewalDigestsIsDailyAndIdempotent|TestCompletedVisitCannotExceedAgreementEntitlement|TestRecurringServiceOccurrencesAreIdempotentTenantScopedAndFinal|TestPublicDemoCreatesIsolatedExpiringFictionalTenants|TestLandscapingSheetsImportCreatesIdempotentRecurringWork)$'
+          '^(TestAgreementReferencesStayWithinShopAndCustomer|TestAgreementKeepsPlanTermsSnapshotAfterTemplateEdit|TestSignupEmailCannotCreateMultipleTenantIdentities|TestRetireLegacySharedDemoIsNarrowAndIdempotent|TestGenerateRenewalTasksCreatesCycleAwareMilestonesIdempotently|TestRenewedTaskRollsAgreementAndRetiresCycle|TestQueueRenewalDigestsIsDailyAndIdempotent|TestCompletedVisitCannotExceedAgreementEntitlement|TestRecurringServiceOccurrencesAreIdempotentTenantScopedAndFinal|TestPublicDemoCreatesIsolatedExpiringFictionalTenants|TestPublicDemoLogoutSurvivesExhaustedPreParseLimiter|TestPublicDemoImportPreviewStoreEnforcesExpiryIsolationAndBudgets|TestPublicDemoCSVPreviewCommitIsBoundedSingleUseAndIsolated|TestPublicDemoWorstCaseDailyImportMaterializesWithinRequestBudget|TestLandscapingSheetsImportCreatesIdempotentRecurringWork)$'
           ./...
 
       - name: Full test suite
@@ -59,3 +59,11 @@ jobs:
 
       - name: Production-mode backup and restore rehearsal
         run: ./scripts/production-rehearsal.sh
+
+  pilot-onboarding-rehearsal:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pilot onboarding CSV rehearsal
+        run: ./scripts/pilot-onboarding-rehearsal.sh

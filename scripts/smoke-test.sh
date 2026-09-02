@@ -23,7 +23,9 @@ if [ "$TARGET" = "staging" ]; then
   DEMO_COOKIE_JAR="$(mktemp)"
   SECOND_DEMO_COOKIE_JAR="$(mktemp)"
   SECOND_DEMO_REPLAY_JAR="$(mktemp)"
+  DEMO_IMPORT_FIXTURE="${SCRIPT_DIR}/../internal/app/static/landscaping-demo-import.csv"
   trap 'rm -f "$COOKIE_JAR" "$DEMO_COOKIE_JAR" "$SECOND_DEMO_COOKIE_JAR" "$SECOND_DEMO_REPLAY_JAR"' EXIT
+  [ -r "$DEMO_IMPORT_FIXTURE" ]
   curl -fsS "${CLUBDUE_URL}/rollback-safetyz" | grep -qx demo-sandbox-v1
   echo "  ✓ rollback safety marker"
   LOGIN_PAGE="$(curl -fsS -c "$COOKIE_JAR" "${CLUBDUE_URL}/login")"
@@ -51,6 +53,9 @@ if [ "$TARGET" = "staging" ]; then
   DEMO_HTML="$(curl -fsS -b "$DEMO_COOKIE_JAR" "${CLUBDUE_URL}/dashboard")"
   [[ "$DEMO_HTML" == *'Evergreen Lawn &amp; Landscape'* ]]
   [[ "$DEMO_HTML" == *'Fictional public demo'* ]]
+  DEMO_SAMPLE_CSV="$(curl -fsS "${CLUBDUE_URL}/static/landscaping-demo-import.csv")"
+  [[ "$DEMO_SAMPLE_CSV" == external_id,customer_name,* ]]
+  [[ "$DEMO_SAMPLE_CSV" == *'Jordan Green'* ]]
   HTML="$DEMO_HTML"
 
   DEMO_WORK_BEFORE="$(curl -fsS -b "$DEMO_COOKIE_JAR" "${CLUBDUE_URL}/visits?filter=due")"
@@ -75,11 +80,34 @@ if [ "$TARGET" = "staging" ]; then
   [ "$DEMO_CUSTOMER_STATUS" = "303" ]
   DEMO_CUSTOMERS="$(curl -fsS -b "$DEMO_COOKIE_JAR" "${CLUBDUE_URL}/customers")"
   [[ "$DEMO_CUSTOMERS" == *'Staging Smoke Garden Client'* ]]
-  DEMO_IMPORT_STATUS="$(curl -sS -b "$DEMO_COOKIE_JAR" -o /dev/null -w '%{http_code}' -X POST \
+  [[ "$DEMO_CUSTOMERS" != *'Jordan Green'* ]]
+
+  DEMO_IMPORT_PREVIEW="$(curl -fsS -b "$DEMO_COOKIE_JAR" -c "$DEMO_COOKIE_JAR" \
+    -F "csrf_token=$DEMO_CSRF_TOKEN" \
+    -F 'step=dry_run' \
+    -F "csv=@${DEMO_IMPORT_FIXTURE};type=text/csv" "${CLUBDUE_URL}/import")"
+  [[ "$DEMO_IMPORT_PREVIEW" == *'Import preview'* ]]
+  [[ "$DEMO_IMPORT_PREVIEW" == *'Nothing has been saved yet'* ]]
+  [[ "$DEMO_IMPORT_PREVIEW" == *'Jordan Green'* ]]
+  [[ "$DEMO_IMPORT_PREVIEW" != *'name="csv_data"'* ]]
+  DEMO_PREVIEW_TOKEN="$(printf '%s' "$DEMO_IMPORT_PREVIEW" | sed -n 's/.*name="preview_token" value="\([^"]*\)".*/\1/p' | head -1)"
+  [ -n "$DEMO_PREVIEW_TOKEN" ]
+  DEMO_CUSTOMERS_AFTER_PREVIEW="$(curl -fsS -b "$DEMO_COOKIE_JAR" "${CLUBDUE_URL}/customers")"
+  [[ "$DEMO_CUSTOMERS_AFTER_PREVIEW" != *'Jordan Green'* ]]
+
+  DEMO_IMPORT_COMMIT="$(curl -fsS -b "$DEMO_COOKIE_JAR" -c "$DEMO_COOKIE_JAR" -X POST \
     --data-urlencode "csrf_token=$DEMO_CSRF_TOKEN" \
     --data-urlencode 'step=commit' \
-    --data-urlencode 'csv_data=ZmljdGlvbmFs' "${CLUBDUE_URL}/import")"
-  [ "$DEMO_IMPORT_STATUS" = "403" ]
+    --data-urlencode "preview_token=$DEMO_PREVIEW_TOKEN" "${CLUBDUE_URL}/import")"
+  [[ "$DEMO_IMPORT_COMMIT" == *'Import complete'* ]]
+  [[ "$DEMO_IMPORT_COMMIT" == *'3 new customers'* ]]
+  DEMO_CUSTOMERS_AFTER_IMPORT="$(curl -fsS -b "$DEMO_COOKIE_JAR" "${CLUBDUE_URL}/customers")"
+  [[ "$DEMO_CUSTOMERS_AFTER_IMPORT" == *'Jordan Green'* ]]
+
+  DEMO_NON_IMPORT_MULTIPART_STATUS="$(curl -sS -b "$DEMO_COOKIE_JAR" -o /dev/null -w '%{http_code}' \
+    -F "csrf_token=$DEMO_CSRF_TOKEN" \
+    -F "csv=@${DEMO_IMPORT_FIXTURE};type=text/csv" "${CLUBDUE_URL}/customers")"
+  [ "$DEMO_NON_IMPORT_MULTIPART_STATUS" = "403" ]
 
   SECOND_DEMO_PAGE="$(curl -fsS -c "$SECOND_DEMO_COOKIE_JAR" "${CLUBDUE_URL}/demo")"
   SECOND_DEMO_CSRF_TOKEN="$(printf '%s' "$SECOND_DEMO_PAGE" | sed -n 's/.*name="csrf_token" value="\([^"]*\)".*/\1/p' | head -1)"
@@ -92,13 +120,14 @@ if [ "$TARGET" = "staging" ]; then
   [ "$SECOND_DEMO_DUE_COUNT" = "$DEMO_DUE_COUNT" ]
   SECOND_DEMO_CUSTOMERS="$(curl -fsS -b "$SECOND_DEMO_COOKIE_JAR" "${CLUBDUE_URL}/customers")"
   [[ "$SECOND_DEMO_CUSTOMERS" != *'Staging Smoke Garden Client'* ]]
+  [[ "$SECOND_DEMO_CUSTOMERS" != *'Jordan Green'* ]]
   cp "$SECOND_DEMO_COOKIE_JAR" "$SECOND_DEMO_REPLAY_JAR"
   SECOND_DEMO_LOGOUT_STATUS="$(curl -fsS -b "$SECOND_DEMO_COOKIE_JAR" -c "$SECOND_DEMO_COOKIE_JAR" -o /dev/null -w '%{http_code}' -X POST \
     --data-urlencode "csrf_token=$SECOND_DEMO_CSRF_TOKEN" "${CLUBDUE_URL}/logout")"
   [ "$SECOND_DEMO_LOGOUT_STATUS" = "303" ]
   SECOND_DEMO_DASHBOARD_STATUS="$(curl -fsS -b "$SECOND_DEMO_REPLAY_JAR" -o /dev/null -w '%{http_code}' "${CLUBDUE_URL}/dashboard")"
   [ "$SECOND_DEMO_DASHBOARD_STATUS" = "303" ]
-  echo "  ✓ isolated one-click demo, persistent sandbox writes, upload denial, and tenant separation"
+  echo "  ✓ isolated demo writes, protected CSV preview/commit, non-import upload denial, and tenant separation"
 else
   : "${CLUBDUE_SMOKE_EMAIL:?Set CLUBDUE_SMOKE_EMAIL from a GitHub environment secret}"
   : "${CLUBDUE_SMOKE_PASSWORD:?Set CLUBDUE_SMOKE_PASSWORD from a GitHub environment secret}"

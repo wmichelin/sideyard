@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"html/template"
 	"log"
+	"mime"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -66,23 +68,25 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
 		}
+		if user.IsDemo {
+			s.setPublicDemoHeaders(w)
+		}
 		if user.IsDemo && isStateChangingMethod(r.Method) {
 			if !s.config.EnablePublicDemo || !publicDemoMutationAllowed(r) {
 				http.Error(w, "This action is unavailable in the public demo.", http.StatusForbidden)
 				return
 			}
 			if !publicDemoMutationWithinLimits(r) {
-				http.Error(w, "Demo changes must be smaller than 16 KiB with fields no longer than 2,000 bytes.", http.StatusRequestEntityTooLarge)
-				return
-			}
-			if !s.publicDemoLimiter().take("public-demo-mutation:" + user.ID) {
-				w.Header().Set("Retry-After", "60")
-				http.Error(w, "The demo action limit was reached. Please try again in a minute.", http.StatusTooManyRequests)
+				if publicDemoImportPreviewRequest(r) {
+					http.Error(w, "Demo CSV files must be at most 128 KiB with no more than 100 rows and 2,000 bytes per cell.", http.StatusRequestEntityTooLarge)
+				} else {
+					http.Error(w, "Demo changes must be smaller than 16 KiB with fields no longer than 2,000 bytes.", http.StatusRequestEntityTooLarge)
+				}
 				return
 			}
 			if err := s.store.ReservePublicDemoMutation(r.Context(), user.ShopID); err != nil {
 				if errors.Is(err, errPublicDemoMutationBudgetReached) {
-					http.Error(w, "This demo used its 30 saved changes. Start a fresh demo to keep exploring.", http.StatusTooManyRequests)
+					http.Error(w, "This demo used its 30 actions. Start a fresh demo to keep exploring.", http.StatusTooManyRequests)
 					return
 				}
 				log.Printf("reserve public demo mutation: %v", err)
@@ -98,7 +102,18 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func publicDemoMutationWithinLimits(r *http.Request) bool {
-	if r.ContentLength > publicDemoMaxMutationFormBytes {
+	maxBytes := int64(publicDemoMaxMutationFormBytes)
+	if publicDemoImportPreviewRequest(r) {
+		maxBytes = publicDemoMaxImportRequestBytes
+		if r.MultipartForm == nil {
+			return false
+		}
+		files := r.MultipartForm.File["csv"]
+		if len(files) != 1 || files[0].Size > publicDemoMaxImportCSVBytes {
+			return false
+		}
+	}
+	if r.ContentLength > maxBytes {
 		return false
 	}
 	totalValues := 0
@@ -114,11 +129,21 @@ func publicDemoMutationWithinLimits(r *http.Request) bool {
 }
 
 func publicDemoMutationAllowed(r *http.Request) bool {
-	if r.Method != http.MethodPost || strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "multipart/form-data") {
+	if r.Method != http.MethodPost {
 		return false
 	}
 	segments := publicDemoPathSegments(r.URL.Path)
 	if len(segments) == 0 {
+		return false
+	}
+	mediaType, ok := normalizedMediaType(r.Header.Get("Content-Type"))
+	if !ok {
+		return false
+	}
+	if segments[0] == "import" {
+		return len(segments) == 1 && publicDemoImportRequestAllowed(r, mediaType)
+	}
+	if mediaType != "application/x-www-form-urlencoded" {
 		return false
 	}
 	switch segments[0] {
@@ -130,13 +155,13 @@ func publicDemoMutationAllowed(r *http.Request) bool {
 		if len(segments) != 2 {
 			return false
 		}
-		action := r.FormValue("action")
+		action := r.PostForm.Get("action")
 		return action == "pause" || action == "resume"
 	case "renewals":
 		if len(segments) != 1 {
 			return false
 		}
-		status := r.FormValue("status")
+		status := r.PostForm.Get("status")
 		return status == "open" || status == "contacted" || status == "renewed" || status == "lost"
 	case "customers":
 		return len(segments) == 1 ||
@@ -148,13 +173,77 @@ func publicDemoMutationAllowed(r *http.Request) bool {
 		if len(segments) != 1 {
 			return false
 		}
-		action := r.FormValue("action")
+		action := r.PostForm.Get("action")
 		return action == "completed" || action == "skipped" || action == "scheduled"
 	case "plan-templates":
 		return len(segments) == 1 || len(segments) == 2
 	default:
 		return false
 	}
+}
+
+func normalizedMediaType(contentType string) (string, bool) {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return "", false
+	}
+	return strings.ToLower(mediaType), true
+}
+
+func publicDemoImportRequestAllowed(r *http.Request, mediaType string) bool {
+	if len(r.URL.Query()) != 0 {
+		return false
+	}
+	switch mediaType {
+	case "multipart/form-data":
+		return publicDemoImportPreviewRequest(r) && publicDemoImportFileShapeAllowed(r)
+	case "application/x-www-form-urlencoded":
+		return exactPostForm(r, map[string]string{
+			"csrf_token":    "",
+			"step":          "commit",
+			"preview_token": "",
+		}) && r.PostForm.Get("csrf_token") != "" && r.PostForm.Get("preview_token") != ""
+	default:
+		return false
+	}
+}
+
+func publicDemoImportPreviewRequest(r *http.Request) bool {
+	mediaType, ok := normalizedMediaType(r.Header.Get("Content-Type"))
+	if !ok || mediaType != "multipart/form-data" || r.Method != http.MethodPost || r.URL.Path != "/import" {
+		return false
+	}
+	return exactPostForm(r, map[string]string{
+		"csrf_token": "",
+		"step":       "dry_run",
+	}) && r.PostForm.Get("csrf_token") != ""
+}
+
+func publicDemoImportFileShapeAllowed(r *http.Request) bool {
+	if r.MultipartForm == nil || len(r.MultipartForm.File) != 1 {
+		return false
+	}
+	files, ok := r.MultipartForm.File["csv"]
+	if !ok || len(files) != 1 || files[0].Size < 1 {
+		return false
+	}
+	return strings.EqualFold(filepath.Ext(files[0].Filename), ".csv")
+}
+
+// exactPostForm rejects duplicate, missing, and unexpected body fields. An
+// empty expected value means the field may contain any single nonempty value;
+// callers perform any route-specific nonempty check explicitly.
+func exactPostForm(r *http.Request, expected map[string]string) bool {
+	if len(r.PostForm) != len(expected) {
+		return false
+	}
+	for name, want := range expected {
+		values, ok := r.PostForm[name]
+		if !ok || len(values) != 1 || (want != "" && values[0] != want) {
+			return false
+		}
+	}
+	return true
 }
 
 func publicDemoPathSegments(path string) []string {

@@ -33,6 +33,20 @@ func TestOccurrenceDatesUseStableWeeklyCadenceAndBoundedWindow(t *testing.T) {
 	}
 }
 
+func TestProjectedOccurrenceCountMatchesMaterializationWindow(t *testing.T) {
+	asOf := time.Date(2026, time.September, 2, 12, 0, 0, 0, time.UTC)
+	count, err := ProjectedOccurrenceCount(ScheduleInput{
+		AgreementID: "agreement", ServiceName: "Daily route", CadenceUnit: "day",
+		CadenceInterval: 1, StartsOn: time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC),
+	}, asOf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != lookBehindDays+lookAheadDays+1 {
+		t.Fatalf("daily projection = %d, want %d", count, lookBehindDays+lookAheadDays+1)
+	}
+}
+
 func TestOutcomeNotesAreBoundedBeforeDatabaseWork(t *testing.T) {
 	service := &Service{}
 	err := service.UpdateOccurrenceStatuses(context.Background(), "shop", []string{"occurrence"}, "completed", strings.Repeat("x", 2001))

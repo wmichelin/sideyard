@@ -44,19 +44,27 @@ anniversary, and an upcoming/due/past-due state. Record a non-final
 **Contacted** outcome and a fictional note. ClubDue does not send outreach or
 decide that a customer paid; outcomes are explicit owner records.
 
-## 3:20–4:10 — Explain Sheets onboarding
+## 3:20–4:10 — Try Sheets onboarding
 
-Open **Import**. Uploads are disabled in the public demo so nobody can put real
-customer data into a public sandbox. Explain the real pilot flow:
+Open **Import**. Use only the fictional landscaping sample or a properly
+redacted export—never a real customer sheet. The public demo accepts one `.csv`
+through this exact preview-and-commit flow, capped at 100 data rows, 128 KiB raw,
+and 2,000 bytes per cell. A sandbox can admit at most 500 uploaded data rows
+and a combined 20,000 projected recurring visits across committed imports over
+its four-hour lifetime.
 
-1. Export an authorized, sanitized Google Sheet as CSV.
-2. Preview every row and correction.
-3. Reconcile counts.
-4. Commit only when errors are zero.
-5. Re-import with the same stable external IDs to update, not duplicate.
+1. Choose the fictional `.csv` and select **Preview import**. Preview creates no
+   customer, property, agreement, or service records; it protects the exact CSV
+   server-side for up to 15 minutes.
+2. Review every displayed correction and reconcile the counts.
+3. Commit only when errors are zero. The commit uses an expiring,
+   tenant-bound, single-use token for the exact preview.
+4. Explain that preview and commit each use one of the demo's 30 saved actions.
+5. Re-importing the same stable external IDs updates rather than duplicates.
 
-Use `internal/app/testdata/landscaping-google-sheets-template.csv` in an
-authenticated, non-public pilot workspace.
+Every other multipart upload remains blocked. The public demo and its import
+remain staging-only; production does not expose `/demo`. Real authorized
+customer data belongs only in an authenticated, non-public pilot workspace.
 
 ## 4:10–5:00 — Export and close on the boundary
 

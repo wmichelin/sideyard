@@ -291,7 +291,7 @@ func TestRecurringWorkKeepsSpaceBeforeSeasonalVisits(t *testing.T) {
 	}
 }
 
-func TestPublicDemoTemplatesExposeWritesButKeepUploadsBlocked(t *testing.T) {
+func TestPublicDemoTemplatesExposeBoundedWritesAndCSVImport(t *testing.T) {
 	writable := map[string][]string{
 		"templates/customers.html":          {"Add customer"},
 		"templates/customer_form.html":      {"Save customer", "Add property", "Add site detail"},
@@ -321,14 +321,16 @@ func TestPublicDemoTemplatesExposeWritesButKeepUploadsBlocked(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(imports), "Uploads are disabled in the public demo") {
-		t.Fatal("public demo import page no longer explains its upload boundary")
+	for _, want := range []string{"Try a fictional CSV import", "100 data rows", "128 KiB", `name="preview_token"`} {
+		if !strings.Contains(string(imports), want) {
+			t.Fatalf("public demo import page is missing %q", want)
+		}
 	}
 	layout, err := templateFS.ReadFile("templates/layout.html")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"changes are saved only inside this isolated workspace", "deleted after four hours", "CSV uploads remain disabled"} {
+	for _, want := range []string{"changes are saved only inside this isolated workspace", "deleted after four hours", "other uploads stay disabled"} {
 		if !strings.Contains(string(layout), want) {
 			t.Fatalf("public demo banner is missing %q", want)
 		}

@@ -70,3 +70,26 @@ func serviceScheduleEndDate(raw string) (*time.Time, error) {
 	}
 	return &value, nil
 }
+
+func projectedImportOccurrenceCount(rows []ImportRow, asOf time.Time) (int, error) {
+	total := 0
+	for _, row := range rows {
+		if row.Error != "" || row.ServiceName == "" || row.Status != AgreementActive {
+			continue
+		}
+		count, err := servicework.ProjectedOccurrenceCount(servicework.ScheduleInput{
+			AgreementID:     row.ExternalID,
+			ExternalID:      row.ServiceExternalID,
+			ServiceName:     row.ServiceName,
+			CadenceUnit:     row.CadenceUnit,
+			CadenceInterval: row.CadenceInterval,
+			StartsOn:        row.ServiceStartsOn,
+			EndsOn:          row.ServiceEndsOn,
+		}, asOf)
+		if err != nil {
+			return 0, err
+		}
+		total += count
+	}
+	return total, nil
+}

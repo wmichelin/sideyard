@@ -101,6 +101,30 @@ func ValidateSchedule(input ScheduleInput) error {
 	return nil
 }
 
+// ProjectedOccurrenceCount uses the same rolling window and cadence logic as
+// materialization without writing anything. Admission controls can use it to
+// bound future fan-out before accepting a schedule.
+func ProjectedOccurrenceCount(input ScheduleInput, asOf time.Time) (int, error) {
+	if err := ValidateSchedule(input); err != nil {
+		return 0, err
+	}
+	today := dateOnly(asOf)
+	schedule := Schedule{
+		AgreementID:     input.AgreementID,
+		ServiceName:     strings.TrimSpace(input.ServiceName),
+		CadenceUnit:     input.CadenceUnit,
+		CadenceInterval: input.CadenceInterval,
+		StartsOn:        dateOnly(input.StartsOn),
+		EndsOn:          input.EndsOn,
+		Active:          true,
+	}
+	return len(occurrenceDates(
+		schedule,
+		today.AddDate(0, 0, -lookBehindDays),
+		today.AddDate(0, 0, lookAheadDays),
+	)), nil
+}
+
 func (s *Service) CreateSchedule(ctx context.Context, shopID string, input ScheduleInput) (string, error) {
 	input.ServiceName = strings.TrimSpace(input.ServiceName)
 	input.ExternalID = strings.TrimSpace(input.ExternalID)

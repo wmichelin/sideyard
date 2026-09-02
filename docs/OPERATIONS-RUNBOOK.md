@@ -29,15 +29,15 @@ The staging smoke checks liveness/readiness, verifies signup and development
 routes are closed, and proves the former shared demo login is retired. It then
 creates two independent ephemeral landscaping tenants, completes recurring
 work, saves a renewal outcome, exercises an ordinary setup form, proves that
-write is isolated from the second tenant, verifies CSV/multipart uploads remain
-blocked, and checks the service-work CSV export. It uses fictional staging
-fixtures only and must never be aimed at production. A failed workflow smoke
-automatically switches traffic back to the retained previous staging container
-and leaves the workflow failed for investigation. Staging rollback also
-requires the retained release's `demo-sandbox-v1` safety marker. During the
-first transition from the former shared demo, an unmarked rollback is
-deliberately refused so the old shared, unrestricted tenant cannot be reopened;
-use a reviewed fix-forward instead.
+write is isolated from the second tenant, exercises the bounded `/import` CSV
+preview and commit, rejects multipart on every other path, and checks the
+service-work CSV export. It uses fictional staging fixtures only and must never
+be aimed at production. A failed workflow smoke automatically switches traffic
+back to the retained previous staging container and leaves the workflow failed
+for investigation. Staging rollback also requires the retained release's
+`demo-sandbox-v1` safety marker. During the first transition from the former
+shared demo, an unmarked rollback is deliberately refused so the old shared,
+unrestricted tenant cannot be reopened; use a reviewed fix-forward instead.
 
 Public-demo operations:
 
@@ -51,19 +51,32 @@ Public-demo operations:
 - Ordinary URL-encoded product forms are writable, but each sandbox admits only
   30 state-changing requests over its lifetime. An admitted request consumes
   one slot even when handler validation later rejects it. A `429` stating that
-  the 30 changes were used means the visitor must start a fresh demo; do not
-  bypass or reset the counter.
+  the 30 actions were used means the visitor must start a fresh demo; do not
+  bypass or reset the counter. An `/import` preview and its commit each consume
+  one of these slots even though preview creates no product records.
 - Demo form bodies are limited to 16 KiB and each field value to 2,000 bytes.
-  Oversized forms receive `413`. CSV import and all multipart requests remain
-  blocked with `403`; do not enable uploads or connectors for a public demo.
+  Oversized forms receive `413`. The sole multipart exception is the exact
+  `/import` preview: it accepts one `.csv`, at most 100 data rows and 128 KiB
+  raw, with no cell over 2,000 bytes. A sandbox may admit at most 500 uploaded
+  data rows over its lifetime. Across committed imports, it may also admit at
+  most 20,000 projected recurring visits from active recurring rows for the
+  same 30-days-back through 90-days-ahead window used to materialize visits.
+  Preview creates no customer,
+  property, agreement, or service records; it holds the exact CSV server-side
+  for at most 15 minutes. Commit requires the expiring, tenant-bound,
+  single-use token returned for that exact preview. Every other
+  multipart request remains blocked with `403`; do not enable other uploads or
+  connectors for a public demo.
 - A separate 20-actions-per-minute limiter may also return `429` with
   `Retry-After: 60`; wait for the window instead of raising the limit.
-- Use fictional input only and never put real customer information into a demo
-  workspace. Logs record only request IDs and aggregate creation/failure text.
+- Use fictional or properly redacted input only and never put real customer
+  information into a demo workspace. Logs record only request IDs and aggregate
+  creation/failure text.
 - `ENABLE_DEV_ROUTES` is development-only. Do not restore the retired shared
   staging account; provision allowlisted pilot owners through the audited path.
 - Production smoke and the production rehearsal must continue to prove
-  `/demo` returns 404.
+  `/demo` returns 404; the bounded import does not enable the public demo in
+  production.
 
 ## Backup, restore, and rollback
 
