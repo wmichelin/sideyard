@@ -11,7 +11,7 @@
 
 <form method="post" action="{{ if .IsEdit }}/agreements/{{ .Form.ID }}{{ else }}/agreements{{ end }}" class="form-panel">
   {{ template "csrf_field" . }}
-  <fieldset class="form-fieldset"{{ if .Nav.User.IsDemo }} disabled{{ end }}>
+  <fieldset class="form-fieldset">
   <label>
     <span>Customer</span>
     <select name="customer_id" required>
@@ -78,14 +78,13 @@
     <textarea name="notes" rows="3">{{ .Form.Notes }}</textarea>
   </label>
   </fieldset>
-  {{ if .Nav.User.IsDemo }}<p class="empty-note demo-read-only-note">Agreement terms are read-only in the public demo.</p>{{ else }}<button type="submit" class="primary-btn">{{ if .IsEdit }}Save changes{{ else }}Create agreement{{ end }}</button>{{ end }}
+  <button type="submit" class="primary-btn">{{ if .IsEdit }}Save changes{{ else }}Create agreement{{ end }}</button>
 </form>
 
 {{ if .IsEdit }}
 <section class="panel">
   <h3 class="section-title">Recurring services</h3>
   <p class="empty-note">Add work that repeats independently of this plan’s renewal date—for example weekly mowing, biweekly property care, or monthly irrigation checks.</p>
-  {{ if not .Nav.User.IsDemo }}
   <form method="post" action="/agreements/{{ .Form.ID }}/service-schedules" class="form-stack">
     {{ template "csrf_field" . }}
     <div class="form-row">
@@ -98,7 +97,6 @@
     <label class="checkbox-label"><input type="checkbox" name="counts_toward_entitlement" value="1"> Count completions toward this agreement’s included services</label>
     <button type="submit" class="secondary-btn">Add recurring service</button>
   </form>
-  {{ end }}
 
   {{ if .Schedules }}
   <div class="schedule-list">
@@ -118,9 +116,6 @@
 
 <section class="panel renewal-link-panel">
   <h3 class="section-title">Customer renewal link</h3>
-  {{ if .Nav.User.IsDemo }}
-  <p class="empty-note">Renewal-link creation is locked in the public demo.</p>
-  {{ else }}
   <p class="empty-note">Creates a 30-day customer renewal link. Production asks the customer to contact the business; staging keeps a clearly non-charging payment test stub.</p>
   <form method="post" action="/agreements/{{ .Form.ID }}/renewal-link" class="renewal-link-actions" data-renewal-link-form>
     {{ template "csrf_field" . }}
@@ -129,7 +124,6 @@
   <p class="renewal-link" data-renewal-link-result{{ if not .Form.RenewalURL }} hidden{{ end }}><a href="{{ .Form.RenewalURL }}" data-renewal-link target="_blank" rel="noopener">{{ .Form.RenewalURL }}</a></p>
   <p class="renewal-link-status" data-renewal-link-status role="status" hidden></p>
   <script src="/static/renewal-link.js" defer></script>
-  {{ end }}
 </section>
 {{ end }}
 {{ end }}

@@ -30,7 +30,7 @@
       </form>
     </aside>
     <main class="main">
-      {{ if .Nav.User.IsDemo }}<div class="demo-banner" role="status"><strong>Fictional public demo</strong> — this isolated workspace expires in four hours. Service outcomes, contact marking, and pause/resume are interactive; setup changes and uploads are locked. Do not enter real customer data.</div>{{ end }}
+      {{ if .Nav.User.IsDemo }}<div class="demo-banner" role="status"><strong>Fictional public demo</strong> — changes are saved only inside this isolated workspace and deleted after four hours. CSV uploads remain disabled. Use fictional data only.</div>{{ end }}
       {{ .Body }}
     </main>
   </div>

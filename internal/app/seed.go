@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -13,12 +14,37 @@ type SeedResult struct {
 	Message  string `json:"message"`
 }
 
-const publicDemoTTL = 4 * time.Hour
+const (
+	publicDemoTTL            = 4 * time.Hour
+	publicDemoMutationBudget = 30
+)
+
+var errPublicDemoMutationBudgetReached = errors.New("public demo mutation budget reached")
 
 type PublicDemoResult struct {
 	ShopID    string
 	UserID    string
 	ExpiresAt time.Time
+}
+
+// ReservePublicDemoMutation admits one state-changing request for an active
+// sandbox. Counting admitted attempts, including handler-level validation
+// failures, keeps the abuse boundary independent of every product mutation.
+func (s *Store) ReservePublicDemoMutation(ctx context.Context, shopID string) error {
+	result, err := s.db.Pool.Exec(ctx, `
+		UPDATE shops
+		SET demo_mutations_used = demo_mutations_used + 1
+		WHERE id = $1
+		  AND kind = 'demo_sandbox'
+		  AND expires_at > $2
+		  AND demo_mutations_used < $3`, shopID, s.nowUTC(), publicDemoMutationBudget)
+	if err != nil {
+		return fmt.Errorf("reserve public demo mutation: %w", err)
+	}
+	if result.RowsAffected() != 1 {
+		return errPublicDemoMutationBudgetReached
+	}
+	return nil
 }
 
 // RetireLegacySharedDemo removes the old public staging tenant whose published

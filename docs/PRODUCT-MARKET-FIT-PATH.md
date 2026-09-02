@@ -102,9 +102,12 @@ foundation alongside the existing HVAC workflow:
   `external_id` values make re-imports update rather than duplicate.
 - A permanent staging `/demo` entry creates a fresh fictional landscaping
   tenant and a four-hour browser session without putting credentials or tokens
-  in the URL. Each visitor is isolated; uploads are disabled; expired demo
-  tenants are deleted opportunistically; production refuses the feature flag
-  and does not register the route.
+  in the URL. Each visitor is isolated and can use the ordinary product forms;
+  the sandbox admits at most 30 state-changing requests, caps encoded forms at
+  16 KiB and individual values at 2,000 bytes, and continues to reject CSV and
+  multipart uploads. At four hours the tenant stops resolving and cleanup
+  deletes it by cascade. Production refuses the feature flag and does not
+  register the route.
 - The mobile navigation is compact enough that the work view is visible in the
   initial phone viewport.
 
@@ -257,10 +260,18 @@ HttpOnly, SameSite cookie. No password, bearer token, or session ID appears in
 the URL; URL session identifiers can leak through history, logs, bookmarks,
 referrers, and indexing. [OWASP session guidance](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html)
 
-The staging flag is the kill switch. Active demo workspaces are capped, expire
-after four hours, use fictional data, and cannot upload customer files.
-Production configuration rejects the flag and `/demo` remains 404 until a
-separate, explicitly approved production design exists.
+The staging flag is the kill switch. Active demo workspaces are capped and use
+fictional data. Ordinary setup and workflow forms write only to the visitor's
+isolated tenant. Every admitted state-changing request consumes one of 30
+durable sandbox slots—even if product validation later rejects it—and is
+limited to a 16 KiB URL-encoded form with no field value over 2,000 bytes. CSV
+import and every multipart upload remain unavailable.
+
+The session and tenant expire together after four hours. Expired workspaces no
+longer authenticate or resolve public renewal links, and cleanup deletes the
+tenant and its child rows through the scoped cascade. Production configuration
+rejects the flag and `/demo` remains 404 until a separate, explicitly approved
+production design exists.
 
 ### Reliability gates for every release
 
@@ -269,11 +280,11 @@ separate, explicitly approved production design exists.
 - Static build, shell syntax checks, and production-mode rehearsal proving
   public demo/development routes are absent.
 - Exact-commit CI and staging deploy success.
-- Staging smoke for one-click demo creation, bounded mutations, blocked setup,
-  cross-visitor isolation, dashboard, work outcomes, export, liveness, and
-  readiness. A failed smoke automatically rolls staging traffic back only to a
-  release carrying the demo-sandbox safety marker; unsafe legacy rollback is
-  refused.
+- Staging smoke for one-click demo creation, bounded ordinary form writes,
+  blocked CSV/multipart uploads, cross-visitor isolation, dashboard, work
+  outcomes, export, liveness, and readiness. A failed smoke automatically rolls
+  staging traffic back only to a release carrying the demo-sandbox safety
+  marker; unsafe legacy rollback is refused.
 - Desktop and phone browser acceptance, with request/log review and no secrets
   or customer data in evidence.
 - Explicit user approval before any production deployment.

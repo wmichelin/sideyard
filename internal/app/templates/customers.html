@@ -6,7 +6,7 @@
   </div>
 </header>
 
-{{ if not .Nav.User.IsDemo }}<section class="panel">
+<section class="panel">
   <h3 class="section-title">Add customer</h3>
   <form method="post" action="/customers" class="form-row">
     {{ template "csrf_field" . }}
@@ -24,7 +24,7 @@
     </label>
     <button type="submit" class="primary-btn">Add</button>
   </form>
-</section>{{ end }}
+</section>
 
 <section class="table-section">
   <div class="table-wrap">
@@ -43,7 +43,7 @@
           <td class="name-cell">{{ .Name }}</td>
           <td class="muted">{{ .Email }}</td>
           <td class="muted">{{ .Phone }}</td>
-          <td><a href="/customers/{{ .ID }}" class="secondary-btn">{{ if $.Nav.User.IsDemo }}View{{ else }}Edit{{ end }}</a></td>
+          <td><a href="/customers/{{ .ID }}" class="secondary-btn">Edit</a></td>
         </tr>
         {{ else }}
         <tr><td colspan="4" class="empty-cell">No customers yet.</td></tr>

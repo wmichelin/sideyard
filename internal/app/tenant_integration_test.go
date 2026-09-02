@@ -2,10 +2,12 @@ package app
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -668,6 +670,48 @@ func TestPublicDemoCreatesIsolatedExpiringFictionalTenants(t *testing.T) {
 			t.Fatalf("demo fixture kind=%q customers=%d schedules=%d", kind, customers, schedules)
 		}
 	}
+	reservationResults := make(chan error, publicDemoMutationBudget*2)
+	var reservations sync.WaitGroup
+	for range publicDemoMutationBudget * 2 {
+		reservations.Add(1)
+		go func() {
+			defer reservations.Done()
+			reservationResults <- store.ReservePublicDemoMutation(ctx, first.ShopID)
+		}()
+	}
+	reservations.Wait()
+	close(reservationResults)
+	succeeded, capped := 0, 0
+	for err := range reservationResults {
+		switch {
+		case err == nil:
+			succeeded++
+		case errors.Is(err, errPublicDemoMutationBudgetReached):
+			capped++
+		default:
+			t.Fatalf("concurrent mutation reservation: %v", err)
+		}
+	}
+	if succeeded != publicDemoMutationBudget || capped != publicDemoMutationBudget {
+		t.Fatalf("concurrent mutation reservations succeeded=%d capped=%d", succeeded, capped)
+	}
+	if err := store.ReservePublicDemoMutation(ctx, first.ShopID); !errors.Is(err, errPublicDemoMutationBudgetReached) {
+		t.Fatalf("first sandbox mutation beyond budget = %v", err)
+	}
+	if err := store.ReservePublicDemoMutation(ctx, second.ShopID); err != nil {
+		t.Fatalf("second sandbox did not have an independent mutation budget: %v", err)
+	}
+	var firstMutations, secondMutations int
+	if err := db.Pool.QueryRow(ctx, `
+		SELECT
+			(SELECT demo_mutations_used FROM shops WHERE id = $1),
+			(SELECT demo_mutations_used FROM shops WHERE id = $2)`,
+		first.ShopID, second.ShopID).Scan(&firstMutations, &secondMutations); err != nil {
+		t.Fatal(err)
+	}
+	if firstMutations != publicDemoMutationBudget || secondMutations != 1 {
+		t.Fatalf("sandbox mutation budgets leaked: first=%d second=%d", firstMutations, secondMutations)
+	}
 	auth := newAuthWithClock(db, "demo-session-secret", false, clock)
 	token, err := auth.createSessionUntil(ctx, first.UserID, first.ExpiresAt)
 	if err != nil {
@@ -693,6 +737,9 @@ func TestPublicDemoCreatesIsolatedExpiringFictionalTenants(t *testing.T) {
 		t.Fatal(err)
 	}
 	expiredStore := &Store{db: db, clock: fixedClock{now: now.Add(publicDemoTTL)}}
+	if err := expiredStore.ReservePublicDemoMutation(ctx, second.ShopID); !errors.Is(err, errPublicDemoMutationBudgetReached) {
+		t.Fatalf("expired sandbox accepted a mutation: %v", err)
+	}
 	if _, err := expiredStore.GetHomeownerRenewal(ctx, "expiring-demo-link"); err == nil {
 		t.Fatal("public renewal link outlived its demo sandbox")
 	}

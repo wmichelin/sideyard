@@ -11,7 +11,7 @@
 
 <form method="post" class="form-panel">
   {{ template "csrf_field" . }}
-  <fieldset class="form-fieldset"{{ if .Nav.User.IsDemo }} disabled{{ end }}>
+  <fieldset class="form-fieldset">
   <div class="form-row">
     <label>
       <span>Name</span>
@@ -35,6 +35,6 @@
     <input type="text" name="description" value="{{ .Plan.Description }}">
   </label>
   </fieldset>
-  {{ if .Nav.User.IsDemo }}<p class="empty-note demo-read-only-note">Plan setup is read-only in the public demo.</p>{{ else }}<button type="submit" class="primary-btn">Save plan</button>{{ end }}
+  <button type="submit" class="primary-btn">Save plan</button>
 </form>
 {{ end }}

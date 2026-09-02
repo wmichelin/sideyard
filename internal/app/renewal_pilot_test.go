@@ -273,3 +273,64 @@ func TestMobileAppShellConstrainsHorizontalOverflow(t *testing.T) {
 		}
 	}
 }
+
+func TestRecurringWorkKeepsSpaceBeforeSeasonalVisits(t *testing.T) {
+	visits, err := templateFS.ReadFile("templates/visits.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	styles, err := staticFS.ReadFile("static/style.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(visits), `class="recurring-work-form"`) {
+		t.Fatal("recurring work form is missing its scoped spacing class")
+	}
+	if !strings.Contains(string(styles), ".recurring-work-form {\n  margin-bottom: 1.5rem;\n}") {
+		t.Fatal("recurring work form is missing its 1.5rem separation from seasonal visits")
+	}
+}
+
+func TestPublicDemoTemplatesExposeWritesButKeepUploadsBlocked(t *testing.T) {
+	writable := map[string][]string{
+		"templates/customers.html":          {"Add customer"},
+		"templates/customer_form.html":      {"Save customer", "Add property", "Add site detail"},
+		"templates/agreements.html":         {"New agreement"},
+		"templates/agreement_form.html":     {"Create agreement", "Add recurring service", "Create renewal link"},
+		"templates/renewals.html":           {`name="status"`, `name="notes"`, "Save"},
+		"templates/plan_templates.html":     {"Add plan template"},
+		"templates/plan_template_form.html": {"Save plan"},
+	}
+	for name, controls := range writable {
+		contents, err := templateFS.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		page := string(contents)
+		if strings.Contains(page, ".IsDemo") {
+			t.Fatalf("%s still conditionally locks controls for demo users", name)
+		}
+		for _, control := range controls {
+			if !strings.Contains(page, control) {
+				t.Fatalf("%s is missing writable demo control %q", name, control)
+			}
+		}
+	}
+
+	imports, err := templateFS.ReadFile("templates/import.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(imports), "Uploads are disabled in the public demo") {
+		t.Fatal("public demo import page no longer explains its upload boundary")
+	}
+	layout, err := templateFS.ReadFile("templates/layout.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"changes are saved only inside this isolated workspace", "deleted after four hours", "CSV uploads remain disabled"} {
+		if !strings.Contains(string(layout), want) {
+			t.Fatalf("public demo banner is missing %q", want)
+		}
+	}
+}

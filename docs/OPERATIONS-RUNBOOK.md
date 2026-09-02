@@ -28,25 +28,37 @@ After every push to `main`, wait for its exact Deploy Staging workflow and run:
 The staging smoke checks liveness/readiness, verifies signup and development
 routes are closed, and proves the former shared demo login is retired. It then
 creates two independent ephemeral landscaping tenants, completes recurring
-work, saves a finite renewal outcome, proves setup writes are blocked, checks
-tenant isolation, and verifies the service-work CSV export. It uses fictional
-staging fixtures only and must never be aimed at production. A failed workflow
-smoke automatically switches traffic back to the retained previous staging
-container and leaves the workflow failed for investigation. Staging rollback
-also requires the retained release's `demo-sandbox-v1` safety marker. During
-the first transition from the former shared demo, an unmarked rollback is
-deliberately refused so the old unrestricted routes cannot be reopened; use a
-reviewed fix-forward instead.
+work, saves a renewal outcome, exercises an ordinary setup form, proves that
+write is isolated from the second tenant, verifies CSV/multipart uploads remain
+blocked, and checks the service-work CSV export. It uses fictional staging
+fixtures only and must never be aimed at production. A failed workflow smoke
+automatically switches traffic back to the retained previous staging container
+and leaves the workflow failed for investigation. Staging rollback also
+requires the retained release's `demo-sandbox-v1` safety marker. During the
+first transition from the former shared demo, an unmarked rollback is
+deliberately refused so the old shared, unrestricted tenant cannot be reopened;
+use a reviewed fix-forward instead.
 
 Public-demo operations:
 
 - `ENABLE_PUBLIC_DEMO=1` is valid only with `APP_ENV=staging`; remove it and
   redeploy for the immediate kill switch.
-- Workspaces and sessions expire together after four hours. New demo creation
-  opportunistically deletes expired tenants through a narrowly scoped cascade.
+- Workspaces and sessions expire together after four hours. At expiry they stop
+  resolving; scheduled maintenance and new demo creation delete expired tenants
+  and their child rows through a narrowly scoped cascade.
 - The active-workspace cap is 100. A capacity response creates no session and
   should prompt review of expiry cleanup and database health, not a cap bypass.
-- Never enable uploads/connectors or put real customer information into a demo
+- Ordinary URL-encoded product forms are writable, but each sandbox admits only
+  30 state-changing requests over its lifetime. An admitted request consumes
+  one slot even when handler validation later rejects it. A `429` stating that
+  the 30 changes were used means the visitor must start a fresh demo; do not
+  bypass or reset the counter.
+- Demo form bodies are limited to 16 KiB and each field value to 2,000 bytes.
+  Oversized forms receive `413`. CSV import and all multipart requests remain
+  blocked with `403`; do not enable uploads or connectors for a public demo.
+- A separate 20-actions-per-minute limiter may also return `429` with
+  `Retry-After: 60`; wait for the window instead of raising the limit.
+- Use fictional input only and never put real customer information into a demo
   workspace. Logs record only request IDs and aggregate creation/failure text.
 - `ENABLE_DEV_ROUTES` is development-only. Do not restore the retired shared
   staging account; provision allowlisted pilot owners through the audited path.

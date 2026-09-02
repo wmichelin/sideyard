@@ -77,54 +77,115 @@ func TestPublicDemoGetDoesNotAuthenticateAndIsNotCacheable(t *testing.T) {
 }
 
 func TestPublicDemoMutationAllowlistIsFinite(t *testing.T) {
-	allowed := []struct{ path, field, value string }{
-		{"/visits", "action", "completed"},
-		{"/visits", "action", "skipped"},
-		{"/renewals", "status", "contacted"},
-		{"/service-schedules/existing", "action", "pause"},
-		{"/service-schedules/existing", "action", "resume"},
+	allowed := []struct {
+		path string
+		form url.Values
+	}{
+		{"/agreements", url.Values{}},
+		{"/agreements/existing", url.Values{}},
+		{"/agreements/existing/renewal-link", url.Values{}},
+		{"/agreements/existing/service-schedules", url.Values{}},
+		{"/service-schedules/existing", url.Values{"action": {"pause"}}},
+		{"/service-schedules/existing", url.Values{"action": {"resume"}}},
+		{"/renewals", url.Values{"status": {"open"}}},
+		{"/renewals", url.Values{"status": {"contacted"}}},
+		{"/renewals", url.Values{"status": {"renewed"}}},
+		{"/renewals", url.Values{"status": {"lost"}}},
+		{"/customers", url.Values{}},
+		{"/customers/existing", url.Values{}},
+		{"/customers/existing/delete", url.Values{}},
+		{"/customers/existing/properties", url.Values{}},
+		{"/properties/existing/equipment", url.Values{}},
+		{"/visits", url.Values{"action": {"completed"}}},
+		{"/visits", url.Values{"action": {"skipped"}}},
+		{"/visits", url.Values{"action": {"scheduled"}}},
+		{"/plan-templates", url.Values{}},
+		{"/plan-templates/existing", url.Values{}},
 	}
 	for _, tc := range allowed {
-		form := url.Values{tc.field: {tc.value}}
-		request := httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(form.Encode()))
+		request := httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.form.Encode()))
 		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		if !publicDemoMutationAllowed(request) {
-			t.Fatalf("expected finite demo action %q %s=%s to be allowed", tc.path, tc.field, tc.value)
+			t.Fatalf("expected registered demo mutation %q with %v to be allowed", tc.path, tc.form)
 		}
 	}
-	blocked := []struct{ path, field, value string }{
-		{"/customers", "name", "unbounded"},
-		{"/agreements", "status", "active"},
-		{"/agreements/id/renewal-link", "", ""},
-		{"/agreements/id/service-schedules", "service_name", "unbounded"},
-		{"/plan-templates", "name", "unbounded"},
-		{"/import", "step", "commit"},
-		{"/renewals", "status", "renewed"},
-		{"/service-schedules/existing", "action", "unexpected"},
+	blocked := []struct {
+		method, path, contentType string
+		form                      url.Values
+	}{
+		{http.MethodGet, "/customers", "application/x-www-form-urlencoded", url.Values{}},
+		{http.MethodPut, "/customers", "application/x-www-form-urlencoded", url.Values{}},
+		{http.MethodPost, "/import", "application/x-www-form-urlencoded", url.Values{"step": {"commit"}}},
+		{http.MethodPost, "/dev/seed", "application/x-www-form-urlencoded", url.Values{}},
+		{http.MethodPost, "/demo/session", "application/x-www-form-urlencoded", url.Values{}},
+		{http.MethodPost, "/renew/token", "application/x-www-form-urlencoded", url.Values{}},
+		{http.MethodPost, "/agreements/existing/renewal-link/extra", "application/x-www-form-urlencoded", url.Values{}},
+		{http.MethodPost, "/customers/existing/unknown", "application/x-www-form-urlencoded", url.Values{}},
+		{http.MethodPost, "/properties/existing/equipment/extra", "application/x-www-form-urlencoded", url.Values{}},
+		{http.MethodPost, "/plan-templates/existing/extra", "application/x-www-form-urlencoded", url.Values{}},
+		{http.MethodPost, "/renewals", "application/x-www-form-urlencoded", url.Values{"status": {"unexpected"}}},
+		{http.MethodPost, "/service-schedules/existing", "application/x-www-form-urlencoded", url.Values{"action": {"unexpected"}}},
+		{http.MethodPost, "/visits", "application/x-www-form-urlencoded", url.Values{"action": {"unexpected"}}},
+		{http.MethodPost, "/customers", "Multipart/Form-Data; boundary=fake", url.Values{}},
 	}
 	for _, tc := range blocked {
-		form := url.Values{}
-		if tc.field != "" {
-			form.Set(tc.field, tc.value)
-		}
-		request := httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(form.Encode()))
-		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		request := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.form.Encode()))
+		request.Header.Set("Content-Type", tc.contentType)
 		if publicDemoMutationAllowed(request) {
-			t.Fatalf("demo row-creating or setup action %q %s=%s was allowed", tc.path, tc.field, tc.value)
+			t.Fatalf("unregistered demo mutation %s %q with %v was allowed", tc.method, tc.path, tc.form)
 		}
 	}
 }
 
-func TestPublicDemoFreeTextIsDiscardedBeforeMutation(t *testing.T) {
-	form := url.Values{"notes": {strings.Repeat("x", 4096)}, "status": {"contacted"}}
-	request := httptest.NewRequest(http.MethodPost, "/renewals", strings.NewReader(form.Encode()))
-	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	if err := request.ParseForm(); err != nil {
-		t.Fatal(err)
+func TestPublicDemoMutationFormLimits(t *testing.T) {
+	request := func(target string, form url.Values) *http.Request {
+		t.Helper()
+		r := httptest.NewRequest(http.MethodPost, target, strings.NewReader(form.Encode()))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if err := r.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
+		return r
 	}
-	clearPublicDemoFreeText(request)
-	if request.FormValue("notes") != "" || request.FormValue("status") != "contacted" {
-		t.Fatalf("demo form was not narrowed safely: %+v", request.Form)
+
+	normal := request("/renewals", url.Values{"notes": {strings.Repeat("x", publicDemoMaxFieldBytes)}, "status": {"contacted"}})
+	if !publicDemoMutationWithinLimits(normal) || normal.FormValue("notes") == "" {
+		t.Fatal("bounded demo notes were not preserved")
+	}
+
+	overField := request("/renewals", url.Values{"notes": {strings.Repeat("x", publicDemoMaxFieldBytes+1)}})
+	if publicDemoMutationWithinLimits(overField) {
+		t.Fatal("demo accepted a field over its byte limit")
+	}
+
+	queryField := request("/customers?name="+url.QueryEscape(strings.Repeat("x", publicDemoMaxFieldBytes+1)), url.Values{})
+	if publicDemoMutationWithinLimits(queryField) {
+		t.Fatal("demo accepted an oversized query-backed form value")
+	}
+
+	manyValues := make([]string, publicDemoMaxFormValues+1)
+	for i := range manyValues {
+		manyValues[i] = "x"
+	}
+	overCount := request("/visits", url.Values{"occurrence_id": manyValues})
+	if publicDemoMutationWithinLimits(overCount) {
+		t.Fatal("demo accepted too many form values")
+	}
+
+	encodedValues := make([]string, 60)
+	for i := range encodedValues {
+		encodedValues[i] = strings.Repeat("/", 100)
+	}
+	overEncodedSize := request("/visits", url.Values{"occurrence_id": encodedValues})
+	overEncodedSize.ContentLength = -1
+	if publicDemoMutationWithinLimits(overEncodedSize) {
+		t.Fatal("demo accepted a chunked form over its encoded byte limit")
+	}
+
+	overDeclaredSize := request("/customers", url.Values{"name": {"small"}})
+	overDeclaredSize.ContentLength = publicDemoMaxMutationFormBytes + 1
+	if publicDemoMutationWithinLimits(overDeclaredSize) {
+		t.Fatal("demo accepted a request with an oversized declared body")
 	}
 }
 

@@ -396,9 +396,8 @@ body {
   padding: 0;
 }
 
-.demo-read-only-note {
-  padding: 0;
-  text-align: left;
+.recurring-work-form {
+  margin-bottom: 1.5rem;
 }
 
 .renewal-card {

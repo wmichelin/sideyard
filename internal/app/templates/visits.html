@@ -12,7 +12,7 @@
   <a href="/visits?filter=all" class="secondary-btn{{ if not .DueOnly }} active-filter{{ end }}">All</a>
 </div>
 
-<form method="post" action="/visits?filter={{ if .DueOnly }}due{{ else }}all{{ end }}">
+<form method="post" action="/visits?filter={{ if .DueOnly }}due{{ else }}all{{ end }}" class="recurring-work-form">
   {{ template "csrf_field" . }}
   <input type="hidden" name="filter" value="{{ if .DueOnly }}due{{ else }}all{{ end }}">
   <section class="table-section">

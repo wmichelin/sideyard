@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"html/template"
 	"log"
@@ -44,6 +45,12 @@ type NavData struct {
 	User   *User
 }
 
+const (
+	publicDemoMaxMutationFormBytes = 16 << 10
+	publicDemoMaxFormValues        = 256
+	publicDemoMaxFieldBytes        = 2000
+)
+
 func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if s.demo {
@@ -60,8 +67,12 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		if user.IsDemo && isStateChangingMethod(r.Method) {
-			if !publicDemoMutationAllowed(r) {
-				http.Error(w, "This setup change is locked in the public demo. Service and renewal outcomes remain interactive.", http.StatusForbidden)
+			if !s.config.EnablePublicDemo || !publicDemoMutationAllowed(r) {
+				http.Error(w, "This action is unavailable in the public demo.", http.StatusForbidden)
+				return
+			}
+			if !publicDemoMutationWithinLimits(r) {
+				http.Error(w, "Demo changes must be smaller than 16 KiB with fields no longer than 2,000 bytes.", http.StatusRequestEntityTooLarge)
 				return
 			}
 			if !s.publicDemoLimiter().take("public-demo-mutation:" + user.ID) {
@@ -69,7 +80,15 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 				http.Error(w, "The demo action limit was reached. Please try again in a minute.", http.StatusTooManyRequests)
 				return
 			}
-			clearPublicDemoFreeText(r)
+			if err := s.store.ReservePublicDemoMutation(r.Context(), user.ShopID); err != nil {
+				if errors.Is(err, errPublicDemoMutationBudgetReached) {
+					http.Error(w, "This demo used its 30 saved changes. Start a fresh demo to keep exploring.", http.StatusTooManyRequests)
+					return
+				}
+				log.Printf("reserve public demo mutation: %v", err)
+				http.Error(w, "The demo could not save that change.", http.StatusServiceUnavailable)
+				return
+			}
 		}
 		if err := s.store.RecordReturningPilotUse(r.Context(), user.ShopID); err != nil {
 			log.Printf("pilot activation returning use: %v", err)
@@ -78,28 +97,78 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func clearPublicDemoFreeText(r *http.Request) {
-	if r.Form != nil {
-		r.Form.Set("notes", "")
+func publicDemoMutationWithinLimits(r *http.Request) bool {
+	if r.ContentLength > publicDemoMaxMutationFormBytes {
+		return false
 	}
-	if r.PostForm != nil {
-		r.PostForm.Set("notes", "")
+	totalValues := 0
+	for _, values := range r.Form {
+		for _, value := range values {
+			totalValues++
+			if len(value) > publicDemoMaxFieldBytes {
+				return false
+			}
+		}
 	}
+	return len(r.Form.Encode()) <= publicDemoMaxMutationFormBytes && totalValues <= publicDemoMaxFormValues
 }
 
 func publicDemoMutationAllowed(r *http.Request) bool {
-	switch {
-	case r.URL.Path == "/visits":
-		action := r.FormValue("action")
-		return action == "completed" || action == "skipped" || action == "scheduled"
-	case r.URL.Path == "/renewals":
-		return r.FormValue("status") == "contacted"
-	case strings.HasPrefix(r.URL.Path, "/service-schedules/"):
+	if r.Method != http.MethodPost || strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "multipart/form-data") {
+		return false
+	}
+	segments := publicDemoPathSegments(r.URL.Path)
+	if len(segments) == 0 {
+		return false
+	}
+	switch segments[0] {
+	case "agreements":
+		return len(segments) == 1 ||
+			len(segments) == 2 ||
+			(len(segments) == 3 && (segments[2] == "renewal-link" || segments[2] == "service-schedules"))
+	case "service-schedules":
+		if len(segments) != 2 {
+			return false
+		}
 		action := r.FormValue("action")
 		return action == "pause" || action == "resume"
+	case "renewals":
+		if len(segments) != 1 {
+			return false
+		}
+		status := r.FormValue("status")
+		return status == "open" || status == "contacted" || status == "renewed" || status == "lost"
+	case "customers":
+		return len(segments) == 1 ||
+			len(segments) == 2 ||
+			(len(segments) == 3 && (segments[2] == "delete" || segments[2] == "properties"))
+	case "properties":
+		return len(segments) == 3 && segments[2] == "equipment"
+	case "visits":
+		if len(segments) != 1 {
+			return false
+		}
+		action := r.FormValue("action")
+		return action == "completed" || action == "skipped" || action == "scheduled"
+	case "plan-templates":
+		return len(segments) == 1 || len(segments) == 2
 	default:
 		return false
 	}
+}
+
+func publicDemoPathSegments(path string) []string {
+	trimmed := strings.Trim(path, "/")
+	if trimmed == "" {
+		return nil
+	}
+	segments := strings.Split(trimmed, "/")
+	for _, segment := range segments {
+		if segment == "" {
+			return nil
+		}
+	}
+	return segments
 }
 
 type ctxKey int

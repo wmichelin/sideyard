@@ -67,10 +67,19 @@ if [ "$TARGET" = "staging" ]; then
   DEMO_WORK_AFTER="$(curl -fsS -b "$DEMO_COOKIE_JAR" "${CLUBDUE_URL}/visits?filter=due")"
   DEMO_DUE_AFTER="$(printf '%s' "$DEMO_WORK_AFTER" | grep -o 'name="occurrence_id"' | wc -l | tr -d ' ')"
   [ "$DEMO_DUE_AFTER" -lt "$DEMO_DUE_COUNT" ]
-  BLOCKED_SETUP_STATUS="$(curl -sS -b "$DEMO_COOKIE_JAR" -o /dev/null -w '%{http_code}' -X POST \
+  DEMO_CUSTOMER_STATUS="$(curl -fsS -b "$DEMO_COOKIE_JAR" -c "$DEMO_COOKIE_JAR" -o /dev/null -w '%{http_code}' -X POST \
     --data-urlencode "csrf_token=$DEMO_CSRF_TOKEN" \
-    --data-urlencode 'name=Unbounded setup attempt' "${CLUBDUE_URL}/customers")"
-  [ "$BLOCKED_SETUP_STATUS" = "403" ]
+    --data-urlencode 'name=Staging Smoke Garden Client' \
+    --data-urlencode 'email=staging-smoke@example.test' \
+    --data-urlencode 'phone=555-0199' "${CLUBDUE_URL}/customers")"
+  [ "$DEMO_CUSTOMER_STATUS" = "303" ]
+  DEMO_CUSTOMERS="$(curl -fsS -b "$DEMO_COOKIE_JAR" "${CLUBDUE_URL}/customers")"
+  [[ "$DEMO_CUSTOMERS" == *'Staging Smoke Garden Client'* ]]
+  DEMO_IMPORT_STATUS="$(curl -sS -b "$DEMO_COOKIE_JAR" -o /dev/null -w '%{http_code}' -X POST \
+    --data-urlencode "csrf_token=$DEMO_CSRF_TOKEN" \
+    --data-urlencode 'step=commit' \
+    --data-urlencode 'csv_data=ZmljdGlvbmFs' "${CLUBDUE_URL}/import")"
+  [ "$DEMO_IMPORT_STATUS" = "403" ]
 
   SECOND_DEMO_PAGE="$(curl -fsS -c "$SECOND_DEMO_COOKIE_JAR" "${CLUBDUE_URL}/demo")"
   SECOND_DEMO_CSRF_TOKEN="$(printf '%s' "$SECOND_DEMO_PAGE" | sed -n 's/.*name="csrf_token" value="\([^"]*\)".*/\1/p' | head -1)"
@@ -81,13 +90,15 @@ if [ "$TARGET" = "staging" ]; then
   SECOND_DEMO_WORK="$(curl -fsS -b "$SECOND_DEMO_COOKIE_JAR" "${CLUBDUE_URL}/visits?filter=due")"
   SECOND_DEMO_DUE_COUNT="$(printf '%s' "$SECOND_DEMO_WORK" | grep -o 'name="occurrence_id"' | wc -l | tr -d ' ')"
   [ "$SECOND_DEMO_DUE_COUNT" = "$DEMO_DUE_COUNT" ]
+  SECOND_DEMO_CUSTOMERS="$(curl -fsS -b "$SECOND_DEMO_COOKIE_JAR" "${CLUBDUE_URL}/customers")"
+  [[ "$SECOND_DEMO_CUSTOMERS" != *'Staging Smoke Garden Client'* ]]
   cp "$SECOND_DEMO_COOKIE_JAR" "$SECOND_DEMO_REPLAY_JAR"
   SECOND_DEMO_LOGOUT_STATUS="$(curl -fsS -b "$SECOND_DEMO_COOKIE_JAR" -c "$SECOND_DEMO_COOKIE_JAR" -o /dev/null -w '%{http_code}' -X POST \
     --data-urlencode "csrf_token=$SECOND_DEMO_CSRF_TOKEN" "${CLUBDUE_URL}/logout")"
   [ "$SECOND_DEMO_LOGOUT_STATUS" = "303" ]
   SECOND_DEMO_DASHBOARD_STATUS="$(curl -fsS -b "$SECOND_DEMO_REPLAY_JAR" -o /dev/null -w '%{http_code}' "${CLUBDUE_URL}/dashboard")"
   [ "$SECOND_DEMO_DASHBOARD_STATUS" = "303" ]
-  echo "  ✓ isolated one-click demo, bounded mutations, and tenant separation"
+  echo "  ✓ isolated one-click demo, persistent sandbox writes, upload denial, and tenant separation"
 else
   : "${CLUBDUE_SMOKE_EMAIL:?Set CLUBDUE_SMOKE_EMAIL from a GitHub environment secret}"
   : "${CLUBDUE_SMOKE_PASSWORD:?Set CLUBDUE_SMOKE_PASSWORD from a GitHub environment secret}"
@@ -128,7 +139,9 @@ if [ "$TARGET" = "staging" ]; then
     --data-urlencode 'notes=staging smoke verification' \
     "${CLUBDUE_URL}/renewals")"
   [ "$RENEWAL_STATUS" = "303" ]
-  echo "  ✓ renewal outcome mutation"
+  RENEWALS_AFTER_WRITE="$(curl -fsS -b "$DEMO_COOKIE_JAR" "${CLUBDUE_URL}/renewals")"
+  [[ "$RENEWALS_AFTER_WRITE" == *'staging smoke verification'* ]]
+  echo "  ✓ persistent renewal outcome and notes mutation"
   VISITS_CSV="$(curl -fsS -b "$DEMO_COOKIE_JAR" "${CLUBDUE_URL}/visits/export.csv")"
   [[ "$VISITS_CSV" == customer_name,* ]]
   echo "  ✓ service-work CSV export"
