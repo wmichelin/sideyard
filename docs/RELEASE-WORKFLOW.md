@@ -40,19 +40,14 @@ Report:
 
 When the user says OK / ship it / looks good:
 
-1. Identify the exact successful **Deploy Staging** run the user reviewed and
-   record its full commit SHA. Do not substitute the current `main` SHA if a
-   newer commit has been pushed.
-2. Obtain the immutable digest for that exact image tag (GHCR access required):
-
-   ```bash
-   STAGING_SHA=<full-sha-from-the-reviewed-Deploy-Staging-run>
-   docker buildx imagetools inspect "ghcr.io/wmichelin/clubdue:${STAGING_SHA}" \
-     --format '{{ .Manifest.Digest }}'
-   ```
-
-   The result must be `sha256:` followed by 64 lowercase hexadecimal
-   characters. Optionally prove the reference resolves before promotion:
+1. Identify the exact successful **Deploy Staging** run the user reviewed. Copy
+   the full commit SHA and immutable image digest from that run's **Staging
+   build artifact** summary. Do not substitute the current `main` SHA or
+   reconstruct the release digest from a mutable tag if a newer build or rerun
+   exists.
+2. Confirm the recorded digest is `sha256:` followed by 64 lowercase
+   hexadecimal characters. Optionally prove the immutable reference resolves
+   before promotion:
 
    ```bash
    docker pull "ghcr.io/wmichelin/clubdue@sha256:<reviewed-digest>"

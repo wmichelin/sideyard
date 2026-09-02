@@ -28,6 +28,7 @@ jobs:
           password: ${{ github.token }}
 
       - name: Build and push staging image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -37,11 +38,30 @@ jobs:
             ghcr.io/wmichelin/clubdue:staging
             ghcr.io/wmichelin/clubdue:${{ github.sha }}
 
+      - name: Record immutable staging artifact
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "Build did not produce a valid immutable image digest" >&2
+            exit 1
+          fi
+          image_ref="ghcr.io/wmichelin/clubdue@${IMAGE_DIGEST}"
+          {
+            echo "### Staging build artifact"
+            echo
+            echo "- Commit: \`${COMMIT_SHA}\`"
+            echo "- Digest: \`${IMAGE_DIGEST}\`"
+            echo "- Immutable image: \`${image_ref}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Deploy on droplet
         uses: appleboy/ssh-action@v1.2.0
         env:
           CONTAINER: clubdue-staging
-          IMAGE: ghcr.io/wmichelin/clubdue:${{ github.sha }}
+          IMAGE: ghcr.io/wmichelin/clubdue@${{ steps.build.outputs.digest }}
           PORT: "8082"
           DOMAIN: clubdue-staging.michelindigitalmedia.com
           GHCR_USER: ${{ github.repository_owner }}

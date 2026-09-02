@@ -331,7 +331,8 @@ func (s *Service) GenerateAllOccurrences(ctx context.Context) error {
 		SELECT DISTINCT sc.shop_id
 		FROM service_schedules sc
 		JOIN agreements a ON a.id = sc.agreement_id AND a.shop_id = sc.shop_id
-		WHERE sc.active AND a.status = 'active'`)
+		JOIN shops sh ON sh.id = sc.shop_id
+		WHERE sc.active AND a.status = 'active' AND sh.kind <> 'demo_sandbox'`)
 	if err != nil {
 		return err
 	}
