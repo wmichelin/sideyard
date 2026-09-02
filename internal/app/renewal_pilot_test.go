@@ -254,3 +254,22 @@ func TestHomeownerRenewalUsesScopedCardSpacing(t *testing.T) {
 		}
 	}
 }
+
+func TestMobileAppShellConstrainsHorizontalOverflow(t *testing.T) {
+	styles, err := staticFS.ReadFile("static/style.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"grid-template-columns: 240px minmax(0, 1fr);",
+		"grid-template-columns: minmax(0, 1fr);",
+		"overflow-x: hidden;",
+		"max-width: 100%;",
+		"min-width: 0;",
+		"overflow-x: auto;",
+	} {
+		if !strings.Contains(string(styles), want) {
+			t.Fatalf("mobile overflow containment is missing %q", want)
+		}
+	}
+}
