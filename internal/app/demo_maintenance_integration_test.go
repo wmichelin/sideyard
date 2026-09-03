@@ -49,7 +49,7 @@ func TestGlobalMaintenanceSkipsPublicDemoSandboxes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	stamp := now.Format("20060102150405")
+	stamp := time.Now().UTC().Format("20060102150405.000000000")
 	customerShopID := createTestShop(t, ctx, db, "maintenance-customer-"+stamp)
 	customerID := createTestCustomer(t, ctx, db, customerShopID, "Maintenance Customer")
 	planID, err := store.CreatePlanTemplate(ctx, customerShopID, "Maintenance Plan", "Global maintenance control", 19900, 12, 2)
