@@ -53,7 +53,7 @@ if [ "$TARGET" = "staging" ]; then
   DEMO_HTML="$(curl -fsS -b "$DEMO_COOKIE_JAR" "${CLUBDUE_URL}/dashboard")"
   [[ "$DEMO_HTML" == *'Evergreen Lawn &amp; Landscape'* ]]
   [[ "$DEMO_HTML" == *'Fictional public demo'* ]]
-  [[ "$DEMO_HTML" == *'$4,715.33'* ]]
+  [[ "$DEMO_HTML" == *'$4715.33'* ]]
   [[ "$DEMO_HTML" == *'2 lapsed MTD'* ]]
   [[ "$DEMO_HTML" == *'4 in the next 90 days'* ]]
   DEMO_SAMPLE_CSV="$(curl -fsS "${CLUBDUE_URL}/static/landscaping-demo-import.csv")"
