@@ -134,7 +134,7 @@ func (s *Service) SyncVisitDues(ctx context.Context, shopID string) error {
 }
 
 func (s *Service) SyncAllVisitDues(ctx context.Context) error {
-	rows, err := s.pool.Query(ctx, `SELECT id FROM shops`)
+	rows, err := s.pool.Query(ctx, `SELECT id FROM shops WHERE kind <> 'demo_sandbox'`)
 	if err != nil {
 		return err
 	}

@@ -92,7 +92,7 @@ func (s *Service) GenerateRenewalTasks(ctx context.Context, shopID string, asOf 
 }
 
 func (s *Service) GenerateAllRenewalTasks(ctx context.Context, asOf time.Time) error {
-	rows, err := s.pool.Query(ctx, `SELECT id FROM shops`)
+	rows, err := s.pool.Query(ctx, `SELECT id FROM shops WHERE kind <> 'demo_sandbox'`)
 	if err != nil {
 		return err
 	}
@@ -118,6 +118,7 @@ func (s *Service) QueueRenewalDigests(ctx context.Context, asOf time.Time) error
 		INSERT INTO renewal_digest_outbox (shop_id, digest_date, task_ids)
 		SELECT t.shop_id, $1::date, ARRAY_AGG(t.id ORDER BY t.due_at, t.id)
 		FROM renewal_tasks t
+		JOIN shops sh ON sh.id = t.shop_id AND sh.kind <> 'demo_sandbox'
 		WHERE t.due_at <= $1::date AND t.status IN ('open', 'contacted')
 		GROUP BY t.shop_id
 		ON CONFLICT (shop_id, digest_date) DO NOTHING`, digestDate)

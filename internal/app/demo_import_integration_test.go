@@ -532,6 +532,7 @@ func countShopRows(t *testing.T, ctx context.Context, db *DB, table, shopID stri
 	t.Helper()
 	allowed := map[string]bool{
 		"agreements": true, "customers": true, "properties": true, "service_schedules": true,
+		"renewal_digest_outbox": true, "renewal_tasks": true, "visit_dues": true,
 	}
 	if !allowed[table] {
 		t.Fatalf("unsupported test table %q", table)
