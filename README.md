@@ -44,8 +44,10 @@ It is a single Go binary with embedded HTML/CSS and Postgres.
 On deployed staging, a prospect can instead open the permanent
 [one-click landscaping demo](https://clubdue-staging.michelindigitalmedia.com/demo).
 It creates a fresh fictional workspace for that browser, expires after four
-hours, and requires no shared credentials. It is deliberately unavailable in
-production.
+hours, and requires no shared credentials. Each workspace starts with 30
+fictional customer records spanning residential, commercial, multi-location,
+seasonal, renewal, and recurring-work examples. It is deliberately unavailable
+in production.
 
 Without `DATABASE_URL`, ClubDue runs an in-memory legacy sample screen instead of the full agreement workflow.
 

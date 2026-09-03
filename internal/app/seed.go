@@ -74,7 +74,16 @@ func (s *Store) CleanupExpiredPublicDemos(ctx context.Context) error {
 // visitor receives their own workspace; opportunistic cleanup and a bounded
 // active count prevent abandoned public sandboxes from accumulating forever.
 func (s *Store) SeedPublicDemo(ctx context.Context) (PublicDemoResult, error) {
+	// Serialize rich fixture creation inside this process so concurrent visitors
+	// do not occupy the small database pool while waiting on the cross-process
+	// advisory lock. The database lock still protects capacity during deploys.
+	s.publicDemoSeedMu.Lock()
+	defer s.publicDemoSeedMu.Unlock()
+
 	now := s.nowUTC()
+	if err := publicDemoFixture.validate(now); err != nil {
+		return PublicDemoResult{}, err
+	}
 	expiresAt := now.Add(publicDemoTTL)
 	suffix, err := randomToken(8)
 	if err != nil {
@@ -115,74 +124,8 @@ func (s *Store) SeedPublicDemo(ctx context.Context) (PublicDemoResult, error) {
 		return PublicDemoResult{}, err
 	}
 
-	insertPlan := func(name, description, billing string, priceCents, visits int) (string, error) {
-		var id string
-		err := tx.QueryRow(ctx, `
-			INSERT INTO plan_templates (
-				shop_id, name, description, price_cents, billing_interval, term_months, visits_per_year, visit_windows
-			) VALUES ($1, $2, $3, $4, $5, 12, $6, '{}')
-			RETURNING id`, result.ShopID, name, description, priceCents, billing, visits).Scan(&id)
-		return id, err
-	}
-	weeklyPlanID, err := insertPlan("Weekly Lawn Care", "Mow, edge, and blow with property-specific notes", "monthly", 18500, 0)
-	if err != nil {
+	if err := insertPublicDemoFixtureTx(ctx, tx, result.ShopID, now); err != nil {
 		return PublicDemoResult{}, err
-	}
-	propertyPlanID, err := insertPlan("Property Care", "Flexible recurring exterior maintenance", "monthly", 12500, 0)
-	if err != nil {
-		return PublicDemoResult{}, err
-	}
-
-	type demoCustomer struct {
-		externalID, name, email, phone, address, city, state, postal string
-		planID, serviceName, cadenceUnit                             string
-		cadenceInterval, priceCents, renewalDays                     int
-	}
-	customers := []demoCustomer{
-		{"land-001", "Maya Thompson", "maya@example.test", "555-0141", "184 Willow Lane", "Columbus", "OH", "43215", weeklyPlanID, "Weekly mow, edge & blow", "week", 1, 18500, 14},
-		{"land-002", "Daniel Brooks", "daniel@example.test", "555-0142", "72 Garden Court", "Columbus", "OH", "43209", propertyPlanID, "Biweekly property care", "week", 2, 12500, 45},
-		{"land-003", "Avery Patel", "avery@example.test", "555-0143", "910 Sycamore Drive", "Dublin", "OH", "43017", propertyPlanID, "Monthly irrigation check", "month", 1, 8900, 75},
-	}
-	for _, customer := range customers {
-		var customerID, propertyID, agreementID string
-		if err := tx.QueryRow(ctx, `
-			INSERT INTO customers (shop_id, external_id, name, email, phone)
-			VALUES ($1, $2, $3, $4, $5) RETURNING id`, result.ShopID, customer.externalID,
-			customer.name, customer.email, customer.phone).Scan(&customerID); err != nil {
-			return PublicDemoResult{}, err
-		}
-		if err := tx.QueryRow(ctx, `
-			INSERT INTO properties (shop_id, customer_id, external_id, label, address_line1, city, state, postal_code)
-			VALUES ($1, $2, $3, 'Primary service location', $4, $5, $6, $7) RETURNING id`,
-			result.ShopID, customerID, customer.externalID, customer.address, customer.city,
-			customer.state, customer.postal).Scan(&propertyID); err != nil {
-			return PublicDemoResult{}, err
-		}
-		if err := tx.QueryRow(ctx, `
-			INSERT INTO agreements (
-				shop_id, customer_id, property_id, plan_template_id, external_id, status,
-				anniversary_date, visits_entitled, visits_used, price_cents, notes,
-				plan_snapshot_name, plan_snapshot_description, plan_snapshot_billing_interval,
-				plan_snapshot_term_months, plan_snapshot_visits_per_year, plan_snapshot_visit_windows
-			)
-			SELECT $1, $2, $3, pt.id, $4, 'active', $5, 0, 0, $6,
-				'Fictional public-demo data', pt.name, COALESCE(pt.description, ''),
-				pt.billing_interval, pt.term_months, pt.visits_per_year, pt.visit_windows
-			FROM plan_templates pt WHERE pt.shop_id = $1 AND pt.id = $7
-			RETURNING id`, result.ShopID, customerID, propertyID, customer.externalID,
-			now.AddDate(0, 0, customer.renewalDays), customer.priceCents, customer.planID,
-		).Scan(&agreementID); err != nil {
-			return PublicDemoResult{}, err
-		}
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO service_schedules (
-				shop_id, agreement_id, external_id, service_name, cadence_unit,
-				cadence_interval, starts_on, ends_on
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, result.ShopID, agreementID,
-			customer.externalID, customer.serviceName, customer.cadenceUnit,
-			customer.cadenceInterval, now.AddDate(0, 0, -28), now.AddDate(0, 4, 0)); err != nil {
-			return PublicDemoResult{}, err
-		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return PublicDemoResult{}, err
@@ -192,16 +135,7 @@ func (s *Store) SeedPublicDemo(ctx context.Context) (PublicDemoResult, error) {
 		_, _ = s.db.Pool.Exec(context.WithoutCancel(ctx), `DELETE FROM shops WHERE id = $1 AND kind = 'demo_sandbox'`, result.ShopID)
 		return PublicDemoResult{}, cause
 	}
-	if err := s.serviceWorkService().GenerateShopOccurrences(ctx, result.ShopID); err != nil {
-		return cleanup(err)
-	}
-	if _, err := s.db.Pool.Exec(ctx, `
-		UPDATE service_occurrences
-		SET status = 'completed', completed_at = due_on + interval '16 hours', notes = 'Completed in fictional demo'
-		WHERE shop_id = $1 AND due_on < $2::date - 7`, result.ShopID, now); err != nil {
-		return cleanup(err)
-	}
-	if err := s.GenerateRenewalTasks(ctx, result.ShopID, now); err != nil {
+	if err := s.hydratePublicDemoDerivedData(ctx, result.ShopID, now); err != nil {
 		return cleanup(err)
 	}
 	return result, nil

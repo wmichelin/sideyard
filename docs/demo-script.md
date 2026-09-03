@@ -20,11 +20,18 @@ dispatch or accounting suite:
 The useful question is: “Who have we promised work to, and what is at risk of
 being forgotten?”
 
+The fresh workspace contains 30 deliberately fictional customer records: a
+mostly residential book plus small commercial, HOA, and property-management
+accounts; incomplete contacts; multi-location accounts; and every agreement
+state. The recurring and renewal queues are intentionally smaller than the
+customer book so the work view remains useful rather than becoming a data dump.
+
 ## 0:45–1:45 — Work the recurring queue
 
 Open **Service work**. The fictional business includes weekly lawn care,
-biweekly property care, and monthly irrigation checks. Show the customer,
-property, actual service name, date, and due/overdue state.
+biweekly property care, monthly irrigation checks, paused routes, seasonal
+visits, and retained inactive-plan history. Show the customer, property, actual
+service name, date, and due/overdue state.
 
 Select one item and use **Mark completed** or **Mark skipped**. Refresh to show
 that the outcome is retained. Explain the boundary honestly: ClubDue is not

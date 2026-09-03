@@ -102,7 +102,11 @@ foundation alongside the existing HVAC workflow:
   `external_id` values make re-imports update rather than duplicate.
 - A permanent staging `/demo` entry creates a fresh fictional landscaping
   tenant and a four-hour browser session without putting credentials or tokens
-  in the URL. Each visitor is isolated and can use the ordinary product forms;
+  in the URL. The deterministic baseline contains 30 fictional customer records,
+  residential and light-commercial plans, multi-location accounts, contact
+  gaps, lifecycle states, recurring outcomes, seasonal work, and renewal work;
+  active schedules are deliberately capped so the unpaginated queue stays
+  usable. Each visitor is isolated and can use the ordinary product forms;
   the sandbox admits at most 30 state-changing requests, caps encoded forms at
   16 KiB and individual values at 2,000 bytes, and permits only a bounded
   `/import` preview and commit for one fictional or redacted `.csv`. The file is

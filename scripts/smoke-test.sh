@@ -47,19 +47,38 @@ if [ "$TARGET" = "staging" ]; then
   DEMO_PAGE="$(curl -fsS -c "$DEMO_COOKIE_JAR" "${CLUBDUE_URL}/demo")"
   DEMO_CSRF_TOKEN="$(printf '%s' "$DEMO_PAGE" | sed -n 's/.*name="csrf_token" value="\([^"]*\)".*/\1/p' | head -1)"
   [ -n "$DEMO_CSRF_TOKEN" ]
-  DEMO_STATUS="$(curl -fsS -b "$DEMO_COOKIE_JAR" -c "$DEMO_COOKIE_JAR" -o /dev/null -w '%{http_code}' \
+  DEMO_STATUS="$(curl -fsS --max-time 20 -b "$DEMO_COOKIE_JAR" -c "$DEMO_COOKIE_JAR" -o /dev/null -w '%{http_code}' \
     --data-urlencode "csrf_token=$DEMO_CSRF_TOKEN" "${CLUBDUE_URL}/demo/session")"
   [ "$DEMO_STATUS" = "303" ]
   DEMO_HTML="$(curl -fsS -b "$DEMO_COOKIE_JAR" "${CLUBDUE_URL}/dashboard")"
   [[ "$DEMO_HTML" == *'Evergreen Lawn &amp; Landscape'* ]]
   [[ "$DEMO_HTML" == *'Fictional public demo'* ]]
+  [[ "$DEMO_HTML" == *'$4,715.33'* ]]
+  [[ "$DEMO_HTML" == *'2 lapsed MTD'* ]]
+  [[ "$DEMO_HTML" == *'4 in the next 90 days'* ]]
   DEMO_SAMPLE_CSV="$(curl -fsS "${CLUBDUE_URL}/static/landscaping-demo-import.csv")"
   [[ "$DEMO_SAMPLE_CSV" == external_id,customer_name,* ]]
   [[ "$DEMO_SAMPLE_CSV" == *'Jordan Green'* ]]
   HTML="$DEMO_HTML"
 
+  DEMO_BASE_CUSTOMERS="$(curl -fsS -b "$DEMO_COOKIE_JAR" "${CLUBDUE_URL}/customers")"
+  [[ "$DEMO_BASE_CUSTOMERS" == *'Maya Thompson'* ]]
+  [[ "$DEMO_BASE_CUSTOMERS" == *'Willowmere Commons HOA'* ]]
+  [[ "$DEMO_BASE_CUSTOMERS" == *'Buckeye Key Property Management'* ]]
+  DEMO_BASE_CUSTOMER_COUNT="$(printf '%s' "$DEMO_BASE_CUSTOMERS" | grep -o 'class="secondary-btn">Edit</a>' | wc -l | tr -d ' ')"
+  [ "$DEMO_BASE_CUSTOMER_COUNT" = "30" ]
+
   DEMO_WORK_BEFORE="$(curl -fsS -b "$DEMO_COOKIE_JAR" "${CLUBDUE_URL}/visits?filter=due")"
   DEMO_DUE_COUNT="$(printf '%s' "$DEMO_WORK_BEFORE" | grep -o 'name="occurrence_id"' | wc -l | tr -d ' ')"
+  [ "$DEMO_DUE_COUNT" -le 60 ]
+  [[ "$DEMO_WORK_BEFORE" == *'Weekly mow, trim, edge &amp; blow'* ]]
+  [[ "$DEMO_WORK_BEFORE" == *'Seasonal Cleanup Plan'* ]]
+  DEMO_ALL_WORK="$(curl -fsS -b "$DEMO_COOKIE_JAR" "${CLUBDUE_URL}/visits?filter=all")"
+  [[ "$DEMO_ALL_WORK" == *'>Paused</span>'* ]]
+  [[ "$DEMO_ALL_WORK" == *'>Plan inactive</span>'* ]]
+  [[ "$DEMO_ALL_WORK" == *'>Completed</span>'* ]]
+  [[ "$DEMO_ALL_WORK" == *'>Skipped</span>'* ]]
+  [ "${#DEMO_ALL_WORK}" -le 524288 ]
   DEMO_OCCURRENCE_ID="$(printf '%s' "$DEMO_WORK_BEFORE" | sed -n 's/.*name="occurrence_id" value="\([^"]*\)".*/\1/p' | head -1)"
   [ -n "$DEMO_OCCURRENCE_ID" ]
   DEMO_WORK_STATUS="$(curl -fsS -b "$DEMO_COOKIE_JAR" -c "$DEMO_COOKIE_JAR" -o /dev/null -w '%{http_code}' -X POST \
@@ -112,7 +131,7 @@ if [ "$TARGET" = "staging" ]; then
   SECOND_DEMO_PAGE="$(curl -fsS -c "$SECOND_DEMO_COOKIE_JAR" "${CLUBDUE_URL}/demo")"
   SECOND_DEMO_CSRF_TOKEN="$(printf '%s' "$SECOND_DEMO_PAGE" | sed -n 's/.*name="csrf_token" value="\([^"]*\)".*/\1/p' | head -1)"
   [ -n "$SECOND_DEMO_CSRF_TOKEN" ]
-  SECOND_DEMO_STATUS="$(curl -fsS -b "$SECOND_DEMO_COOKIE_JAR" -c "$SECOND_DEMO_COOKIE_JAR" -o /dev/null -w '%{http_code}' \
+  SECOND_DEMO_STATUS="$(curl -fsS --max-time 20 -b "$SECOND_DEMO_COOKIE_JAR" -c "$SECOND_DEMO_COOKIE_JAR" -o /dev/null -w '%{http_code}' \
     --data-urlencode "csrf_token=$SECOND_DEMO_CSRF_TOKEN" "${CLUBDUE_URL}/demo/session")"
   [ "$SECOND_DEMO_STATUS" = "303" ]
   SECOND_DEMO_WORK="$(curl -fsS -b "$SECOND_DEMO_COOKIE_JAR" "${CLUBDUE_URL}/visits?filter=due")"
@@ -155,9 +174,16 @@ if [ "$TARGET" = "staging" ]; then
   echo "  ✓ dashboard metrics"
   AGREEMENTS_HTML="$(curl -fsS -b "$DEMO_COOKIE_JAR" "${CLUBDUE_URL}/agreements")"
   [[ "$AGREEMENTS_HTML" == *'Maya Thompson'* ]]
+  [[ "$AGREEMENTS_HTML" == *'Commercial Grounds Care'* ]]
+  [[ "$AGREEMENTS_HTML" == *'Pending renewal'* ]]
+  [[ "$AGREEMENTS_HTML" == *'Past due'* ]]
+  DEMO_AGREEMENT_COUNT="$(printf '%s' "$AGREEMENTS_HTML" | grep -o 'Open agreement' | wc -l | tr -d ' ')"
+  [ "$DEMO_AGREEMENT_COUNT" = "29" ]
   echo "  ✓ fictional landscaping agreement book"
   RENEWALS_HTML="$(curl -fsS -b "$DEMO_COOKIE_JAR" "${CLUBDUE_URL}/renewals")"
   [[ "$RENEWALS_HTML" == *'Renewal queue'* ]]
+  DEMO_RENEWAL_COUNT="$(printf '%s' "$RENEWALS_HTML" | grep -o 'name="task_id"' | wc -l | tr -d ' ')"
+  [ "$DEMO_RENEWAL_COUNT" -le 15 ]
   echo "  ✓ renewal queue"
   RENEWAL_TASK_ID="$(printf '%s' "$RENEWALS_HTML" | sed -n 's/.*name="task_id" value="\([^"]*\)".*/\1/p' | head -1)"
   [ -n "$RENEWAL_TASK_ID" ]

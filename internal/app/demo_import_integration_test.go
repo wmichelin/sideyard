@@ -403,7 +403,7 @@ func TestPublicDemoCSVPreviewCommitIsBoundedSingleUseAndIsolated(t *testing.T) {
 		t.Fatalf("cross-tenant commit = %d %q", wrongTenantResponse.Code, wrongTenantResponse.Body.String())
 	}
 	assertPublicDemoResponseHeaders(t, wrongTenantResponse)
-	if got := countShopRows(t, ctx, db, "customers", second.ShopID); got != 3 {
+	if got := countShopRows(t, ctx, db, "customers", second.ShopID); got != publicDemoCustomerCount {
 		t.Fatalf("cross-tenant commit changed second sandbox customers: %d", got)
 	}
 
@@ -531,8 +531,9 @@ func assertPublicDemoResponseHeaders(t *testing.T, response *httptest.ResponseRe
 func countShopRows(t *testing.T, ctx context.Context, db *DB, table, shopID string) int {
 	t.Helper()
 	allowed := map[string]bool{
-		"agreements": true, "customers": true, "properties": true, "service_schedules": true,
-		"renewal_digest_outbox": true, "renewal_tasks": true, "visit_dues": true,
+		"agreements": true, "customers": true, "equipment": true, "plan_templates": true,
+		"properties": true, "renewal_digest_outbox": true, "renewal_tasks": true,
+		"service_occurrences": true, "service_schedules": true, "visit_dues": true,
 	}
 	if !allowed[table] {
 		t.Fatalf("unsupported test table %q", table)

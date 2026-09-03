@@ -164,7 +164,9 @@ The preferred prospect entry point is the permanent
 [one-click landscaping demo](https://clubdue-staging.michelindigitalmedia.com/demo).
 `GET /demo` is a no-store entry page; its CSRF-protected POST creates a fresh,
 fictional `demo_sandbox` tenant and a normal opaque session that expires with
-the workspace after four hours. Ordinary customer, property, plan, agreement,
+the workspace after four hours. The workspace starts with 30 deterministic,
+fictional customer records and a bounded mix of recurring, seasonal, and
+renewal work. Ordinary customer, property, plan, agreement,
 recurring-service, renewal, and outcome forms remain interactive inside that
 isolated tenant; separate visitors cannot read or change one another's demo.
 Each sandbox admits at most 30 state-changing requests, including requests that

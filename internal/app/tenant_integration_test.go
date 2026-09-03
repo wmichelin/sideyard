@@ -666,7 +666,7 @@ func TestPublicDemoCreatesIsolatedExpiringFictionalTenants(t *testing.T) {
 		if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM service_schedules WHERE shop_id = $1`, result.ShopID).Scan(&schedules); err != nil {
 			t.Fatal(err)
 		}
-		if kind != "demo_sandbox" || customers != 3 || schedules != 3 {
+		if kind != "demo_sandbox" || customers != publicDemoCustomerCount || schedules != publicDemoScheduleCount {
 			t.Fatalf("demo fixture kind=%q customers=%d schedules=%d", kind, customers, schedules)
 		}
 	}

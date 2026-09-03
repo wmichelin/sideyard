@@ -15,7 +15,7 @@
     <p class="error-banner" role="alert">{{ .Error }}</p>
     <p class="auth-footer"><a href="/demo">Try again</a></p>
     {{ else }}
-    <p class="subtitle">We’re creating an isolated landscaping workspace with fictional customers. No credentials required.</p>
+    <p class="subtitle">We’re creating an isolated landscaping workspace with 30 fictional customer records, realistic service history, and no credentials required.</p>
     <form method="post" action="/demo/session" class="form-stack" data-demo-entry>
       {{ template "csrf_field" . }}
       <button type="submit" class="primary-btn full-width">Enter demo</button>

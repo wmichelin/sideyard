@@ -38,11 +38,22 @@ func TestGlobalMaintenanceSkipsPublicDemoSandboxes(t *testing.T) {
 	}
 	if _, err := db.Pool.Exec(ctx, `
 		UPDATE agreements
+		SET visits_entitled = 0, visits_used = 0,
+			plan_snapshot_visits_per_year = 0,
+			plan_snapshot_visit_windows = '{}'::text[]
+		WHERE shop_id = $1`, demo.ShopID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Pool.Exec(ctx, `
+		UPDATE agreements
 		SET visits_entitled = 2, visits_used = 0,
 			plan_snapshot_visits_per_year = 2,
 			plan_snapshot_visit_windows = ARRAY['spring']::text[],
 			anniversary_date = $2
 		WHERE shop_id = $1 AND id = $3`, demo.ShopID, now.AddDate(0, 0, 30), agreementID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Pool.Exec(ctx, `DELETE FROM visit_dues WHERE shop_id = $1`, demo.ShopID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Pool.Exec(ctx, `DELETE FROM renewal_tasks WHERE shop_id = $1`, demo.ShopID); err != nil {

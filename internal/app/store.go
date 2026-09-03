@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 )
 
@@ -99,8 +100,9 @@ type RenewalItem struct {
 }
 
 type Store struct {
-	db    *DB
-	clock Clock
+	db               *DB
+	clock            Clock
+	publicDemoSeedMu sync.Mutex
 }
 
 func (s *Store) nowUTC() time.Time {
