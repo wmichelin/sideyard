@@ -40,9 +40,19 @@ for deployment_target in 'clubdue:8080' 'clubdue:8081' 'clubdue:8082' 'clubdue-s
   fi
 done
 run_deploy_helper clubdue-staging 8082 -e CLUBDUE_DEPLOY_VALIDATE_ONLY=1 >/dev/null
+if run_deploy_helper clubdue 8083 -e CLUBDUE_DEPLOY_PUBLIC_DEMO=2 -e CLUBDUE_DEPLOY_TEST_PLAN=candidate >/dev/null 2>&1; then
+  echo "invalid production public-demo setting was accepted" >&2
+  exit 1
+fi
 
 [ "$(run_deploy_helper clubdue 8083 -e CLUBDUE_DEPLOY_TEST_PLAN=candidate)" = \
-  'candidate=28083 active=8083 failure=preserve-active' ]
+  'candidate=28083 active=8083 failure=preserve-active public-demo=0' ]
+[ "$(run_deploy_helper clubdue 8083 -e ENABLE_PUBLIC_DEMO=1 -e CLUBDUE_DEPLOY_PUBLIC_DEMO=0 -e CLUBDUE_DEPLOY_TEST_PLAN=candidate)" = \
+  'candidate=28083 active=8083 failure=preserve-active public-demo=0' ]
+[ "$(run_deploy_helper clubdue 8083 -e CLUBDUE_DEPLOY_PUBLIC_DEMO=1 -e CLUBDUE_DEPLOY_TEST_PLAN=candidate)" = \
+  'candidate=28083 active=8083 failure=preserve-active public-demo=1' ]
+[ "$(run_deploy_helper clubdue-staging 8082 -e CLUBDUE_DEPLOY_PUBLIC_DEMO=0 -e CLUBDUE_DEPLOY_TEST_PLAN=candidate)" = \
+  'candidate=18082 active=8082 failure=preserve-active public-demo=1' ]
 [ "$(run_deploy_helper clubdue 8083 -e CLUBDUE_DEPLOY_TEST_PLAN=promote)" = \
   'proxy=28083 active=28083 previous=8083' ]
 [ "$(run_deploy_helper clubdue 8083 -e CLUBDUE_DEPLOY_TEST_PLAN=next-promote)" = \
@@ -52,7 +62,7 @@ run_deploy_helper clubdue-staging 8082 -e CLUBDUE_DEPLOY_VALIDATE_ONLY=1 >/dev/n
 
 wait_for_postgres() {
   local container="$1"
-  for attempt in $(seq 1 30); do
+  for _ in $(seq 1 30); do
     if docker exec "$container" pg_isready -U clubdue -d clubdue >/dev/null 2>&1; then
       # The official Postgres image briefly accepts connections during its
       # initialization server, then restarts for the final server. Require a
@@ -69,7 +79,7 @@ wait_for_postgres() {
 }
 
 wait_for_http() {
-  for attempt in $(seq 1 30); do
+  for _ in $(seq 1 30); do
     if curl -fsS "http://127.0.0.1:${PORT}/readyz" 2>/dev/null | grep -qx ok; then
       return 0
     fi
@@ -92,6 +102,7 @@ wait_for_postgres "$SOURCE_DB"
 docker build -t "$IMAGE" "$ROOT" >/dev/null
 docker run -d --name "$APP" --network "$NETWORK" -p "127.0.0.1:${PORT}:8080" \
   -e APP_ENV=production \
+  -e ENABLE_PUBLIC_DEMO=1 \
   -e 'PUBLIC_URL=https://clubdue-production-rehearsal.invalid' \
   -e 'DATABASE_URL=postgres://clubdue:rehearsal-db-password@clubdue-production-rehearsal-db:5432/clubdue?sslmode=disable' \
   -e 'SESSION_SECRET=production-rehearsal-session-secret-0123456789' \
@@ -141,8 +152,57 @@ printf '%s' "$second_dashboard" | grep -q 'Dashboard — ClubDue'
 
 dev_route_status="$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:${PORT}/dev/seed")"
 [ "$dev_route_status" = "404" ]
-public_demo_status="$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:${PORT}/demo")"
-[ "$public_demo_status" = "404" ]
+curl -fsS "http://127.0.0.1:${PORT}/rollback-safetyz" | grep -qx demo-sandbox-v1
+
+demo_html="$WORK_DIR/demo.html"
+demo_headers="$WORK_DIR/demo.headers"
+demo_session_headers="$WORK_DIR/demo-session.headers"
+curl -fsS -D "$demo_headers" -o "$demo_html" "http://127.0.0.1:${PORT}/demo"
+grep -q 'action="/demo/session"' "$demo_html"
+grep -Eiq '^Cache-Control:.*no-store' "$demo_headers"
+grep -Eiq '^X-Robots-Tag:.*noindex' "$demo_headers"
+if grep -Eiq '^Set-Cookie:[[:space:]]*clubdue_session=' "$demo_headers"; then
+  echo "production demo entry created a session before consent" >&2
+  exit 1
+fi
+demo_csrf_token="$(sed -n 's/.*name="csrf_token" value="\([^"]*\)".*/\1/p' "$demo_html" | head -1)"
+demo_csrf_cookie="$(cookie_value clubdue_csrf "$demo_headers")"
+[ -n "$demo_csrf_token" ] && [ "$demo_csrf_token" = "$demo_csrf_cookie" ]
+grep -Eiq '^Set-Cookie:[[:space:]]*clubdue_csrf=.*Secure' "$demo_headers"
+grep -Eiq '^Set-Cookie:[[:space:]]*clubdue_csrf=.*HttpOnly' "$demo_headers"
+grep -Eiq '^Set-Cookie:[[:space:]]*clubdue_csrf=.*SameSite=Lax' "$demo_headers"
+
+demo_session_status="$(curl -sS --max-time 20 -D "$demo_session_headers" -o /dev/null -w '%{http_code}' -X POST \
+  -H "Cookie: clubdue_csrf=${demo_csrf_cookie}" \
+  --data-urlencode "csrf_token=${demo_csrf_token}" \
+  "http://127.0.0.1:${PORT}/demo/session")"
+[ "$demo_session_status" = "303" ]
+demo_session_cookie="$(cookie_value clubdue_session "$demo_session_headers")"
+[ -n "$demo_session_cookie" ]
+grep -Eiq '^Set-Cookie:[[:space:]]*clubdue_session=.*Secure' "$demo_session_headers"
+grep -Eiq '^Set-Cookie:[[:space:]]*clubdue_session=.*HttpOnly' "$demo_session_headers"
+grep -Eiq '^Set-Cookie:[[:space:]]*clubdue_session=.*SameSite=Lax' "$demo_session_headers"
+
+demo_dashboard="$(curl -fsS -H "Cookie: clubdue_csrf=${demo_csrf_cookie}; clubdue_session=${demo_session_cookie}" "http://127.0.0.1:${PORT}/dashboard")"
+printf '%s' "$demo_dashboard" | grep -q 'Evergreen Lawn &amp; Landscape'
+printf '%s' "$demo_dashboard" | grep -q 'Fictional public demo'
+demo_write_status="$(curl -sS -o /dev/null -w '%{http_code}' -X POST \
+  -H "Cookie: clubdue_csrf=${demo_csrf_cookie}; clubdue_session=${demo_session_cookie}" \
+  --data-urlencode "csrf_token=${demo_csrf_token}" \
+  --data-urlencode 'name=Production Rehearsal Garden Client' \
+  --data-urlencode 'email=production-rehearsal-demo@example.test' \
+  --data-urlencode 'phone=555-0199' \
+  "http://127.0.0.1:${PORT}/customers")"
+[ "$demo_write_status" = "303" ]
+demo_customers="$(curl -fsS -H "Cookie: clubdue_csrf=${demo_csrf_cookie}; clubdue_session=${demo_session_cookie}" "http://127.0.0.1:${PORT}/customers")"
+printf '%s' "$demo_customers" | grep -q 'Production Rehearsal Garden Client'
+
+owner_dashboard_after_demo="$(curl -fsS -H "Cookie: clubdue_csrf=${csrf_cookie}; clubdue_session=${session_cookie}" "http://127.0.0.1:${PORT}/dashboard")"
+printf '%s' "$owner_dashboard_after_demo" | grep -q 'Dashboard — ClubDue'
+if printf '%s' "$owner_dashboard_after_demo" | grep -q 'Fictional public demo'; then
+  echo "production demo traffic crossed into the real owner session" >&2
+  exit 1
+fi
 
 export CLUBDUE_BACKUP_DB_CONTAINER="$SOURCE_DB"
 export CLUBDUE_BACKUP_DIR="$WORK_DIR/backups"
@@ -154,7 +214,7 @@ expired_backup="$CLUBDUE_BACKUP_DIR/clubdue-postgres-20000101T000000Z.sql.enc"
 expired_backup_mac="${expired_backup}.mac"
 touch -d '2000-01-01 UTC' "$expired_backup"
 touch -d '2000-01-01 UTC' "$expired_backup_mac"
-backup_file="$($ROOT/scripts/postgres-backup.sh)"
+backup_file="$("$ROOT/scripts/postgres-backup.sh")"
 backup_mac_file="${backup_file}.mac"
 [ -s "$backup_file" ]
 [ -s "$backup_mac_file" ]
@@ -220,4 +280,4 @@ restored_owner_count_after_tamper_tests="$(docker exec "$RESTORE_DB" psql --user
   --command "SELECT count(*) FROM users WHERE email = 'owner@rehearsal.invalid'")"
 [ "$restored_owner_count_after_tamper_tests" = "1" ]
 
-echo "production rehearsal passed: readiness, authenticated encrypted backup, restore, and tamper rejection"
+echo "production rehearsal passed: public demo isolation/write path, owner sessions, authenticated encrypted backup, restore, and tamper rejection"

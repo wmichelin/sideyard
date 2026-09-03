@@ -12,7 +12,7 @@
 <section class="panel">
   {{ if .IsDemo }}
   <h3 class="section-title">Try a fictional CSV import</h3>
-  <p class="muted">Use fictional or redacted data only—do not upload real customer information. One <code>.csv</code> may contain up to 100 data rows, 128 KiB, and 2,000 bytes per cell. Preview creates no customer records; the exact CSV is protected server-side for up to 15 minutes so one commit can apply it.</p>
+  <p class="muted">Use fictional or fully redacted data only—do not upload real customer information. Encrypted backups may retain submitted data for up to 30 days. One <code>.csv</code> may contain up to 100 data rows, 128 KiB, and 2,000 bytes per cell. Preview creates no customer records; the exact CSV is protected server-side for up to 15 minutes so one commit can apply it.</p>
   <p class="muted">Preview and commit each use one of this sandbox's 30 action slots. Before it expires, the sandbox accepts up to 500 imported rows and a combined 20,000 projected visits from active recurring services across committed imports.</p>
   {{ else }}
   <h3 class="section-title">Required columns</h3>

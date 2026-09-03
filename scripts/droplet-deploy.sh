@@ -24,7 +24,7 @@ validate_target() {
 rollout_plan() {
   # Narrow Docker-only test seam. It has no access to a droplet or its state.
   case "${CLUBDUE_DEPLOY_TEST_PLAN:?CLUBDUE_DEPLOY_TEST_PLAN required}" in
-    candidate) printf 'candidate=%s active=%s failure=preserve-active\n' "$ALT_PORT" "$PORT" ;;
+    candidate) printf 'candidate=%s active=%s failure=preserve-active public-demo=%s\n' "$ALT_PORT" "$PORT" "$DEPLOY_PUBLIC_DEMO" ;;
     promote) printf 'proxy=%s active=%s previous=%s\n' "$ALT_PORT" "$ALT_PORT" "$PORT" ;;
     next-promote) printf 'release-previous=%s candidate=%s active=%s previous=%s\n' "$PORT" "$PORT" "$PORT" "$ALT_PORT" ;;
     rollback) printf 'proxy=%s active=%s previous=%s\n' "$PORT" "$PORT" "$ALT_PORT" ;;
@@ -33,6 +33,15 @@ rollout_plan() {
 }
 
 validate_target
+
+if [ "$CONTAINER" = clubdue-staging ]; then
+  DEPLOY_PUBLIC_DEMO=1
+else
+  DEPLOY_PUBLIC_DEMO="${CLUBDUE_DEPLOY_PUBLIC_DEMO:-0}"
+  case "$DEPLOY_PUBLIC_DEMO" in 0|1) ;; *) fail "CLUBDUE_DEPLOY_PUBLIC_DEMO must be 0 or 1" ;; esac
+fi
+readonly DEPLOY_PUBLIC_DEMO
+
 if [ -n "${CLUBDUE_DEPLOY_TEST_PLAN:-}" ]; then rollout_plan; exit 0; fi
 
 DEPLOY_MODE="${CLUBDUE_DEPLOY_MODE:-promote}"
@@ -68,7 +77,7 @@ container_port() {
 
 wait_for_database() {
   local db="$1"
-  for attempt in $(seq 1 30); do
+  for _ in $(seq 1 30); do
     docker exec "$db" pg_isready -U clubdue -d clubdue >/dev/null 2>&1 && return 0
     sleep 1
   done
@@ -142,11 +151,65 @@ switch_proxy() {
 
 wait_for_ready() {
   local target_port="$1"
-  for attempt in $(seq 1 30); do
+  for _ in $(seq 1 30); do
     curl -fsS "http://127.0.0.1:${target_port}/readyz" 2>/dev/null | grep -qx ok && return 0
     sleep 1
   done
   return 1
+}
+
+verify_candidate_contract() {
+  local target_port="$1" expected_demo="$2" demo_headers demo_body demo_status marker
+  marker="$(curl -fsS --max-time 10 "http://127.0.0.1:${target_port}/rollback-safetyz" 2>/dev/null || true)"
+  [ "$marker" = "demo-sandbox-v1" ] || fail "candidate is missing the demo-sandbox safety marker; active release remains unchanged"
+
+  CANDIDATE_PROBE_DIR="$(mktemp -d)"
+  demo_headers="$CANDIDATE_PROBE_DIR/demo.headers"
+  demo_body="$CANDIDATE_PROBE_DIR/demo.html"
+  demo_status="$(curl -sS --max-time 20 -D "$demo_headers" -o "$demo_body" -w '%{http_code}' "http://127.0.0.1:${target_port}/demo")"
+  if [ "$expected_demo" = 0 ]; then
+    [ "$demo_status" = 404 ] || fail "candidate unexpectedly exposes the public demo; active release remains unchanged"
+    rm -rf "$CANDIDATE_PROBE_DIR"
+    CANDIDATE_PROBE_DIR=""
+    return
+  fi
+
+  [ "$demo_status" = 200 ] || fail "candidate public demo entry is unavailable; active release remains unchanged"
+  if ! grep -q 'action="/demo/session"' "$demo_body" ||
+    ! grep -Eiq '^Cache-Control:.*no-store' "$demo_headers" ||
+    ! grep -Eiq '^X-Robots-Tag:.*noindex' "$demo_headers" ||
+    grep -Eiq '^Set-Cookie:[[:space:]]*clubdue_session=' "$demo_headers"; then
+    fail "candidate public demo entry failed its non-mutating safety contract; active release remains unchanged"
+  fi
+
+  local csrf_token csrf_cookie session_headers session_status session_cookie dashboard
+  csrf_token="$(sed -n 's/.*name="csrf_token" value="\([^"]*\)".*/\1/p' "$demo_body" | head -1)"
+  csrf_cookie="$(sed -n 's/^Set-Cookie: clubdue_csrf=\([^;]*\).*/\1/pI' "$demo_headers" | tail -1)"
+  if [ -z "$csrf_token" ] || [ "$csrf_token" != "$csrf_cookie" ]; then
+    fail "candidate public demo CSRF contract failed; active release remains unchanged"
+  fi
+  session_headers="$CANDIDATE_PROBE_DIR/session.headers"
+  session_status="$(curl -sS --max-time 20 -D "$session_headers" -o /dev/null -w '%{http_code}' -X POST \
+    -H "Cookie: clubdue_csrf=${csrf_cookie}" \
+    --data-urlencode "csrf_token=${csrf_token}" \
+    "http://127.0.0.1:${target_port}/demo/session")"
+  if [ "$session_status" != 303 ] || ! grep -Eiq '^Location:[[:space:]]*/dashboard' "$session_headers"; then
+    fail "candidate could not create an isolated demo session; active release remains unchanged"
+  fi
+  if ! grep -Eiq '^Set-Cookie:[[:space:]]*clubdue_session=.*Secure' "$session_headers" ||
+    ! grep -Eiq '^Set-Cookie:[[:space:]]*clubdue_session=.*HttpOnly' "$session_headers" ||
+    ! grep -Eiq '^Set-Cookie:[[:space:]]*clubdue_session=.*SameSite=Lax' "$session_headers"; then
+    fail "candidate demo session cookie contract failed; active release remains unchanged"
+  fi
+  session_cookie="$(sed -n 's/^Set-Cookie: clubdue_session=\([^;]*\).*/\1/pI' "$session_headers" | tail -1)"
+  [ -n "$session_cookie" ] || fail "candidate demo session cookie is missing; active release remains unchanged"
+  dashboard="$(curl -fsS --max-time 20 \
+    -H "Cookie: clubdue_csrf=${csrf_cookie}; clubdue_session=${session_cookie}" \
+    "http://127.0.0.1:${target_port}/dashboard")"
+  printf '%s' "$dashboard" | grep -q 'Fictional public demo' || fail "candidate demo fixture did not resolve; active release remains unchanged"
+  printf '%s' "$dashboard" | grep -q 'Evergreen Lawn &amp; Landscape' || fail "candidate demo fixture is incomplete; active release remains unchanged"
+  rm -rf "$CANDIDATE_PROBE_DIR"
+  CANDIDATE_PROBE_DIR=""
 }
 
 if ! command -v docker >/dev/null 2>&1; then
@@ -162,10 +225,8 @@ if [ "$DEPLOY_MODE" = rollback ]; then
   previous_port="$(container_port "$PREVIOUS_CONTAINER")"
   [ "$current_port" != "$previous_port" ] || fail "current and previous ClubDue releases share a port"
   wait_for_ready "$previous_port" || fail "retained previous ClubDue release is not ready"
-  if [ "$CONTAINER" = clubdue-staging ]; then
-    rollback_marker="$(curl -fsS "http://127.0.0.1:${previous_port}/rollback-safetyz" 2>/dev/null || true)"
-    [ "$rollback_marker" = "demo-sandbox-v1" ] || fail "retained staging release predates demo-sandbox safety; refusing unsafe rollback"
-  fi
+  rollback_marker="$(curl -fsS "http://127.0.0.1:${previous_port}/rollback-safetyz" 2>/dev/null || true)"
+  [ "$rollback_marker" = "demo-sandbox-v1" ] || fail "retained release predates demo-sandbox safety; refusing unsafe rollback"
   switch_proxy "$previous_port"
   docker rename "$CURRENT_CONTAINER" "$CANDIDATE_CONTAINER"
   docker rename "$PREVIOUS_CONTAINER" "$CURRENT_CONTAINER"
@@ -199,7 +260,7 @@ else
   : "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required in production environment file}"
   : "${SESSION_SECRET:?SESSION_SECRET required in production environment file}"
   ensure_database "$NETWORK" "$DB" "$VOLUME"
-  APP_ENV=( -e APP_ENV=production )
+  APP_ENV=( -e APP_ENV=production -e "ENABLE_PUBLIC_DEMO=${DEPLOY_PUBLIC_DEMO}" )
 fi
 
 if container_exists "$CURRENT_CONTAINER"; then
@@ -214,6 +275,8 @@ fi
 candidate_port="$ALT_PORT"; [ "$active_port" = "$ALT_PORT" ] && candidate_port="$PORT"
 
 assert_safe_vhost
+active_marker="$(curl -fsS "http://127.0.0.1:${active_port}/rollback-safetyz" 2>/dev/null || true)"
+[ "$active_marker" = "demo-sandbox-v1" ] || fail "active release predates demo-sandbox safety; refusing to replace the known rollback target"
 if container_exists "$CANDIDATE_CONTAINER"; then
   if [ "$(docker inspect -f '{{.State.Running}}' "$CANDIDATE_CONTAINER")" = true ]; then
     fail "running ClubDue candidate exists; inspect it before retrying"
@@ -227,8 +290,10 @@ fi
 # serving unchanged; if the new candidate fails, traffic remains on current.
 container_exists "$PREVIOUS_CONTAINER" && docker rm -f "$PREVIOUS_CONTAINER" >/dev/null
 candidate_started=0
+CANDIDATE_PROBE_DIR=""
 cleanup_candidate() {
-  [ "$candidate_started" = 1 ] && docker rm -f "$CANDIDATE_CONTAINER" >/dev/null 2>&1 || true
+  if [ "$candidate_started" = 1 ]; then docker rm -f "$CANDIDATE_CONTAINER" >/dev/null 2>&1 || true; fi
+  if [ -n "$CANDIDATE_PROBE_DIR" ]; then rm -rf "$CANDIDATE_PROBE_DIR" || true; fi
 }
 trap cleanup_candidate EXIT
 
@@ -242,6 +307,7 @@ if ! docker run -d --name "$CANDIDATE_CONTAINER" --restart always --network "$NE
 fi
 candidate_started=1
 wait_for_ready "$candidate_port" || fail "candidate ${CANDIDATE_CONTAINER} did not become ready; active release remains unchanged"
+verify_candidate_contract "$candidate_port" "$DEPLOY_PUBLIC_DEMO"
 
 # The active release stays available until the nginx cutover passes.
 switch_proxy "$candidate_port"

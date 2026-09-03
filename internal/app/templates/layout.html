@@ -30,7 +30,7 @@
       </form>
     </aside>
     <main class="main">
-      {{ if .Nav.User.IsDemo }}<div class="demo-banner" role="status"><strong>Fictional public demo</strong> — changes are saved only inside this isolated workspace and deleted after four hours. CSV import accepts fictional or redacted data only; other uploads stay disabled.</div>{{ end }}
+      {{ if .Nav.User.IsDemo }}<div class="demo-banner" role="status"><strong>Fictional public demo</strong> — changes stay inside this isolated workspace. Access ends after four hours; scheduled cleanup removes live data, but encrypted backups may retain submitted data for up to 30 days. Use only fictional or fully redacted CSVs; other uploads stay disabled.</div>{{ end }}
       {{ .Body }}
     </main>
   </div>

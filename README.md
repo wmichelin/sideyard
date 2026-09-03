@@ -32,7 +32,8 @@ It is a single Go binary with embedded HTML/CSS and Postgres.
    curl -X POST http://127.0.0.1:8080/dev/seed
    ```
 
-4. Sign in at [http://127.0.0.1:8080/login](http://127.0.0.1:8080/login):
+4. Sign in at [http://127.0.0.1:8080/login](http://127.0.0.1:8080/login) with
+   these local-development-only credentials:
 
    ```text
    owner@demo.local
@@ -41,13 +42,16 @@ It is a single Go binary with embedded HTML/CSS and Postgres.
 
 `ENABLE_DEV_ROUTES=1` is required for the seed route and is already present in `.env.example`. The app loads `.env` without replacing already-set environment variables.
 
-On deployed staging, a prospect can instead open the permanent
-[one-click landscaping demo](https://clubdue-staging.michelindigitalmedia.com/demo).
-It creates a fresh fictional workspace for that browser, expires after four
-hours, and requires no shared credentials. Each workspace starts with 30
+For a prospect, share the permanent
+[one-click landscaping demo](https://clubdue.michelindigitalmedia.com/demo).
+Staging keeps an equivalent [release-review demo](https://clubdue-staging.michelindigitalmedia.com/demo).
+Each link creates a fresh fictional workspace for that browser, ends access
+after four hours, and requires no shared credentials. Scheduled cleanup removes
+expired live workspaces; encrypted backups may retain submitted data for up to
+30 days, so use only fictional or fully redacted input. Each workspace starts with 30
 fictional customer records spanning residential, commercial, multi-location,
 seasonal, renewal, and recurring-work examples. It is deliberately unavailable
-in production.
+unless the deployment explicitly enables it.
 
 Without `DATABASE_URL`, ClubDue runs an in-memory legacy sample screen instead of the full agreement workflow.
 
@@ -77,7 +81,7 @@ checklist, feedback cadence, and honest FAQ, see [docs/CONTROLLED-PILOT.md](docs
 | `SESSION_SECRET` | Required secret for session and homeowner-link hashes |
 | `PUBLIC_URL` | HTTPS public URL required in staging and production |
 | `ENABLE_DEV_ROUTES` | Set to `1` to enable `POST /dev/seed` locally; rejected by staging and production |
-| `ENABLE_PUBLIC_DEMO` | Staging-only one-click isolated demo; startup rejects it in every other environment |
+| `ENABLE_PUBLIC_DEMO` | Explicit staging/production opt-in for isolated one-click demos; disabled by default and rejected in development |
 | `BOOTSTRAP_EMAIL` / `BOOTSTRAP_PASSWORD` / `BOOTSTRAP_SHOP_NAME` | Optional owner created for an otherwise empty database (`SHOP_NAME` remains a local compatibility alias) |
 | `SIGNUP_ALLOWLIST` | Comma-separated staging/production pilot enrollment allowlist; enrollment is closed there when empty |
 

@@ -45,9 +45,11 @@ When the user says OK / ship it / looks good:
    build artifact** summary. Do not substitute the current `main` SHA or
    reconstruct the release digest from a mutable tag if a newer build or rerun
    exists.
-2. Confirm the recorded digest is `sha256:` followed by 64 lowercase
-   hexadecimal characters. Optionally prove the immutable reference resolves
-   before promotion:
+2. Confirm the recorded source is a full 40-character lowercase commit SHA and
+   the digest is `sha256:` followed by 64 lowercase hexadecimal characters.
+   The staging build stores that SHA in the image's
+   `org.opencontainers.image.revision` label. Optionally prove the immutable
+   reference resolves before promotion:
 
    ```bash
    docker pull "ghcr.io/wmichelin/clubdue@sha256:<reviewed-digest>"
@@ -58,11 +60,17 @@ When the user says OK / ship it / looks good:
 
 ```bash
 gh variable set PRODUCTION_DEPLOY_ENABLED --body true
-gh workflow run deploy-production.yml -f mode=promote -f image_digest=sha256:<reviewed-digest>
+gh workflow run deploy-production.yml \
+  -f mode=promote \
+  -f source_sha=<reviewed-40-character-commit> \
+  -f image_digest=sha256:<reviewed-digest> \
+  -f enable_public_demo=true
 ```
 
-The workflow validates the digest, pulls and promotes that exact image to
-`:latest`, and deploys the droplet by the immutable digest. Set
+The workflow validates the source and digest, pulls the exact image, requires
+its immutable revision label to match the reviewed source SHA, promotes it to
+`:latest`, and deploys the droplet by the immutable digest with the explicitly
+approved demo setting. Set
 `PRODUCTION_DEPLOY_ENABLED` back to `false` when the approved promotion
 finishes. Its run summary records the reviewed image reference; include that
 digest with the release evidence. Autonomous roadmap and issue agents must
@@ -74,7 +82,15 @@ Monitor the run:
 gh run watch
 ```
 
-Confirm with `./scripts/smoke-test.sh production`.
+The workflow runs the production smoke with the expected demo setting. For a
+manual repeat, provide the approved owner credentials without printing them:
+
+```bash
+CLUBDUE_SMOKE_PUBLIC_DEMO=enabled \
+  CLUBDUE_SMOKE_EMAIL='<approved owner>' \
+  CLUBDUE_SMOKE_PASSWORD='<approved secret>' \
+  ./scripts/smoke-test.sh production
+```
 
 If the promoted app release must be reversed, use the same approved production
 window and run the GitHub workflow only (never deploy directly from a laptop):

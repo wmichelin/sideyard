@@ -9,11 +9,11 @@ ClubDue runs on the **same DigitalOcean droplet as Pantry**, in isolated contain
 
 Pantry (`:8080`) and Headscale (`127.0.0.1:8081`) are untouched.
 
-## Production contract (prepared, not provisioned)
+## Production contract
 
-Production remains unprovisioned and this document is not approval to deploy.
-After explicit chat approval and the GitHub production-environment review, the
-approved workflow uses only these production-specific resources:
+This document is not approval to deploy. After explicit chat approval and the
+production gate, the approved workflow uses only these production-specific
+resources:
 
 | Resource | Production value | Staging equivalent |
 |----------|------------------|--------------------|
@@ -149,19 +149,22 @@ Run the same self-cleaning, no-remote-infrastructure rehearsal locally or in CI:
 ```
 
 It starts only `clubdue-production-rehearsal-*` Docker resources, verifies
-production-mode readiness, CSRF-aware owner login, authenticated dashboard
-sessions remain active after a second login for the same account,
+production-mode readiness, explicit public-demo opt-in, isolated demo writes,
+CSRF-aware owner login, and authenticated dashboard sessions remain active and
+separate from demo traffic after a second login for the same account,
 encrypted backup output, successful restore to a fresh Postgres container,
 rejection of tampered ciphertext and a tampered MAC, the reserved-port deploy
 guard, and Docker-isolated candidate/promotion/rollback mapping. It removes
 its containers, network, and temporary backup data on exit.
 
-## Staging database and demo access
+## Staging database and public demo access
 
-Staging automatically provisions an isolated `clubdue-staging-db` Postgres container, the `clubdue-staging-pgdata` persistent volume, and the `clubdue-staging-net` network. Its generated database password and session secret stay in a root-only droplet file and are never committed or logged. Production is unchanged.
+Staging automatically provisions an isolated `clubdue-staging-db` Postgres container, the `clubdue-staging-pgdata` persistent volume, and the `clubdue-staging-net` network. Its generated database password and session secret stay in a root-only droplet file and are never committed or logged. Production uses its separate resources listed above.
 
 The preferred prospect entry point is the permanent
-[one-click landscaping demo](https://clubdue-staging.michelindigitalmedia.com/demo).
+[production one-click landscaping demo](https://clubdue.michelindigitalmedia.com/demo).
+The [staging demo](https://clubdue-staging.michelindigitalmedia.com/demo) is the
+equivalent release-review surface.
 `GET /demo` is a no-store entry page; its CSRF-protected POST creates a fresh,
 fictional `demo_sandbox` tenant and a normal opaque session that expires with
 the workspace after four hours. The workspace starts with 30 deterministic,
@@ -182,13 +185,19 @@ behind an expiring, tenant-bound, single-use commit token. Preview and commit
 each consume one of the 30 saved-action slots. Every other multipart upload
 remains blocked. Active
 sandboxes are capped; at four hours the session and workspace stop resolving,
-the commit token is no longer usable, and the normal cleanup path deletes the
-expired tenant and its child rows through the scoped cascade.
+the commit token is no longer usable, and scheduled cleanup subsequently
+deletes the expired tenant and its child rows through the scoped cascade. Encrypted
+production backups may retain submitted data for up to 30 days, so demo input
+must always be fictional or fully redacted.
 
-The deploy helper sets `ENABLE_PUBLIC_DEMO=1` only for staging. Application
-startup rejects that flag in development or production, and production does
-not register either demo route. Disabling the staging flag is the immediate
-kill switch.
+The deploy helper forces `ENABLE_PUBLIC_DEMO=1` for staging. Production defaults
+to disabled and receives only the validated `enable_public_demo` workflow input;
+application startup accepts the flag in staging or production and rejects it in
+development. A disabled production promotion is the route kill switch. Before
+cutover, the deploy helper verifies the active rollback marker and proves the
+candidate's expected demo state. For an enabled candidate it performs the
+CSRF-protected demo start, validates the secure session cookie, and resolves the
+fictional dashboard while the existing release still serves traffic.
 
 The former shared `owner@demo.local` staging tenant is retired at staging
 startup because its published password allowed unrestricted writes. Development
@@ -197,7 +206,9 @@ unless an operator supplies `SIGNUP_ALLOWLIST`. The staging smoke uses only
 fresh, expiring demo tenants and proves their bounded ordinary form writes,
 bounded `/import` CSV preview and commit, rejection of all other multipart
 uploads, and isolation. Production smoke uses approved environment secrets for
-a real pilot owner; no shared demo credentials are provisioned there.
+a real pilot owner plus separate ephemeral demo sessions, performs only bounded
+fictional writes, and proves the owner tenant remains separate. No shared demo
+credentials are provisioned in either deployed environment.
 
 ## One-time setup
 
@@ -267,14 +278,19 @@ Copy the exact commit SHA and immutable digest from the successful reviewed
 **Deploy Staging** run's **Staging build artifact** summary:
 
 ```bash
-gh workflow run deploy-production.yml -f image_digest=sha256:<reviewed-digest>
+gh workflow run deploy-production.yml \
+  -f mode=promote \
+  -f source_sha=<reviewed-40-character-commit> \
+  -f image_digest=sha256:<reviewed-digest> \
+  -f enable_public_demo=true
 ```
 
-The production workflow accepts only `sha256:` followed by 64 lowercase
-hexadecimal characters. It pulls that exact `ghcr.io/wmichelin/clubdue@…`
-reference, rather than resolving a mutable `:staging` or commit tag at release
-time. Tag inspection may be used only as a comparison check; it is not the
-source of truth for promotion.
+The production workflow accepts only a full lowercase 40-character source SHA
+and `sha256:` followed by 64 lowercase hexadecimal characters. It pulls that
+exact `ghcr.io/wmichelin/clubdue@…` reference and requires its immutable
+`org.opencontainers.image.revision` label to match the supplied source SHA
+before promotion. It never resolves a mutable `:staging` or commit tag as the
+release source.
 
 ## Local deploy
 
@@ -288,13 +304,15 @@ cp .env.example .env   # fill in DROPLET_HOST + GITHUB_TOKEN
 
 ```bash
 ./scripts/smoke-test.sh staging
-./scripts/smoke-test.sh production
+CLUBDUE_SMOKE_PUBLIC_DEMO=enabled ./scripts/smoke-test.sh production
 ```
 
 Checks liveness/readiness, authenticated dashboard behavior, and environment
 boundaries. Staging proves isolated one-click demo creation, bounded ordinary
 form writes, bounded `/import` CSV preview and commit, rejection of other
 multipart uploads, cross-visitor separation, and legacy-login retirement;
-production proves `/demo` is absent.
+production proves the explicit demo state, isolated bounded writes, a second
+visitor cannot see the first visitor's change, and the real owner session and
+tenant remain separate.
 
 See also [RELEASE-WORKFLOW.md](./RELEASE-WORKFLOW.md) for agent instructions.

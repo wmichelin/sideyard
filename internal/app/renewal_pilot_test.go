@@ -330,7 +330,7 @@ func TestPublicDemoTemplatesExposeBoundedWritesAndCSVImport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"changes are saved only inside this isolated workspace", "deleted after four hours", "other uploads stay disabled"} {
+	for _, want := range []string{"changes stay inside this isolated workspace", "Access ends after four hours", "encrypted backups may retain submitted data for up to 30 days", "other uploads stay disabled"} {
 		if !strings.Contains(string(layout), want) {
 			t.Fatalf("public demo banner is missing %q", want)
 		}

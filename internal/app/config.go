@@ -146,8 +146,8 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 	if config.Environment != EnvironmentDevelopment && config.EnableDevRoutes {
 		return Config{}, fmt.Errorf("ENABLE_DEV_ROUTES is allowed only in development")
 	}
-	if config.EnablePublicDemo && config.Environment != EnvironmentStaging {
-		return Config{}, fmt.Errorf("ENABLE_PUBLIC_DEMO is allowed only in staging")
+	if config.EnablePublicDemo && config.Environment != EnvironmentStaging && config.Environment != EnvironmentProduction {
+		return Config{}, fmt.Errorf("ENABLE_PUBLIC_DEMO is allowed only in staging or production")
 	}
 	return config, nil
 }

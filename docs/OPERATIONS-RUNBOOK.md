@@ -31,8 +31,7 @@ creates two independent ephemeral landscaping tenants, completes recurring
 work, saves a renewal outcome, exercises an ordinary setup form, proves that
 write is isolated from the second tenant, exercises the bounded `/import` CSV
 preview and commit, rejects multipart on every other path, and checks the
-service-work CSV export. It uses fictional staging fixtures only and must never
-be aimed at production. A failed workflow smoke automatically switches traffic
+service-work CSV export. It uses fictional staging fixtures only. A failed workflow smoke automatically switches traffic
 back to the retained previous staging container and leaves the workflow failed
 for investigation. Staging rollback also requires the retained release's
 `demo-sandbox-v1` safety marker. During the first transition from the former
@@ -41,11 +40,14 @@ unrestricted tenant cannot be reopened; use a reviewed fix-forward instead.
 
 Public-demo operations:
 
-- `ENABLE_PUBLIC_DEMO=1` is valid only with `APP_ENV=staging`; remove it and
-  redeploy for the immediate kill switch.
+- `ENABLE_PUBLIC_DEMO=1` is valid with `APP_ENV=staging` or `production` only.
+  Staging forces it on for release review. Production requires the explicit
+  `enable_public_demo=true` promotion input; the default is off. Disable the
+  input and redeploy for the kill switch.
 - Workspaces and sessions expire together after four hours. At expiry they stop
   resolving; scheduled maintenance and new demo creation delete expired tenants
-  and their child rows through a narrowly scoped cascade.
+  and their child rows through a narrowly scoped cascade. Encrypted production
+  backups may retain submitted data for up to 30 days.
 - The active-workspace cap is 100. A capacity response creates no session and
   should prompt review of expiry cleanup and database health, not a cap bypass.
 - Ordinary URL-encoded product forms are writable, but each sandbox admits only
@@ -69,14 +71,32 @@ Public-demo operations:
   connectors for a public demo.
 - A separate 20-actions-per-minute limiter may also return `429` with
   `Retry-After: 60`; wait for the window instead of raising the limit.
-- Use fictional or properly redacted input only and never put real customer
+- Use fictional or fully redacted input only and never put real customer
   information into a demo workspace. Logs record only request IDs and aggregate
   creation/failure text.
 - `ENABLE_DEV_ROUTES` is development-only. Do not restore the retired shared
   staging account; provision allowlisted pilot owners through the audited path.
-- Production smoke and the production rehearsal must continue to prove
-  `/demo` returns 404; the bounded import does not enable the public demo in
-  production.
+- Production rehearsal proves the explicit opt-in, isolated write path, owner
+  separation, and disabled development routes. Production smoke uses separate
+  owner and demo cookie jars, makes only bounded fictional demo writes, proves
+  a second visitor cannot see them, and rechecks that the real owner tenant did
+  not receive them. A disabled release must return 404 from `/demo` and omit its
+  login CTA.
+
+For production verification after an approved promotion, set the smoke
+expectation explicitly:
+
+```bash
+CLUBDUE_SMOKE_PUBLIC_DEMO=enabled \
+  CLUBDUE_SMOKE_EMAIL='<approved owner>' \
+  CLUBDUE_SMOKE_PASSWORD='<approved secret>' \
+  ./scripts/smoke-test.sh production
+```
+
+Never print or record the owner credentials, cookies, or returned HTML. If the
+production smoke fails, preserve evidence and use the approved workflow's
+explicit rollback or a reviewed kill-switch release; production does not
+automatically roll back after an external smoke failure.
 
 ## Backup, restore, and rollback
 

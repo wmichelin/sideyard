@@ -390,6 +390,7 @@ func TestSessionAndCSRFCookiesAreSecureOutsideDevelopment(t *testing.T) {
 	}{
 		{name: "development", config: Config{Environment: EnvironmentDevelopment}, secure: false},
 		{name: "staging", config: securityTestConfig(), secure: true},
+		{name: "production", config: Config{Environment: EnvironmentProduction}, secure: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			server := &Server{config: tc.config}

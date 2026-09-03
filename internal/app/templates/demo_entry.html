@@ -10,7 +10,7 @@
 <body class="auth-page">
   <main class="auth-card">
     <p class="eyebrow">Recurring service operations</p>
-    <h1 class="title">Your private demo is starting</h1>
+    <h1 class="title">Your isolated demo is starting</h1>
     {{ if .Error }}
     <p class="error-banner" role="alert">{{ .Error }}</p>
     <p class="auth-footer"><a href="/demo">Try again</a></p>
@@ -20,7 +20,7 @@
       {{ template "csrf_field" . }}
       <button type="submit" class="primary-btn full-width">Enter demo</button>
     </form>
-    <p class="auth-footer">The workspace expires after four hours. Do not upload real customer data.</p>
+    <p class="auth-footer">Access ends after four hours. Use only fictional or fully redacted data; encrypted backups may retain submitted data for up to 30 days.</p>
     {{ end }}
   </main>
 </body>

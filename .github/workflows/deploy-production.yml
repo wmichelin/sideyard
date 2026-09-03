@@ -16,6 +16,15 @@ on:
         description: "Immutable sha256 digest of the exact staging-reviewed GHCR image (required for promotion)"
         required: false
         type: string
+      source_sha:
+        description: "Full 40-character commit SHA recorded by the same reviewed staging run (required for promotion)"
+        required: false
+        type: string
+      enable_public_demo:
+        description: "Explicitly expose isolated public demo routes in this production release"
+        required: true
+        default: false
+        type: boolean
 
 concurrency:
   group: deploy-production
@@ -32,13 +41,13 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
-
       - name: Validate deployment request
         id: request
         env:
           MODE: ${{ inputs.mode }}
           IMAGE_DIGEST: ${{ inputs.image_digest }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          ENABLE_PUBLIC_DEMO: ${{ inputs.enable_public_demo }}
         run: |
           case "$MODE" in
             promote)
@@ -46,11 +55,21 @@ jobs:
                 echo "image_digest must be an immutable sha256 digest (sha256: followed by 64 lowercase hexadecimal characters)" >&2
                 exit 1
               fi
+              if [[ ! "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+                echo "source_sha must be the full 40-character lowercase commit SHA from the reviewed staging run" >&2
+                exit 1
+              fi
+              case "$ENABLE_PUBLIC_DEMO" in
+                true) echo "public_demo=1" >> "$GITHUB_OUTPUT"; echo "public_demo_expectation=enabled" >> "$GITHUB_OUTPUT" ;;
+                false) echo "public_demo=0" >> "$GITHUB_OUTPUT"; echo "public_demo_expectation=disabled" >> "$GITHUB_OUTPUT" ;;
+                *) echo "enable_public_demo must be true or false" >&2; exit 1 ;;
+              esac
               echo "ref=ghcr.io/wmichelin/clubdue@${IMAGE_DIGEST}" >> "$GITHUB_OUTPUT"
+              echo "source_sha=${SOURCE_SHA}" >> "$GITHUB_OUTPUT"
               ;;
             rollback)
-              if [[ -n "$IMAGE_DIGEST" ]]; then
-                echo "image_digest is not accepted for rollback" >&2
+              if [[ -n "$IMAGE_DIGEST" || -n "$SOURCE_SHA" ]]; then
+                echo "image_digest and source_sha are not accepted for rollback" >&2
                 exit 1
               fi
               ;;
@@ -59,6 +78,12 @@ jobs:
               exit 1
               ;;
           esac
+
+      - uses: actions/checkout@v4
+        with:
+          # Promotion executes the same deployment and smoke scripts that
+          # staged the reviewed source. Rollback uses the dispatch revision.
+          ref: ${{ inputs.mode == 'promote' && steps.request.outputs.source_sha || github.sha }}
 
       - uses: docker/setup-buildx-action@v3
         if: ${{ inputs.mode == 'promote' }}
@@ -76,6 +101,11 @@ jobs:
         run: |
           SRC="${{ steps.request.outputs.ref }}"
           docker pull "$SRC"
+          IMAGE_REVISION="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$SRC")"
+          if [[ "$IMAGE_REVISION" != "${{ steps.request.outputs.source_sha }}" ]]; then
+            echo "reviewed image revision label ${IMAGE_REVISION:-<missing>} does not match source_sha" >&2
+            exit 1
+          fi
           docker tag "$SRC" ghcr.io/wmichelin/clubdue:latest
           docker push ghcr.io/wmichelin/clubdue:latest
 
@@ -86,7 +116,9 @@ jobs:
             echo
             echo "- Mode: \`${{ inputs.mode }}\`"
             if [[ "${{ inputs.mode }}" == "promote" ]]; then
+              echo "- Reviewed source: \`${{ steps.request.outputs.source_sha }}\`"
               echo "- Reviewed image: \`${{ steps.request.outputs.ref }}\`"
+              echo "- Public demo enabled: \`${{ inputs.enable_public_demo }}\`"
             else
               echo "- Restored release: retained \`clubdue-previous\` app container"
             fi
@@ -100,13 +132,14 @@ jobs:
           PORT: "8083"
           DOMAIN: clubdue.michelindigitalmedia.com
           CLUBDUE_DEPLOY_MODE: ${{ inputs.mode }}
+          CLUBDUE_DEPLOY_PUBLIC_DEMO: ${{ steps.request.outputs.public_demo }}
           GHCR_USER: ${{ github.repository_owner }}
           GHCR_TOKEN: ${{ secrets.GHCR_PAT }}
         with:
           host: ${{ secrets.DROPLET_HOST }}
           username: root
           key: ${{ secrets.DROPLET_SSH_KEY }}
-          envs: CONTAINER,IMAGE,PORT,DOMAIN,CLUBDUE_DEPLOY_MODE,GHCR_USER,GHCR_TOKEN
+          envs: CONTAINER,IMAGE,PORT,DOMAIN,CLUBDUE_DEPLOY_MODE,CLUBDUE_DEPLOY_PUBLIC_DEMO,GHCR_USER,GHCR_TOKEN
           # Preserve the complete Bash program; its own `set -euo pipefail`
           # is the fail-fast boundary (ssh-action's line wrapper breaks case).
           script_stop: false
@@ -116,4 +149,5 @@ jobs:
         env:
           CLUBDUE_SMOKE_EMAIL: ${{ secrets.CLUBDUE_PRODUCTION_SMOKE_EMAIL }}
           CLUBDUE_SMOKE_PASSWORD: ${{ secrets.CLUBDUE_PRODUCTION_SMOKE_PASSWORD }}
+          CLUBDUE_SMOKE_PUBLIC_DEMO: ${{ inputs.mode == 'promote' && steps.request.outputs.public_demo_expectation || 'either' }}
         run: ./scripts/smoke-test.sh production

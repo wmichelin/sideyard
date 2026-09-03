@@ -1,12 +1,14 @@
 # ClubDue: five-minute recurring-service walkthrough
 
-For a prospect, open the permanent staging link:
+For a prospect, open the permanent production link:
 
-<https://clubdue-staging.michelindigitalmedia.com/demo>
+<https://clubdue.michelindigitalmedia.com/demo>
 
 It enters a fresh fictional landscaping workspace without credentials. The
-banner identifies the data as fictional and temporary. For the established
-local HVAC fixture, follow the README seed/login steps instead.
+banner identifies the data as fictional and temporary. Use
+<https://clubdue-staging.michelindigitalmedia.com/demo> only for release review.
+For the established local HVAC fixture, follow the README seed/login steps
+instead.
 
 ## 0:00–0:45 — Start with the morning question
 
@@ -69,9 +71,10 @@ its four-hour lifetime.
 4. Explain that preview and commit each use one of the demo's 30 saved actions.
 5. Re-importing the same stable external IDs updates rather than duplicates.
 
-Every other multipart upload remains blocked. The public demo and its import
-remain staging-only; production does not expose `/demo`. Real authorized
-customer data belongs only in an authenticated, non-public pilot workspace.
+Every other multipart upload remains blocked. Access to a demo ends after four
+hours and scheduled cleanup removes expired live data, but encrypted backups
+may retain submitted data for up to 30 days. Never use real customer data; it
+belongs only in an authenticated, non-public pilot workspace.
 
 ## 4:10–5:00 — Export and close on the boundary
 

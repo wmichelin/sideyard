@@ -72,18 +72,26 @@ func TestLoadConfig(t *testing.T) {
 			wantErr: "ENABLE_DEV_ROUTES is allowed only in development",
 		},
 		{
-			name: "production rejects public demo access",
+			name: "production may explicitly enable isolated public demos",
 			env: map[string]string{
 				"APP_ENV": "production", "DATABASE_URL": validStaging["DATABASE_URL"],
 				"SESSION_SECRET": strongSecret, "PUBLIC_URL": "https://clubdue.example.test",
 				"ENABLE_PUBLIC_DEMO": "true",
 			},
-			wantErr: "ENABLE_PUBLIC_DEMO is allowed only in staging",
+			wantAddress: ":8080", wantPublicDemo: true,
+		},
+		{
+			name: "production keeps public demos disabled by default",
+			env: map[string]string{
+				"APP_ENV": "production", "DATABASE_URL": validStaging["DATABASE_URL"],
+				"SESSION_SECRET": strongSecret, "PUBLIC_URL": "https://clubdue.example.test",
+			},
+			wantAddress: ":8080",
 		},
 		{
 			name:    "development rejects public demo access",
 			env:     map[string]string{"ENABLE_PUBLIC_DEMO": "true"},
-			wantErr: "ENABLE_PUBLIC_DEMO is allowed only in staging",
+			wantErr: "ENABLE_PUBLIC_DEMO is allowed only in staging or production",
 		},
 		{
 			name:    "runtime limits must be positive",
@@ -143,11 +151,12 @@ func TestSignupPoliciesByEnvironment(t *testing.T) {
 
 func TestProductionSignupAndTestPaymentPolicies(t *testing.T) {
 	config, err := LoadConfig(mapLookup(map[string]string{
-		"APP_ENV":          "production",
-		"DATABASE_URL":     "postgres://clubdue:clubdue@db:5432/clubdue?sslmode=disable",
-		"SESSION_SECRET":   strings.Repeat("s", 32),
-		"PUBLIC_URL":       "https://clubdue.example.test",
-		"SIGNUP_ALLOWLIST": "approved@example.test, SECOND@example.test ",
+		"APP_ENV":            "production",
+		"DATABASE_URL":       "postgres://clubdue:clubdue@db:5432/clubdue?sslmode=disable",
+		"SESSION_SECRET":     strings.Repeat("s", 32),
+		"PUBLIC_URL":         "https://clubdue.example.test",
+		"ENABLE_PUBLIC_DEMO": "true",
+		"SIGNUP_ALLOWLIST":   "approved@example.test, SECOND@example.test ",
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -155,8 +164,8 @@ func TestProductionSignupAndTestPaymentPolicies(t *testing.T) {
 	if !config.SignupAllowed("SECOND@example.test") || config.SignupAllowed("unapproved@example.test") {
 		t.Fatal("production signup allowlist was not enforced")
 	}
-	if config.TestPaymentStubEnabled() {
-		t.Fatal("production must disable the test payment stub")
+	if !config.EnablePublicDemo || config.TestPaymentStubEnabled() {
+		t.Fatal("production demo opt-in must not enable the test payment stub")
 	}
 
 	request := httptest.NewRequest(http.MethodPost, "/renew/test-token", nil)

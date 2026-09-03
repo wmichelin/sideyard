@@ -37,6 +37,8 @@ jobs:
           tags: |
             ghcr.io/wmichelin/clubdue:staging
             ghcr.io/wmichelin/clubdue:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
 
       - name: Record immutable staging artifact
         env:

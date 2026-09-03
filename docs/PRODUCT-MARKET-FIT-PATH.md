@@ -83,7 +83,7 @@ the truth from several tools at the end of the week.
 
 ## What this delivery establishes
 
-The staging product now has a trade-neutral, additive recurring-service
+The product now has a trade-neutral, additive recurring-service
 foundation alongside the existing HVAC workflow:
 
 - The established `Shop -> Customer -> Property -> Agreement -> Renewal` core
@@ -100,7 +100,8 @@ foundation alongside the existing HVAC workflow:
   CRLF files, blank optional contact/plan fields, common US or ISO dates, and
   dollar or cent prices. Preview remains mandatory before commit, and stable
   `external_id` values make re-imports update rather than duplicate.
-- A permanent staging `/demo` entry creates a fresh fictional landscaping
+- A permanent production `/demo` share link, with an equivalent staging review
+  surface, creates a fresh fictional landscaping
   tenant and a four-hour browser session without putting credentials or tokens
   in the URL. The deterministic baseline contains 30 fictional customer records,
   residential and light-commercial plans, multi-location accounts, contact
@@ -116,8 +117,11 @@ foundation alongside the existing HVAC workflow:
   records and holds the exact CSV server-side for at most 15 minutes behind an
   expiring, tenant-bound, single-use commit token; preview and
   commit each count toward the 30-action budget. All other multipart remains
-  blocked. At four hours the tenant stops resolving and cleanup deletes it by
-  cascade. Production refuses the feature flag and does not register the route.
+  blocked. At four hours the tenant and session stop resolving; scheduled
+  cleanup subsequently deletes expired live rows by cascade. Encrypted production backups
+  may retain submitted data for up to 30 days, so the demo accepts only
+  fictional or fully redacted input. Both deployed environments require an
+  explicit feature-flag opt-in, while development rejects the flag.
 - The mobile navigation is compact enough that the work view is visible in the
   initial phone viewport.
 
@@ -270,9 +274,9 @@ HttpOnly, SameSite cookie. No password, bearer token, or session ID appears in
 the URL; URL session identifiers can leak through history, logs, bookmarks,
 referrers, and indexing. [OWASP session guidance](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html)
 
-The staging flag is the kill switch. Active demo workspaces are capped and use
-fictional data. Ordinary setup and workflow forms write only to the visitor's
-isolated tenant. Every admitted state-changing request consumes one of 30
+The environment-specific deployment flag is the kill switch. Active demo
+workspaces are capped and use fictional data. Ordinary setup and workflow forms
+write only to the visitor's isolated tenant. Every admitted state-changing request consumes one of 30
 durable sandbox slots—even if product validation later rejects it—and is
 limited to a 16 KiB URL-encoded form with no field value over 2,000 bytes.
 
@@ -288,17 +292,19 @@ and commit each consume one of the 30 sandbox action slots. All other multipart
 uploads remain unavailable.
 
 The session and tenant expire together after four hours. Expired workspaces no
-longer authenticate or resolve public renewal links, and cleanup deletes the
-tenant and its child rows through the scoped cascade. Production configuration
-rejects the flag and `/demo` remains 404 until a separate, explicitly approved
-production design exists.
+longer authenticate or resolve public renewal links, and scheduled cleanup
+deletes the tenant and its child rows through the scoped cascade. Encrypted
+production backups may retain submitted data for up to 30 days. Production
+registers `/demo` only when an approved deployment explicitly opts in; disabling
+that opt-in and redeploying closes the route.
 
 ### Reliability gates for every release
 
 - Unit tests plus required Postgres integration tests on a fresh schema.
 - Migration checksum verification and a previous-binary compatibility check.
-- Static build, shell syntax checks, and production-mode rehearsal proving
-  public demo/development routes are absent.
+- Static build, shell syntax checks, and production-mode rehearsal proving the
+  public demo is present only with explicit opt-in, remains isolated and
+  writable when enabled, and leaves development routes absent.
 - Exact-commit CI and staging deploy success.
 - Staging smoke for one-click demo creation, bounded ordinary form writes,
   bounded `/import` CSV preview and commit, rejection of every other multipart
@@ -306,6 +312,9 @@ production design exists.
   and readiness. A failed smoke automatically rolls staging traffic back only
   to a release carrying the demo-sandbox safety marker; unsafe legacy rollback
   is refused.
+- Production smoke with separate real-owner and demo sessions, a bounded
+  fictional write, cross-demo isolation, legacy-login retirement, and a final
+  assertion that demo traffic did not enter the real owner tenant.
 - Desktop and phone browser acceptance, with request/log review and no secrets
   or customer data in evidence.
 - Explicit user approval before any production deployment.
