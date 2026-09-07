@@ -38,7 +38,9 @@
 {{ if .IsDemo }}
 <section class="panel">
   <h3 class="section-title">Nothing has been saved yet</h3>
+  {{ if .CanCommit }}
   <p class="muted">Review the actions below. Commit uses this exact protected preview once; it expires after 15 minutes.</p>
+  {{ end }}
 </section>
 {{ end }}
 <section class="stats">
@@ -70,13 +72,28 @@
   </div>
 </section>
 
+{{ if .ErrorRows }}
+<section class="panel" aria-labelledby="import-errors-title">
+  <h3 id="import-errors-title" class="section-title">Rows to fix ({{ len .ErrorRows }})</h3>
+  <p>Fix these rows and upload the file again. Nothing from this file has been imported.</p>
+  <ul class="import-errors">
+    {{ range .ErrorRows }}
+    <li>
+      <strong>CSV row {{ .LineNum }}</strong> — {{ .CustomerName }}{{ if .ExternalID }} (<code>{{ .ExternalID }}</code>){{ end }}
+      <p>{{ .Error }}</p>
+    </li>
+    {{ end }}
+  </ul>
+</section>
+{{ end }}
+
 <section class="table-section">
   <h3 class="section-title">Preview (first {{ len .Preview }} of {{ .TotalRows }} rows)</h3>
   <div class="table-wrap">
     <table class="table">
       <thead>
         <tr>
-          <th>Line</th>
+          <th>CSV row</th>
           <th>External ID</th>
           <th>Customer</th>
           <th>Address</th>

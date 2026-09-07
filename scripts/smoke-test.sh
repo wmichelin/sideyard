@@ -155,11 +155,13 @@ DEMO_DUE_COUNT="$(printf '%s' "$DEMO_WORK_BEFORE" | grep -o 'name="occurrence_id
 [ "$DEMO_DUE_COUNT" -le 60 ]
 [[ "$DEMO_WORK_BEFORE" == *'Weekly mow, trim, edge &amp; blow'* ]]
 [[ "$DEMO_WORK_BEFORE" == *'Seasonal Cleanup Plan'* ]]
+[[ "$DEMO_WORK_BEFORE" != *'>Upcoming</span>'* ]]
 DEMO_ALL_WORK="$(curl -fsS -b "$DEMO_COOKIE_JAR" "${CLUBDUE_URL}/visits?filter=all")"
 [[ "$DEMO_ALL_WORK" == *'>Paused</span>'* ]]
 [[ "$DEMO_ALL_WORK" == *'>Plan inactive</span>'* ]]
 [[ "$DEMO_ALL_WORK" == *'>Completed</span>'* ]]
 [[ "$DEMO_ALL_WORK" == *'>Skipped</span>'* ]]
+[[ "$DEMO_ALL_WORK" == *'>Upcoming</span>'* ]]
 [ "${#DEMO_ALL_WORK}" -le 524288 ]
 
 if [ "$CLUBDUE_ENV" = "production" ]; then

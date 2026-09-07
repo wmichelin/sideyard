@@ -384,6 +384,8 @@ func (s *Service) ListOccurrences(ctx context.Context, shopID string, dueOnly bo
 	if err := s.GenerateShopOccurrences(ctx, shopID); err != nil {
 		return nil, err
 	}
+	today := dateOnly(s.now())
+	args := []any{shopID}
 	query := `
 		SELECT o.id, o.schedule_id, sc.agreement_id, c.name, COALESCE(c.phone, ''),
 			COALESCE(p.address_line1 || ', ' || p.city || ', ' || p.state || ' ' || p.postal_code, ''),
@@ -396,16 +398,16 @@ func (s *Service) ListOccurrences(ctx context.Context, shopID string, dueOnly bo
 		LEFT JOIN properties p ON p.id = a.property_id
 		WHERE o.shop_id = $1`
 	if dueOnly {
-		query += ` AND o.status = 'due' AND sc.active AND a.status = 'active'`
+		query += ` AND o.status = 'due' AND sc.active AND a.status = 'active' AND o.due_on <= $2`
+		args = append(args, today)
 	}
 	query += ` ORDER BY o.due_on, c.name, sc.service_name`
 
-	rows, err := s.pool.Query(ctx, query, shopID)
+	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	today := dateOnly(s.now())
 	var occurrences []Occurrence
 	for rows.Next() {
 		var occurrence Occurrence

@@ -100,6 +100,12 @@ func (s *Server) handleImportDryRun(w http.ResponseWriter, r *http.Request, user
 	if len(preview) > 20 {
 		preview = preview[:20]
 	}
+	var errorRows []ImportPreviewRow
+	for _, row := range analysis.Rows {
+		if row.Error != "" {
+			errorRows = append(errorRows, row)
+		}
+	}
 
 	canCommit := analysis.Summary.Errors == 0 && len(analysis.Rows) > 0
 	previewData := map[string]any{
@@ -107,6 +113,7 @@ func (s *Server) handleImportDryRun(w http.ResponseWriter, r *http.Request, user
 		"Step":      "preview",
 		"Summary":   analysis.Summary,
 		"Preview":   preview,
+		"ErrorRows": errorRows,
 		"TotalRows": len(analysis.Rows),
 		"CanCommit": canCommit,
 		"IsDemo":    user.IsDemo,

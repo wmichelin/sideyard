@@ -5,6 +5,10 @@ provisions the approved owner with the `provision-owner` command; running it a
 second time for the same email resets that owner's password, invalidates their
 sessions, and writes a `provisioned` or `recovered` audit event in Postgres.
 
+For a new owner email, an occupied shop name (including names that normalize to
+the same slug) is rejected. Choose a distinct name; a matching name never grants
+access to an existing shop. Recovery for an existing email keeps its original shop.
+
 The command is intentionally a one-off operation. It does not run during an
 application deploy and it never prints the owner email, password, database URL,
 or session secret.

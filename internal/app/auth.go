@@ -107,11 +107,11 @@ func (a *Auth) provisionOwner(ctx context.Context, credentials OwnerCredentials)
 	action := "recovered"
 	if errors.Is(err, pgx.ErrNoRows) {
 		slug := slugify(credentials.ShopName)
-		err = tx.QueryRow(ctx, `SELECT id FROM shops WHERE slug = $1`, slug).Scan(&shopID)
+		// A matching shop name is not an invitation into an existing tenant.
+		err = tx.QueryRow(ctx, `INSERT INTO shops (name, slug) VALUES ($1, $2)
+			ON CONFLICT (slug) DO NOTHING RETURNING id`, credentials.ShopName, slug).Scan(&shopID)
 		if errors.Is(err, pgx.ErrNoRows) {
-			if err := tx.QueryRow(ctx, `INSERT INTO shops (name, slug) VALUES ($1, $2) RETURNING id`, credentials.ShopName, slug).Scan(&shopID); err != nil {
-				return "", err
-			}
+			return "", errors.New("shop name already taken; choose a different shop name")
 		} else if err != nil {
 			return "", err
 		}

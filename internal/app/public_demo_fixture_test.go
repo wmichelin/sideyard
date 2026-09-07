@@ -172,20 +172,21 @@ func TestPublicDemoHydratesRealisticLandscapingBook(t *testing.T) {
 			activeSchedules, pausedSchedules, inactiveAgreementSchedules, activeCadences)
 	}
 
-	var totalOccurrences, dueOccurrences, overdueOccurrences, completedOccurrences, skippedOccurrences, upcomingOccurrences int
+	var totalOccurrences, dueOccurrences, overdueOccurrences, completedOccurrences, skippedOccurrences, upcomingOccurrences, dueThroughToday int
 	if err := db.Pool.QueryRow(ctx, `
 		SELECT count(*),
 			count(*) FILTER (WHERE o.status = 'due' AND sc.active AND a.status = 'active'),
 			count(*) FILTER (WHERE o.status = 'due' AND sc.active AND a.status = 'active' AND o.due_on < $2::date),
 			count(*) FILTER (WHERE o.status = 'completed'),
 			count(*) FILTER (WHERE o.status = 'skipped'),
-			count(*) FILTER (WHERE o.status = 'due' AND sc.active AND a.status = 'active' AND o.due_on >= $2::date)
+			count(*) FILTER (WHERE o.status = 'due' AND sc.active AND a.status = 'active' AND o.due_on >= $2::date),
+			count(*) FILTER (WHERE o.status = 'due' AND sc.active AND a.status = 'active' AND o.due_on <= $2::date)
 		FROM service_occurrences o
 		JOIN service_schedules sc ON sc.id = o.schedule_id AND sc.shop_id = o.shop_id
 		JOIN agreements a ON a.id = sc.agreement_id AND a.shop_id = sc.shop_id
 		WHERE o.shop_id = $1`, result.ShopID, now).Scan(
 		&totalOccurrences, &dueOccurrences, &overdueOccurrences,
-		&completedOccurrences, &skippedOccurrences, &upcomingOccurrences,
+		&completedOccurrences, &skippedOccurrences, &upcomingOccurrences, &dueThroughToday,
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -199,8 +200,8 @@ func TestPublicDemoHydratesRealisticLandscapingBook(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(dueWork) != dueOccurrences || len(dueWork) > publicDemoDueOccurrenceCeiling {
-		t.Fatalf("public demo due-work page rows=%d, persisted=%d", len(dueWork), dueOccurrences)
+	if len(dueWork) != dueThroughToday || len(dueWork) > publicDemoDueOccurrenceCeiling {
+		t.Fatalf("public demo due-work page rows=%d, due through today=%d", len(dueWork), dueThroughToday)
 	}
 	allWork, err := store.ListServiceOccurrences(ctx, result.ShopID, false)
 	if err != nil {
