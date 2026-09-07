@@ -250,11 +250,14 @@ func (s *Service) BulkUpdateVisitStatus(ctx context.Context, shopID string, visi
 			FOR UPDATE OF v, a`, shopID, visitID,
 		).Scan(&agreementID, &currentStatus, &visitsUsed, &visitsEntitled)
 		if err != nil {
-			continue
+			return fmt.Errorf("visit not found: %w", err)
 		}
 
 		switch action {
 		case "scheduled":
+			if currentStatus == string(VisitCompleted) {
+				return fmt.Errorf("completed visit cannot be handed off")
+			}
 			_, err = tx.Exec(ctx, `
 				UPDATE visit_dues SET status = 'scheduled', scheduled_at = $3
 				WHERE shop_id = $1 AND id = $2 AND status = 'due'`,
@@ -280,7 +283,10 @@ func (s *Service) BulkUpdateVisitStatus(ctx context.Context, shopID string, visi
 				WHERE shop_id = $1 AND id = $2 AND visits_used < visits_entitled`,
 				shopID, agreementID,
 			)
-			if err == nil && tag.RowsAffected() != 1 {
+			if err != nil {
+				return err
+			}
+			if tag.RowsAffected() != 1 {
 				return fmt.Errorf("agreement visit entitlement is exhausted")
 			}
 		default:
