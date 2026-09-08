@@ -9,8 +9,8 @@ address. Keep `clubdue.michelindigitalmedia.com` serving the app directly alongs
 the new primary host. Preserve customer accounts, app routes, data, and isolated demos.
 The user explicitly authorized deployment and Namecheap DNS changes in chat.
 
-Staging: https://clubdue-staging.michelindigitalmedia.com (verified for initial
-launch build; deployment check correction being restaged).
+Staging: https://clubdue-staging.michelindigitalmedia.com (verified).
+Production: https://getsideyard.com (verified).
 
 ## Review before implementation
 
@@ -87,7 +87,27 @@ candidate before cutover: `printf | grep -q` intermittently returned SIGPIPE
 (pipeline statuses `141 0`) even with the expected fixture present. The release
 check now matches the buffered response directly, preserving both assertions.
 
-## Remaining deployment work
+## Completed release
 
-Restage the deployment-check fix, promote its immutable image, and verify the
-production form, compatibility hostname, and operator CSV export end to end.
+- Source: `5d316e538a5be91b06b35cc694cce3c9355b0b22`.
+- Image: `ghcr.io/wmichelin/clubdue@sha256:6d32e772666ae19c44d7a418a003302c1b1ff803f77547b496de3874eeca7b1a`.
+- Staging run `34183800986`, CI `34183801137`, and production promotion
+  `34183932174` passed. The manually run staging smoke also passed.
+- Production Playwright passed at 375, 390, 768, and 1440 pixel widths, including
+  required-field validation, submission, and confirmation, with no browser errors.
+  The synthetic submission was found in the private operator CSV export with
+  the expected values, then removed from the production database.
+- Production workflow verified real owner login and the isolated demo workflow.
+  A separate browser check entered a demo through the old ClubDue hostname and
+  reached its Sideyard dashboard without changing hosts.
+- Both app hostnames return the Sideyard login page with HTTP 200 over verified
+  TLS. All three aliases return HTTP 301 to the primary host, preserving paths.
+- Deployed revision matches the reviewed source. Current production is on 8083,
+  with the previous release retained on 28083. Both hostnames use the same
+  managed nginx upstream for future promotion and rollback.
+- Production logs had no HTTP 5xx, panic, or interest-persistence errors during
+  verification. The production deployment gate was reset to `false`.
+
+The only unsuccessful acceptance-script attempt after promotion tried to click
+the demo entry button after its existing automatic navigation had already
+completed. Waiting for the resulting dashboard verified the actual browser flow.
