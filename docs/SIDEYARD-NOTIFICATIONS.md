@@ -7,8 +7,7 @@ notify the owner when a visitor registers interest. Preserve the landing form,
 existing signups, both production hostnames, and staging isolation.
 
 - Product: clear, recognizable small icon; shared links show a designed card.
-  Owner receives signup details without exporting a CSV. Confirm destination
-  and available sending service through the pending chat questions.
+  Owner receives signup details at `wmichelin@gmail.com` through Resend.
 - Architecture: persist notifications alongside new signups in one transaction.
   Send from a durable queue with retries; do not lose a signup if mail is down.
   Suppress duplicate-email submissions and serialize concurrent delivery workers.
@@ -18,14 +17,13 @@ existing signups, both production hostnames, and staging isolation.
 - Engineering: keep images native to SVG with PNG exports for clients that
   require raster previews. Inject the email transport; never log credentials or
   signup contact details. No unrelated app redesign.
-- DevOps: credentials are absent from Sideyard's environment. Connect the chosen
-  service through private server configuration, use TLS, and keep staging mail
+- DevOps: connect the service through private server configuration, use TLS, and keep staging mail
   separate. Stage and verify before the already-authorized production release.
 - QA: verify a signup reaches the owner's inbox, not just an HTTP success page.
   Verify favicon, share image, old hostname, existing demo, and login routes.
 
 Staging: https://clubdue-staging.michelindigitalmedia.com (verified).
-Production: https://getsideyard.com (assets and queue verified; email activation blocked on sending-account access).
+Production: https://getsideyard.com (assets, signup queue, and inbox delivery verified).
 
 ## Email configuration and operation
 
@@ -65,15 +63,15 @@ its size, format, and alt text. All full-page templates share favicon metadata.
 Versioned URLs give clients fresh asset addresses; messaging apps may retain
 previews already cached in existing conversations.
 
-## Verification and remaining activation
+## Verification
 
-- Source `571a290f1c46ac598c37d4a4b27fdb2510e1fbb4`; immutable image
-  `sha256:fe8f8582783a0139a86b191bf629e1e783679f940803c81a3f851f3fec2fc33b`.
+- Current source `7d33ab7ff1c05a796bd351b647f81eea58729726`; immutable image
+  `sha256:f54daa3e44102219717683ee877f71117d7555361e3829495ffedcfcecdb1cd2`.
 - Local `go vet ./...` and `go test -count=1 ./...` passed with mandatory
   Postgres integration on a fresh disposable database. Docker build passed.
   Fixed an existing interest-test cleanup ordering error uncovered by queue
   tests; the database now stays open until its synthetic signup is deleted.
-- CI `34223147964`, staging `34223147925`, and production `34223374243` passed.
+- CI `34230433745`, staging `34230433487`, and production `34231076171` passed.
   Manual staging smoke passed. Production owner login and isolated demo smoke
   passed, and the old hostname's browser demo still reaches its own dashboard.
 - Browser checks on local, staging, and production verified mobile/desktop
@@ -83,10 +81,28 @@ previews already cached in existing conversations.
 - Each live synthetic signup created exactly one pending notification. Test
   signups and their queued alerts were removed after verification. No production
   5xx, panic, or signup-persistence errors appeared. Production gate reset false.
-- **Email is not active yet.** No mail credentials exist in the local environment
-  or Sideyard server configuration. Resend is open in the collaborative browser
-  at its login page. Destination and existing-service questions are pending in
-  chat; the proposed recipient is `wmichelin@gmail.com`. After account access,
-  verify a sender, store restricted credentials privately, redeploy this tested
-  image with mail configuration, and confirm a synthetic notification in the
-  owner's inbox. Do not claim delivery before that check succeeds.
+
+## Email activation — September 8, 2026
+
+- Production sends from `Sideyard <signups@updates.getsideyard.com>` to
+  `wmichelin@gmail.com`. The sending-only key is stored privately in the mode-600
+  production environment file. Staging has no production email configuration.
+- Resend domain `updates.getsideyard.com`, ID
+  `6d67e2d6-504a-41b2-b045-c19381e04d94`, is verified. Namecheap has the generated
+  TXT record at `resend._domainkey.updates`, CNAME `rsend.updates` pointing to
+  `rsend.forge.rmta.net`, and CNAME `send.updates` pointing to
+  `send.forge.rmta.net`, all with five-minute TTLs. Existing website and mail
+  forwarding records were preserved; receiving remains disabled in Resend.
+- The production worker accepted a live form's synthetic signup on its first
+  attempt at `2026-09-08 13:24:42 UTC`, provider message ID
+  `dbfd1ded-662c-4e1d-8fcd-6d57ca79ebd3`. Gmail confirmed the matching
+  `New Sideyard signup` email at `13:24:43 UTC`, message ID
+  `1a0813141ff3d5ba`, with INBOX and CATEGORY_PROMOTIONS labels. This verifies
+  the actual form, durable queue, production worker, branded sender, and inbox.
+- Browser checks at 375, 390, 768, and 1440 pixels passed required-field
+  validation, submission, and confirmation without browser errors. The synthetic
+  signup and its notification row were removed afterward; test emails remain
+  unread in the owner's inbox.
+- The temporary full-access domain-verification key was revoked after setup.
+  The production sending-only key remains active. Production deployment gate is
+  reset to false.
