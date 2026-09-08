@@ -206,8 +206,10 @@ verify_candidate_contract() {
   dashboard="$(curl -fsS --max-time 20 \
     -H "Cookie: clubdue_csrf=${csrf_cookie}; clubdue_session=${session_cookie}" \
     "http://127.0.0.1:${target_port}/dashboard")"
-  printf '%s' "$dashboard" | grep -q 'Fictional public demo' || fail "candidate demo fixture did not resolve; active release remains unchanged"
-  printf '%s' "$dashboard" | grep -q 'Evergreen Lawn &amp; Landscape' || fail "candidate demo fixture is incomplete; active release remains unchanged"
+  # grep -q can close its pipe early and give printf SIGPIPE under pipefail,
+  # rejecting a valid page. Match the already buffered response directly.
+  [[ "$dashboard" == *'Fictional public demo'* ]] || fail "candidate demo fixture did not resolve; active release remains unchanged"
+  [[ "$dashboard" == *'Evergreen Lawn &amp; Landscape'* ]] || fail "candidate demo fixture is incomplete; active release remains unchanged"
   rm -rf "$CANDIDATE_PROBE_DIR"
   CANDIDATE_PROBE_DIR=""
 }

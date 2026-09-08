@@ -9,7 +9,8 @@ address. Keep `clubdue.michelindigitalmedia.com` serving the app directly alongs
 the new primary host. Preserve customer accounts, app routes, data, and isolated demos.
 The user explicitly authorized deployment and Namecheap DNS changes in chat.
 
-Staging: https://clubdue-staging.michelindigitalmedia.com (pending).
+Staging: https://clubdue-staging.michelindigitalmedia.com (verified for initial
+launch build; deployment check correction being restaged).
 
 ## Review before implementation
 
@@ -74,7 +75,19 @@ image. Playwright checked 375, 390, 768, and 1440 pixel widths, required fields,
 form submission, confirmation, and absence of browser errors; the synthetic
 submission was verified in Postgres.
 
+DNS and HTTPS are configured for all five hosts. The old ClubDue hostname serves
+the same app directly; the purchased aliases redirect to the primary domain.
+Certbot's simulated renewal succeeded. Original ClubDue nginx configuration is
+backed up under `/opt/clubdue/sideyard-launch-backup-20260908-032637`.
+
+Staging run `34183501097` and CI `34183501115` passed for `26be375`.
+Staging smoke and Playwright passed; database persistence was verified and the
+synthetic lead removed. Production run `34183638201` safely rejected the
+candidate before cutover: `printf | grep -q` intermittently returned SIGPIPE
+(pipeline statuses `141 0`) even with the expected fixture present. The release
+check now matches the buffered response directly, preserving both assertions.
+
 ## Remaining deployment work
 
-Staging review, Namecheap records, certificates, immutable
-production promotion, and end-to-end production verification.
+Restage the deployment-check fix, promote its immutable image, and verify the
+production form, compatibility hostname, and operator CSV export end to end.
