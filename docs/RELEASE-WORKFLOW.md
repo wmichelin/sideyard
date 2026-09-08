@@ -5,7 +5,7 @@ Follow this when making ClubDue changes that should reach users.
 ## Environments
 
 - **Staging** — https://clubdue-staging.michelindigitalmedia.com — auto-deploys on every push to `main`. Experiment freely here.
-- **Production** — https://clubdue.michelindigitalmedia.com — deploy only after the user approves staging.
+- **Production** — https://getsideyard.com — deploy only after the user approves staging.
 
 ## Agent checklist
 

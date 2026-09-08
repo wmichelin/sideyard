@@ -170,6 +170,9 @@ func (s *Server) securityHandler(next http.Handler) http.Handler {
 
 func (s *Server) requestBodyLimit(r *http.Request) (int64, *User) {
 	limit := s.config.RuntimeLimits.MaxRequestBodyBytes
+	if r.URL.Path == "/interest" && limit > 16<<10 {
+		limit = 16 << 10
+	}
 	if s.auth == nil || !s.config.EnablePublicDemo {
 		return limit, nil
 	}

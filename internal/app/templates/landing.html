@@ -1,0 +1,89 @@
+{{ define "landing.html" }}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sideyard — Simple software for service contractors</title>
+  <meta name="description" content="Keep your customers, schedules, and repeat work in one place. Sideyard is simple software for service contractors. Register your interest in early access.">
+  <link rel="canonical" href="https://getsideyard.com/">
+  <meta property="og:title" content="Sideyard — Keep your work in good order.">
+  <meta property="og:description" content="Customers, schedules, and repeat work. All together. Register your interest in Sideyard.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://getsideyard.com/">
+  <meta name="theme-color" content="#f0f7ff">
+  <link rel="icon" type="image/svg+xml" href="/static/sideyard-mark.svg">
+  <link rel="stylesheet" href="/static/landing.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="container nav-row">
+      <a class="wordmark" href="/" aria-label="Sideyard home"><img src="/static/sideyard-mark.svg" width="32" height="32" alt="">Sideyard<span class="wordmark-dot">.</span></a>
+      <nav aria-label="Main navigation"><a class="nav-about" href="#how-it-helps">How it helps</a><a href="/login">Sign in <span aria-hidden="true">↗</span></a><a class="button button-small" href="#interest">Get early access</a></nav>
+    </div>
+  </header>
+  <main id="main">
+    <section class="hero">
+      <div class="container hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> A little more order. A little more room to grow.</p>
+          <h1>Keep your work<br>in <span>good order.</span></h1>
+          <p class="hero-description">Simple software for service contractors. Keep your customers, schedules, and repeat work together—so you know what’s next.</p>
+          <div class="hero-actions"><a class="button" href="#interest">I’m interested <span aria-hidden="true">→</span></a>{{ if .PublicDemo }}<a class="text-link" href="/demo">Take a look around <span aria-hidden="true">↗</span></a>{{ end }}</div>
+          <p class="fine-print">Now welcoming interest in early access. No payment required.</p>
+        </div>
+        <div class="preview-wrap">
+          <div class="work-preview" aria-label="Illustrative example of an organized workday">
+            <div class="preview-top"><span class="mini-brand"><img src="/static/sideyard-mark.svg" width="22" height="22" alt=""> Your work, together</span><span class="preview-menu" aria-hidden="true">•••</span></div>
+            <div class="preview-body">
+              <div class="preview-heading"><div><p class="preview-eyebrow">A LITTLE CLARITY FOR YOUR DAY</p><h2>Here’s what’s next.</h2></div><span class="day-badge">Today</span></div>
+              <div class="job-row"><span class="job-check checked" aria-hidden="true">✓</span><div><strong>Seasonal system check</strong><span>Morgan residence · Service visit</span></div><span class="job-status done">Complete</span></div>
+              <div class="job-row"><span class="job-check" aria-hidden="true"></span><div><strong>Window cleaning</strong><span>Oak Street offices · Repeat customer</span></div><span class="job-status">Next up</span></div>
+              <div class="job-row"><span class="job-check" aria-hidden="true"></span><div><strong>Monthly property care</strong><span>Weston property · Scheduled visit</span></div><span class="job-status">Planned</span></div>
+              <div class="preview-note"><span aria-hidden="true">↻</span><div><strong>Keep the good work coming.</strong><p>See recurring visits and upcoming renewals.</p></div></div>
+            </div>
+          </div>
+          <p class="preview-caption">A sample day. A simpler way to keep track.</p>
+        </div>
+      </div>
+    </section>
+    <section class="trade-strip" aria-label="Who Sideyard is for"><div class="container"><p>For people who take pride in their work.</p><ul><li>HVAC</li><li>Plumbing</li><li>Cleaning</li><li>Electrical</li><li>Landscaping</li><li>And your trade.</li></ul></div></section>
+    <section class="section benefits" id="how-it-helps">
+      <div class="container">
+        <p class="eyebrow section-eyebrow">LESS TO KEEP IN YOUR HEAD</p>
+        <h2>The details belong here.<br>Your attention belongs on the work.</h2>
+        <div class="benefit-grid">
+          <article><span class="feature-number">01 / CUSTOMERS</span><h3>Know the customer.<br> Remember the details.</h3><p>Keep contact details, service locations, and agreements together. Pick up where you left off.</p></article>
+          <article><span class="feature-number">02 / SCHEDULES</span><h3>See the day.<br> Know what’s next.</h3><p>Find upcoming jobs, move a visit when plans change, and keep a record of what’s been completed.</p></article>
+          <article><span class="feature-number">03 / REPEAT WORK</span><h3>Stay on top of<br> the next visit.</h3><p>Organize recurring services and keep upcoming renewals in view, so good customer relationships get the attention they deserve.</p></article>
+        </div>
+      </div>
+    </section>
+    <section class="interest-section section" id="interest">
+      <div class="container interest-grid">
+        <div class="interest-copy"><p class="eyebrow section-eyebrow">LET’S BUILD SOMETHING USEFUL</p><h2>A better-organized<br>business starts here.</h2><p>We’re building Sideyard for independent contractors and small service teams. Tell us a little about your work, and we’ll get in touch about early access.</p><div class="expectation"><span aria-hidden="true">↗</span><p><strong>Your everyday work matters.</strong><br>Tell us what’s hard to keep track of. Help shape what comes next.</p></div></div>
+        <div class="form-card">
+          <h3>Keep me in the loop.</h3><p class="form-intro">A few details, and you’re on our list.</p>
+          {{ if .Error }}<div class="form-error" id="form-error" role="alert" tabindex="-1">{{ .Error }}</div>{{ end }}
+          <form method="post" action="/interest#interest" {{ if .Error }}aria-describedby="form-error"{{ end }}>
+            {{ template "csrf_field" . }}
+            <div class="form-grid">
+              <div class="field"><label for="interest-name">Your name <span class="required">(required)</span></label><input id="interest-name" name="name" autocomplete="name" maxlength="120" value="{{ .Form.Name }}" required></div>
+              <div class="field"><label for="interest-email">Email <span class="required">(required)</span></label><input id="interest-email" name="email" type="email" autocomplete="email" maxlength="254" value="{{ .Form.Email }}" required></div>
+              <div class="field"><label for="interest-business">Business name</label><input id="interest-business" name="business" autocomplete="organization" maxlength="160" value="{{ .Form.Business }}"></div>
+              <div class="field"><label for="interest-trade">Your trade</label><input id="interest-trade" name="trade" list="trade-options" maxlength="80" placeholder="e.g. plumbing, cleaning" value="{{ .Form.Trade }}"><datalist id="trade-options"><option value="HVAC"><option value="Plumbing"><option value="Electrical"><option value="Cleaning"><option value="Landscaping"><option value="Property maintenance"><option value="Other"></datalist></div>
+            </div>
+            <div class="field"><label for="interest-message">What would make your workday easier? <span class="optional">(optional)</span></label><textarea id="interest-message" name="message" rows="3" maxlength="2000" placeholder="Tell us what you’re juggling…">{{ .Form.Message }}</textarea></div>
+            <div class="form-trap" aria-hidden="true"><label for="interest-website">Leave this field empty</label><input id="interest-website" name="website" tabindex="-1" autocomplete="off"></div>
+            <button class="button form-submit" type="submit">Register my interest <span aria-hidden="true">→</span></button>
+            <p class="privacy-note">By submitting, you’re asking us to contact you about Sideyard and early access. We’ll use your details for that purpose. To ask a question or have your details removed, <a href="mailto:wmichelin+sideyard@gmail.com">contact us</a>.</p>
+          </form>
+        </div>
+      </div>
+    </section>
+  </main>
+  <footer class="site-footer"><div class="container footer-row"><a class="wordmark" href="/">Sideyard<span class="wordmark-dot">.</span></a><p>Good work. All together.</p><a href="https://michelindigitalmedia.com">By Michelin Digital Media <span aria-hidden="true">↗</span></a></div></footer>
+</body>
+</html>
+{{ end }}

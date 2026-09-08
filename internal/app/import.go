@@ -457,15 +457,15 @@ func (s *Store) AnalyzeImport(ctx context.Context, shopID string, rows []ImportR
 				return ImportAnalysis{}, err
 			}
 			if len(existingServiceIDs) > 1 {
-				reject("existing agreement has multiple imported recurring services; edit it in ClubDue instead of re-importing this row")
+				reject("existing agreement has multiple imported recurring services; edit it in Sideyard instead of re-importing this row")
 				continue
 			}
 			if len(existingServiceIDs) == 1 && row.ServiceName == "" {
-				reject("existing recurring service is omitted; keep its service columns or pause it in ClubDue")
+				reject("existing recurring service is omitted; keep its service columns or pause it in Sideyard")
 				continue
 			}
 			if len(existingServiceIDs) == 1 && existingServiceIDs[0] != row.ServiceExternalID {
-				reject("service_external_id is immutable after import; keep the existing value or edit the service in ClubDue")
+				reject("service_external_id is immutable after import; keep the existing value or edit the service in Sideyard")
 				continue
 			}
 		}

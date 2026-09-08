@@ -30,7 +30,7 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) renderImportUpload(w http.ResponseWriter, r *http.Request, user *User, errMsg string) {
-	s.renderLayout(w, r, "Import — ClubDue", "import_content", map[string]any{
+	s.renderLayout(w, r, "Import — Sideyard", "import_content", map[string]any{
 		"Nav":    NavData{Active: "import", User: user},
 		"Step":   "upload",
 		"Error":  errMsg,
@@ -154,7 +154,7 @@ func (s *Server) handleImportDryRun(w http.ResponseWriter, r *http.Request, user
 		// Customer imports retain the existing stateless preview/commit flow.
 		previewData["CSVData"] = base64.StdEncoding.EncodeToString(raw)
 	}
-	s.renderLayout(w, r, "Import preview — ClubDue", "import_content", previewData)
+	s.renderLayout(w, r, "Import preview — Sideyard", "import_content", previewData)
 }
 
 func (s *Server) handleImportCommit(w http.ResponseWriter, r *http.Request, user *User) {
@@ -228,7 +228,7 @@ func (s *Server) handleImportCommit(w http.ResponseWriter, r *http.Request, user
 		return
 	}
 
-	s.renderLayout(w, r, "Import complete — ClubDue", "import_content", map[string]any{
+	s.renderLayout(w, r, "Import complete — Sideyard", "import_content", map[string]any{
 		"Nav":     NavData{Active: "import", User: user},
 		"Step":    "done",
 		"Summary": result.Summary,

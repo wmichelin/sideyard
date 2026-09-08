@@ -21,7 +21,7 @@ var templateFS embed.FS
 //go:embed static/*
 var staticFS embed.FS
 
-// Run starts the ClubDue application or executes a supported operator command.
+// Run starts the Sideyard application or executes a supported operator command.
 func Run(args []string) error {
 	loadEnvFile(".env")
 	config, err := LoadConfig(os.Getenv)
@@ -33,6 +33,9 @@ func Run(args []string) error {
 
 func run(config Config, args []string) error {
 	if len(args) > 0 {
+		if len(args) == 1 && args[0] == "export-interest" {
+			return runExportInterest(config, os.Stdout)
+		}
 		if len(args) != 1 || args[0] != "provision-owner" {
 			return fmt.Errorf("unsupported command")
 		}
@@ -63,6 +66,7 @@ func run(config Config, args []string) error {
 		closeResources = db.Close
 
 		srv.store = &Store{db: db}
+		srv.interest = &postgresInterestRecorder{db: db}
 		if config.Environment == EnvironmentStaging {
 			retired, err := srv.store.RetireLegacySharedDemo(ctx)
 			if err != nil {
@@ -86,9 +90,9 @@ func run(config Config, args []string) error {
 		}
 		runRenewalMaintenance(ctx, srv.store, time.Now, "startup")
 		go runDailyRenewalGeneration(ctx, srv.store, 24*time.Hour, time.Now)
-		log.Print("ClubDue running with Postgres")
+		log.Print("Sideyard running with Postgres")
 	} else {
-		log.Print("ClubDue running in demo mode (set DATABASE_URL for Postgres)")
+		log.Print("Sideyard running in demo mode (set DATABASE_URL for Postgres)")
 	}
 
 	listener, err := net.Listen("tcp", config.Address)
@@ -96,7 +100,7 @@ func run(config Config, args []string) error {
 		closeResources()
 		return fmt.Errorf("listen on %s: %w", config.Address, err)
 	}
-	log.Printf("ClubDue listening on %s", listener.Addr())
+	log.Printf("Sideyard listening on %s", listener.Addr())
 	return serveHTTP(ctx, config, srv.handler(static), listener, closeResources)
 }
 
@@ -112,6 +116,8 @@ func (s *Server) handler(static fs.FS) http.Handler {
 	mux.HandleFunc("GET /signup", s.handleSignupGet)
 	mux.HandleFunc("POST /signup", s.handleSignupPost)
 	mux.HandleFunc("POST /logout", s.handleLogout)
+	mux.HandleFunc("POST /interest", s.handleInterest)
+	mux.HandleFunc("GET /interest/thanks", s.handleInterestThanks)
 	if s.config.EnablePublicDemo && !s.demo {
 		mux.HandleFunc("GET /demo", s.handlePublicDemoGet)
 		mux.HandleFunc("POST /demo/session", s.handlePublicDemoPost)
@@ -129,7 +135,7 @@ func (s *Server) handler(static fs.FS) http.Handler {
 			auth(s.handleDashboard)(w, r)
 			return
 		}
-		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+		s.handleLanding(w, r)
 	})
 	mux.HandleFunc("GET /dashboard", auth(s.handleDashboard))
 	mux.HandleFunc("GET /agreements", auth(s.handleAgreementsList))

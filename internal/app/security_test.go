@@ -71,6 +71,7 @@ func TestEveryMutationRouteRejectsMissingCSRF(t *testing.T) {
 	handler := server.handler(fstest.MapFS{})
 
 	paths := []string{
+		"/interest",
 		"/login", "/signup", "/logout", "/renew/token", "/dev/seed", "/demo/session",
 		"/agreements", "/agreements/id", "/agreements/id/renewal-link", "/agreements/id/service-schedules", "/service-schedules/id", "/renewals",
 		"/customers", "/customers/id", "/customers/id/delete", "/customers/id/properties",

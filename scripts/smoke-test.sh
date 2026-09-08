@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke-test a deployed ClubDue environment (staging or production).
+# Smoke-test a deployed Sideyard environment (staging or production).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -42,6 +42,14 @@ echo "  ✓ /readyz"
 curl -fsS "${CLUBDUE_URL}/rollback-safetyz" | grep -qx demo-sandbox-v1
 echo "  ✓ rollback safety marker"
 
+LANDING_FILE="$WORK_DIR/landing.html"
+curl -fsS -o "$LANDING_FILE" "${CLUBDUE_URL}/"
+grep -q 'Simple software for service contractors' "$LANDING_FILE"
+grep -q 'action="/interest#interest"' "$LANDING_FILE"
+curl -fsS "${CLUBDUE_URL}/static/landing.css" -o /dev/null
+curl -fsS "${CLUBDUE_URL}/interest/thanks" | grep -q 'You’re on the list'
+echo "  ✓ Sideyard landing page and interest form"
+
 LOGIN_PAGE_FILE="$WORK_DIR/login.html"
 curl -fsS -c "$LOGIN_COOKIE_JAR" -o "$LOGIN_PAGE_FILE" "${CLUBDUE_URL}/login"
 CSRF_TOKEN="$(csrf_from_file "$LOGIN_PAGE_FILE")"
@@ -70,6 +78,9 @@ LEGACY_DASHBOARD_STATUS="$(curl -sS -b "$LEGACY_COOKIE_JAR" -o /dev/null -w '%{h
 echo "  ✓ signup/dev routes closed and legacy shared login retired"
 
 if [ "$CLUBDUE_ENV" = "production" ]; then
+  curl -fsS "https://clubdue.michelindigitalmedia.com/healthz" | grep -qx ok
+  curl -fsS "https://clubdue.michelindigitalmedia.com/login" | grep -q 'Sign in — Sideyard'
+  echo "  ✓ existing ClubDue hostname still serves Sideyard"
   : "${CLUBDUE_SMOKE_EMAIL:?Set CLUBDUE_SMOKE_EMAIL from a GitHub environment secret}"
   : "${CLUBDUE_SMOKE_PASSWORD:?Set CLUBDUE_SMOKE_PASSWORD from a GitHub environment secret}"
   OWNER_LOGIN_FILE="$WORK_DIR/owner-login.html"
@@ -82,7 +93,7 @@ if [ "$CLUBDUE_ENV" = "production" ]; then
     --data-urlencode "password=$CLUBDUE_SMOKE_PASSWORD" "${CLUBDUE_URL}/login")"
   [ "$OWNER_LOGIN_STATUS" = "303" ]
   OWNER_HTML="$(curl -fsS -b "$OWNER_COOKIE_JAR" "${CLUBDUE_URL}/dashboard")"
-  [[ "$OWNER_HTML" == *'Dashboard — ClubDue'* ]]
+  [[ "$OWNER_HTML" == *'Dashboard — Sideyard'* ]]
   [[ "$OWNER_HTML" == *'Active agreements'* ]]
   [[ "$OWNER_HTML" != *'Fictional public demo'* ]]
   echo "  ✓ production owner login remains separate"
@@ -104,7 +115,7 @@ if [ "$DEMO_ENABLED" = 0 ]; then
   fi
   if [ "$CLUBDUE_ENV" = production ]; then
     OWNER_HTML_AFTER="$(curl -fsS -b "$OWNER_COOKIE_JAR" "${CLUBDUE_URL}/dashboard")"
-    [[ "$OWNER_HTML_AFTER" == *'Dashboard — ClubDue'* ]]
+    [[ "$OWNER_HTML_AFTER" == *'Dashboard — Sideyard'* ]]
     [[ "$OWNER_HTML_AFTER" != *'Fictional public demo'* ]]
   fi
   echo "  ✓ public demo explicitly disabled"
@@ -132,7 +143,7 @@ grep -Eiq '^Set-Cookie:[[:space:]]*clubdue_session=.*HttpOnly' "$DEMO_SESSION_HE
 grep -Eiq '^Set-Cookie:[[:space:]]*clubdue_session=.*SameSite=Lax' "$DEMO_SESSION_HEADERS"
 
 DEMO_HTML="$(curl -fsS -b "$DEMO_COOKIE_JAR" "${CLUBDUE_URL}/dashboard")"
-[[ "$DEMO_HTML" == *'Dashboard — ClubDue'* ]]
+[[ "$DEMO_HTML" == *'Dashboard — Sideyard'* ]]
 [[ "$DEMO_HTML" == *'Evergreen Lawn &amp; Landscape'* ]]
 [[ "$DEMO_HTML" == *'Fictional public demo'* ]]
 [[ "$DEMO_HTML" == *'$4715.33'* ]]
@@ -284,7 +295,7 @@ else
     exit 1
   fi
   OWNER_HTML_AFTER="$(curl -fsS -b "$OWNER_COOKIE_JAR" "${CLUBDUE_URL}/dashboard")"
-  [[ "$OWNER_HTML_AFTER" == *'Dashboard — ClubDue'* ]]
+  [[ "$OWNER_HTML_AFTER" == *'Dashboard — Sideyard'* ]]
   [[ "$OWNER_HTML_AFTER" != *'Fictional public demo'* ]]
   OWNER_CUSTOMERS_AFTER="$(curl -fsS -b "$OWNER_COOKIE_JAR" "${CLUBDUE_URL}/customers")"
   [[ "$OWNER_CUSTOMERS_AFTER" != *"$DEMO_SMOKE_NAME"* ]]

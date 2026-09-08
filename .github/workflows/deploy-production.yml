@@ -130,7 +130,7 @@ jobs:
           CONTAINER: clubdue
           IMAGE: ${{ steps.request.outputs.ref }}
           PORT: "8083"
-          DOMAIN: clubdue.michelindigitalmedia.com
+          DOMAIN: getsideyard.com
           CLUBDUE_DEPLOY_MODE: ${{ inputs.mode }}
           CLUBDUE_DEPLOY_PUBLIC_DEMO: ${{ steps.request.outputs.public_demo }}
           GHCR_USER: ${{ github.repository_owner }}

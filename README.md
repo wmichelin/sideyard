@@ -1,6 +1,6 @@
-# ClubDue
+# Sideyard
 
-ClubDue is a recurring home-service commitment ledger. It keeps customers,
+Sideyard is a recurring home-service commitment ledger. It keeps customers,
 service locations, plan terms, renewals, and recurring work in one small app
 beside a spreadsheet, calendar, billing tool, or field-service suite. The same
 neutral core supports the established HVAC workflow and a landscaping
@@ -19,7 +19,7 @@ It is a single Go binary with embedded HTML/CSS and Postgres.
 
    The included URL points at `127.0.0.1:5433`; migrations apply automatically when the app starts.
 
-2. Start ClubDue:
+2. Start Sideyard:
 
    ```bash
    go run ./cmd/clubdue
@@ -43,7 +43,7 @@ It is a single Go binary with embedded HTML/CSS and Postgres.
 `ENABLE_DEV_ROUTES=1` is required for the seed route and is already present in `.env.example`. The app loads `.env` without replacing already-set environment variables.
 
 For a prospect, share the permanent
-[one-click landscaping demo](https://clubdue.michelindigitalmedia.com/demo).
+[one-click landscaping demo](https://getsideyard.com/demo).
 Staging keeps an equivalent [release-review demo](https://clubdue-staging.michelindigitalmedia.com/demo).
 Each link creates a fresh fictional workspace for that browser, ends access
 after four hours, and requires no shared credentials. Scheduled cleanup removes
@@ -53,7 +53,7 @@ fictional customer records spanning residential, commercial, multi-location,
 seasonal, renewal, and recurring-work examples. It is deliberately unavailable
 unless the deployment explicitly enables it.
 
-Without `DATABASE_URL`, ClubDue runs an in-memory legacy sample screen instead of the full agreement workflow.
+Without `DATABASE_URL`, Sideyard runs an in-memory legacy sample screen instead of the full agreement workflow.
 
 ## Feature tour
 
@@ -105,7 +105,7 @@ Staging and production on the pantry DO droplet (Pantry/Headscale untouched):
 | Env | URL |
 |-----|-----|
 | Staging | https://clubdue-staging.michelindigitalmedia.com |
-| Production | https://clubdue.michelindigitalmedia.com |
+| Production | https://getsideyard.com |
 
 Push to `main` → staging auto-deploy. Production is manual after review.
 
@@ -116,9 +116,15 @@ and the [pilot operations runbook](docs/OPERATIONS-RUNBOOK.md).
 
 The staging payment screen is deliberately a test stub: it does not collect card data, charge a card, or mark an agreement paid. Production has no payment CTA and directs homeowners to contact the shop. Stripe Checkout plus a verified webhook remains a future, separately approved integration.
 
-ClubDue does not yet provide route optimization, dispatch, GPS tracking,
+Sideyard does not yet provide route optimization, dispatch, GPS tracking,
 invoicing/accounting, automated messaging, or a direct Google Sheets OAuth
 connection. The landscaping importer currently expects the documented CSV
 profile and a stable source ID. A real design-partner onboarding begins with an
 authorized sanitized sheet and assisted reconciliation; it is not safe to
 claim arbitrary-sheet compatibility before that evidence exists.
+
+## Public interest page
+
+The public homepage accepts early-access interest at `POST /interest`. Submissions
+are stored in Postgres, deduplicated by normalized email, and exported through the
+private `export-interest` operator command. See [Sideyard launch](docs/SIDEYARD-LAUNCH.md).

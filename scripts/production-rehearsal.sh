@@ -131,7 +131,7 @@ session_cookie="$(cookie_value clubdue_session "$login_result_headers")"
 [ -n "$session_cookie" ]
 
 dashboard="$(curl -fsS -H "Cookie: clubdue_csrf=${csrf_cookie}; clubdue_session=${session_cookie}" "http://127.0.0.1:${PORT}/dashboard")"
-printf '%s' "$dashboard" | grep -q 'Dashboard — ClubDue'
+printf '%s' "$dashboard" | grep -q 'Dashboard — Sideyard'
 
 # Deployment smoke checks log in as the configured owner. That additional login
 # must not invalidate a user's existing browser session for the same account.
@@ -146,9 +146,9 @@ second_login_status="$(curl -sS -D "$second_login_headers" -o /dev/null -w '%{ht
 second_session_cookie="$(cookie_value clubdue_session "$second_login_headers")"
 [ -n "$second_session_cookie" ] && [ "$second_session_cookie" != "$session_cookie" ]
 dashboard_after_second_login="$(curl -fsS -H "Cookie: clubdue_csrf=${csrf_cookie}; clubdue_session=${session_cookie}" "http://127.0.0.1:${PORT}/dashboard")"
-printf '%s' "$dashboard_after_second_login" | grep -q 'Dashboard — ClubDue'
+printf '%s' "$dashboard_after_second_login" | grep -q 'Dashboard — Sideyard'
 second_dashboard="$(curl -fsS -H "Cookie: clubdue_csrf=${csrf_cookie}; clubdue_session=${second_session_cookie}" "http://127.0.0.1:${PORT}/dashboard")"
-printf '%s' "$second_dashboard" | grep -q 'Dashboard — ClubDue'
+printf '%s' "$second_dashboard" | grep -q 'Dashboard — Sideyard'
 
 dev_route_status="$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:${PORT}/dev/seed")"
 [ "$dev_route_status" = "404" ]
@@ -198,7 +198,7 @@ demo_customers="$(curl -fsS -H "Cookie: clubdue_csrf=${demo_csrf_cookie}; clubdu
 printf '%s' "$demo_customers" | grep -q 'Production Rehearsal Garden Client'
 
 owner_dashboard_after_demo="$(curl -fsS -H "Cookie: clubdue_csrf=${csrf_cookie}; clubdue_session=${session_cookie}" "http://127.0.0.1:${PORT}/dashboard")"
-printf '%s' "$owner_dashboard_after_demo" | grep -q 'Dashboard — ClubDue'
+printf '%s' "$owner_dashboard_after_demo" | grep -q 'Dashboard — Sideyard'
 if printf '%s' "$owner_dashboard_after_demo" | grep -q 'Fictional public demo'; then
   echo "production demo traffic crossed into the real owner session" >&2
   exit 1

@@ -20,7 +20,7 @@ func (s *Server) handleSchedule(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load the schedule. Reload to try again.", http.StatusInternalServerError)
 		return
 	}
-	s.renderLayout(w, r, "Schedule — ClubDue", "schedule_content", map[string]any{
+	s.renderLayout(w, r, "Schedule — Sideyard", "schedule_content", map[string]any{
 		"Nav": NavData{Active: "schedule", User: user}, "Schedules": schedules,
 	})
 }
@@ -94,7 +94,7 @@ func (s *Server) handleVisitDate(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	s.renderLayout(w, r, "Change service date — ClubDue", "visit_date_content", map[string]any{
+	s.renderLayout(w, r, "Change service date — Sideyard", "visit_date_content", map[string]any{
 		"Nav": NavData{Active: "schedule", User: user}, "Visit": visit, "DateValue": value, "Error": message, "Saved": saved,
 		"CalendarDay": calendarContext, "CalendarURL": returnCalendar, "SavedCalendarURL": savedCalendar,
 	})

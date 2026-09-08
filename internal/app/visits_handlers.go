@@ -186,7 +186,7 @@ func (s *Server) renderVisitsPage(w http.ResponseWriter, r *http.Request, user *
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	s.renderLayout(w, r, "Service work — ClubDue", "visits_content", data)
+	s.renderLayout(w, r, "Service work — Sideyard", "visits_content", data)
 }
 
 func (s *Server) handleVisitsExport(w http.ResponseWriter, r *http.Request) {

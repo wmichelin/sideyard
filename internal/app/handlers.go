@@ -17,15 +17,18 @@ import (
 )
 
 type Server struct {
-	tmpl             *template.Template
-	auth             *Auth
-	store            *Store
-	config           Config
-	demo             bool
-	throttle         *authThrottle
-	demoThrottle     *authThrottle
-	demoThrottleOnce sync.Once
-	clock            Clock
+	tmpl                 *template.Template
+	auth                 *Auth
+	store                *Store
+	config               Config
+	demo                 bool
+	throttle             *authThrottle
+	demoThrottle         *authThrottle
+	demoThrottleOnce     sync.Once
+	interest             interestRecorder
+	interestThrottle     *authThrottle
+	interestThrottleOnce sync.Once
+	clock                Clock
 }
 
 func (s *Server) nowUTC() time.Time {
@@ -491,7 +494,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	calendar.populate(work)
 
-	s.renderLayout(w, r, "Dashboard — ClubDue", "dashboard_content", map[string]any{
+	s.renderLayout(w, r, "Dashboard — Sideyard", "dashboard_content", map[string]any{
 		"Nav":      NavData{Active: "dashboard", User: user},
 		"Calendar": calendar,
 		"Stats": map[string]any{
@@ -543,7 +546,7 @@ func (s *Server) handleAgreementsList(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	s.renderLayout(w, r, "Agreements — ClubDue", "agreements_content", map[string]any{
+	s.renderLayout(w, r, "Agreements — Sideyard", "agreements_content", map[string]any{
 		"Nav":        NavData{Active: "agreements", User: user},
 		"Agreements": rows,
 		"Filter":     filter, "RenewDays": days,
@@ -627,9 +630,9 @@ func (s *Server) renderAgreementForm(w http.ResponseWriter, r *http.Request, use
 		}
 	}
 
-	title := "New agreement — ClubDue"
+	title := "New agreement — Sideyard"
 	if form.ID != "" {
-		title = "Edit agreement — ClubDue"
+		title = "Edit agreement — Sideyard"
 	}
 	s.renderLayout(w, r, title, "agreement_form_content", map[string]any{
 		"Nav":              NavData{Active: "agreements", User: user},
@@ -759,7 +762,7 @@ func (s *Server) renderRenewalQueue(w http.ResponseWriter, r *http.Request, user
 	if updateError != "" {
 		w.WriteHeader(status)
 	}
-	s.renderLayout(w, r, "Renewals — ClubDue", "renewals_content", map[string]any{
+	s.renderLayout(w, r, "Renewals — Sideyard", "renewals_content", map[string]any{
 		"Nav": NavData{Active: "renewals", User: user}, "Tasks": tasks, "UpdateError": updateError,
 	})
 }
@@ -790,7 +793,7 @@ func (s *Server) handleCustomers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.renderLayout(w, r, "Customers — ClubDue", "customers_content", map[string]any{
+	s.renderLayout(w, r, "Customers — Sideyard", "customers_content", map[string]any{
 		"Nav":       NavData{Active: "customers", User: user},
 		"Customers": customers,
 	})
@@ -840,7 +843,7 @@ func (s *Server) handlePlanTemplates(w http.ResponseWriter, r *http.Request) {
 		rows[i] = row{PlanTemplate: p, PriceFmt: formatCents(p.PriceCents)}
 	}
 
-	s.renderLayout(w, r, "Plan templates — ClubDue", "plan_templates_content", map[string]any{
+	s.renderLayout(w, r, "Plan templates — Sideyard", "plan_templates_content", map[string]any{
 		"Nav":   NavData{Active: "plans", User: user},
 		"Plans": rows,
 	})
@@ -875,7 +878,7 @@ func (s *Server) handlePlanTemplateEdit(w http.ResponseWriter, r *http.Request) 
 		plan = &PlanTemplate{ID: id, Name: name, Description: r.FormValue("description"), PriceCents: price, TermMonths: termMonths, VisitsPerYear: visits}
 	}
 
-	s.renderLayout(w, r, "Edit plan template — ClubDue", "plan_template_form_content", map[string]any{
+	s.renderLayout(w, r, "Edit plan template — Sideyard", "plan_template_form_content", map[string]any{
 		"Nav":   NavData{Active: "plans", User: user},
 		"Plan":  plan,
 		"Error": err != nil || r.Method == http.MethodPost,
