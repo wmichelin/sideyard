@@ -24,7 +24,8 @@ existing signups, both production hostnames, and staging isolation.
 - QA: verify a signup reaches the owner's inbox, not just an HTTP success page.
   Verify favicon, share image, old hostname, existing demo, and login routes.
 
-Staging: https://clubdue-staging.michelindigitalmedia.com (pending).
+Staging: https://clubdue-staging.michelindigitalmedia.com (verified).
+Production: https://getsideyard.com (assets and queue verified; email activation blocked on sending-account access).
 
 ## Email configuration and operation
 
@@ -63,3 +64,29 @@ exports are 32×32 and 180×180. Landing metadata explicitly names the share car
 its size, format, and alt text. All full-page templates share favicon metadata.
 Versioned URLs give clients fresh asset addresses; messaging apps may retain
 previews already cached in existing conversations.
+
+## Verification and remaining activation
+
+- Source `571a290f1c46ac598c37d4a4b27fdb2510e1fbb4`; immutable image
+  `sha256:fe8f8582783a0139a86b191bf629e1e783679f940803c81a3f851f3fec2fc33b`.
+- Local `go vet ./...` and `go test -count=1 ./...` passed with mandatory
+  Postgres integration on a fresh disposable database. Docker build passed.
+  Fixed an existing interest-test cleanup ordering error uncovered by queue
+  tests; the database now stays open until its synthetic signup is deleted.
+- CI `34223147964`, staging `34223147925`, and production `34223374243` passed.
+  Manual staging smoke passed. Production owner login and isolated demo smoke
+  passed, and the old hostname's browser demo still reaches its own dashboard.
+- Browser checks on local, staging, and production verified mobile/desktop
+  layout, form validation, submission, and confirmation without browser errors.
+  Image decoding and metadata checks verified 1200×630 share PNG, 32px favicon,
+  180px Apple icon, and the versioned SVG on landing, login, and thanks pages.
+- Each live synthetic signup created exactly one pending notification. Test
+  signups and their queued alerts were removed after verification. No production
+  5xx, panic, or signup-persistence errors appeared. Production gate reset false.
+- **Email is not active yet.** No mail credentials exist in the local environment
+  or Sideyard server configuration. Resend is open in the collaborative browser
+  at its login page. Destination and existing-service questions are pending in
+  chat; the proposed recipient is `wmichelin@gmail.com`. After account access,
+  verify a sender, store restricted credentials privately, redeploy this tested
+  image with mail configuration, and confirm a synthetic notification in the
+  owner's inbox. Do not claim delivery before that check succeeds.

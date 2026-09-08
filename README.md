@@ -128,3 +128,7 @@ claim arbitrary-sheet compatibility before that evidence exists.
 The public homepage accepts early-access interest at `POST /interest`. Submissions
 are stored in Postgres, deduplicated by normalized email, and exported through the
 private `export-interest` operator command. See [Sideyard launch](docs/SIDEYARD-LAUNCH.md).
+
+New signups also queue an owner email alert. Delivery requires configured mail
+credentials; see [signup notifications](docs/SIDEYARD-NOTIFICATIONS.md) for setup
+and the current activation status.
