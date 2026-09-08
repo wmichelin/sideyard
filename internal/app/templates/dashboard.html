@@ -30,11 +30,14 @@
   </div>
 </section>
 
+{{ template "dashboard_calendar" .Calendar }}
+
 <section class="panel">
   <h3 class="section-title">Quick links</h3>
   <div class="link-row dashboard-quick-links">
     <a href="/renewals" class="secondary-btn">Renewal queue</a>
     <a href="/visits" class="secondary-btn">Service work</a>
+    <a href="/schedule" class="secondary-btn">Last &amp; next service</a>
     <a href="/agreements" class="secondary-btn">All agreements</a>
     <a href="/customers" class="secondary-btn">Customers</a>
   </div>

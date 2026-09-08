@@ -158,9 +158,16 @@ func publicDemoMutationAllowed(r *http.Request) bool {
 		action := r.PostForm.Get("action")
 		return action == "pause" || action == "resume"
 	case "service-occurrences":
-		return len(segments) == 3 && segments[2] == "date" && len(r.URL.Query()) == 0 && exactPostForm(r, map[string]string{
+		fields := map[string]string{
 			"csrf_token": "", "scheduled_on": "", "revision": "",
-		})
+		}
+		if _, present := r.PostForm["calendar_day"]; present {
+			if _, valid := calendarDate(r.PostForm.Get("calendar_day")); !valid {
+				return false
+			}
+			fields["calendar_day"] = ""
+		}
+		return len(segments) == 3 && segments[2] == "date" && len(r.URL.Query()) == 0 && exactPostForm(r, fields)
 	case "renewals":
 		if len(segments) != 1 {
 			return false
@@ -474,9 +481,19 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "server error", http.StatusInternalServerError)
 		return
 	}
+	calendar := calendarSelection(s.nowUTC(), r.URL.Query())
+	page, _ := strconv.Atoi(r.URL.Query().Get("calendar_page"))
+	work, err := s.store.ServiceCalendar(r.Context(), user.ShopID, calendar.Month, calendar.End, calendar.SelectedDay, page)
+	if err != nil {
+		log.Printf("dashboard calendar request_id=%s error=%v", requestIDFromContext(r.Context()), err)
+		http.Error(w, "Could not load the service calendar. Reload to try again.", http.StatusInternalServerError)
+		return
+	}
+	calendar.populate(work)
 
 	s.renderLayout(w, r, "Dashboard — ClubDue", "dashboard_content", map[string]any{
-		"Nav": NavData{Active: "dashboard", User: user},
+		"Nav":      NavData{Active: "dashboard", User: user},
+		"Calendar": calendar,
 		"Stats": map[string]any{
 			"ActiveCount":      stats.ActiveCount,
 			"RenewalsDueMonth": stats.RenewalsDueMonth,

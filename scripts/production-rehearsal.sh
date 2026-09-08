@@ -223,7 +223,9 @@ backup_mac_file="${backup_file}.mac"
 [ "$(stat -c '%a' "$backup_file")" = "600" ]
 [ "$(stat -c '%a' "$backup_mac_file")" = "600" ]
 [ "$(stat -c '%s' "$backup_mac_file")" = "32" ]
-if openssl enc -d -aes-256-cbc -pbkdf2 -pass env:CLUBDUE_BACKUP_PASSPHRASE -in "$backup_file" | grep -q 'owner@rehearsal.invalid'; then
+# Drain the plaintext: grep -q closes early and can make OpenSSL fail with a
+# broken pipe even after a valid owner match. pipefail still checks decryption.
+if openssl enc -d -aes-256-cbc -pbkdf2 -pass env:CLUBDUE_BACKUP_PASSPHRASE -in "$backup_file" | grep -a 'owner@rehearsal.invalid' >/dev/null; then
   :
 else
   echo "backup did not contain the rehearsal owner after decryption" >&2

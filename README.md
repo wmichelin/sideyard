@@ -57,7 +57,7 @@ Without `DATABASE_URL`, ClubDue runs an in-memory legacy sample screen instead o
 
 ## Feature tour
 
-- **Dashboard** — active agreements, renewals due this month, lapsed month-to-date, and overdue service commitments, with direct links to the work queues.
+- **Dashboard** — active agreements, renewals due this month, lapsed month-to-date, and overdue service commitments, plus a month calendar of open recurring visits and a daily agenda with date-change links.
 - **Agreement book** — create customers and service templates, then create or edit a plan with renewal date, status, price, and optional included-service entitlement.
 - **Recurring services** — attach daily, every-N-weeks, or monthly work to a plan, optionally end-date it, then pause or resume it without changing renewal terms.
 - **CSV import** — export Google Sheets as CSV, inspect a mandatory dry-run, and commit it. Re-imports use `external_id` to update rather than duplicate records. Reordered/extra columns, BOM/CRLF files, common US/ISO dates, blank optional fields, and dollar prices are accepted. Try [`landscaping-google-sheets-template.csv`](internal/app/testdata/landscaping-google-sheets-template.csv).

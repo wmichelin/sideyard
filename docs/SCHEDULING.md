@@ -5,6 +5,19 @@ customer, property, cadence, last completed date and next service date. Multiple
 services at one property stay independent. The same dates appear inside the
 agreement's Recurring services section.
 
+The **Dashboard** also has a service calendar. Select a day in the month grid
+to see its open recurring visits, customer and property details, and Change date
+links. The grid counts every open visit, so weekly services appear each week.
+Completed, skipped, paused and inactive work is excluded from these workload
+counts. Busy days show 50 visits per page with More visits navigation.
+
+Use the previous/next month arrows or Today to navigate. A day selection takes
+you directly to its agenda; Back to month returns to the grid. After changing a
+visit, View updated calendar opens its new date. Navigation works without
+JavaScript. Dates beyond the 90-day planning window are marked as incomplete,
+while visits already moved there remain visible. Browsing future months does
+not generate extra work.
+
 - **Last completed** is when completion was recorded, using UTC dates. Skipped
   visits do not count; no history is shown as “No completion recorded.” This
   feature does not edit historical completion dates.

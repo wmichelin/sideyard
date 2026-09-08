@@ -560,17 +560,16 @@ func (s *Service) UpdateOccurrenceStatuses(ctx context.Context, shopID string, o
 }
 
 func (s *Service) CountOverdue(ctx context.Context, shopID string) (int, error) {
-	occurrences, err := s.ListOccurrences(ctx, shopID, true)
-	if err != nil {
+	if err := s.GenerateShopOccurrences(ctx, shopID); err != nil {
 		return 0, err
 	}
-	count := 0
-	for _, occurrence := range occurrences {
-		if occurrence.IsOverdue {
-			count++
-		}
-	}
-	return count, nil
+	var count int
+	err := s.pool.QueryRow(ctx, `SELECT count(*) FROM service_occurrences o
+	 JOIN service_schedules sc ON sc.id=o.schedule_id AND sc.shop_id=o.shop_id
+	 JOIN agreements a ON a.id=sc.agreement_id AND a.shop_id=sc.shop_id
+	 WHERE o.shop_id=$1 AND o.status='due' AND sc.active AND a.status='active'
+	 AND COALESCE(o.scheduled_on,o.due_on)<$2`, shopID, dateOnly(s.now())).Scan(&count)
+	return count, err
 }
 
 func (s *Service) ExportRows(ctx context.Context, shopID string, dueOnly bool) ([]ExportRow, error) {

@@ -126,6 +126,7 @@ func TestPublicDemoMutationAllowlistIsFinite(t *testing.T) {
 		{"/service-schedules/existing", url.Values{"action": {"pause"}}},
 		{"/service-schedules/existing", url.Values{"action": {"resume"}}},
 		{"/service-occurrences/existing/date", url.Values{"csrf_token": {"token"}, "scheduled_on": {"2026-09-09"}, "revision": {"0"}}},
+		{"/service-occurrences/existing/date", url.Values{"csrf_token": {"token"}, "scheduled_on": {"2026-09-09"}, "revision": {"0"}, "calendar_day": {"2026-09-08"}}},
 		{"/renewals", url.Values{"status": {"open"}}},
 		{"/renewals", url.Values{"status": {"contacted"}}},
 		{"/renewals", url.Values{"status": {"renewed"}}},

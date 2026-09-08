@@ -14,6 +14,10 @@ type ServiceExportRow = servicework.ExportRow
 type ServiceScheduleSummary = servicework.ScheduleSummary
 type ServiceVisitDate = servicework.VisitDate
 
+func (s *Store) ServiceCalendar(ctx context.Context, shopID string, start, end, day time.Time, page int) (servicework.Calendar, error) {
+	return s.serviceWorkService().CalendarWork(ctx, shopID, start, end, day, page)
+}
+
 func (s *Store) ListServiceScheduleSummaries(ctx context.Context, shopID string) ([]ServiceScheduleSummary, error) {
 	service := s.serviceWorkService()
 	if err := service.GenerateShopOccurrences(ctx, shopID); err != nil {

@@ -39,13 +39,26 @@ func (s *Server) handleVisitDate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	value := visit.CurrentOn.Format("2006-01-02")
-	message, saved := "", false
-	status := http.StatusOK
+	calendarContext := r.URL.Query().Get("calendar_day")
 	if r.Method == http.MethodPost {
 		if err := r.ParseForm(); err != nil {
 			http.Error(w, "Could not read the date change.", http.StatusBadRequest)
 			return
 		}
+		calendarContext = r.PostForm.Get("calendar_day")
+	}
+	calendarDay, hasCalendar := calendarDate(calendarContext)
+	returnCalendar, savedCalendar := "", ""
+	if hasCalendar {
+		calendarContext = calendarDay.Format("2006-01-02")
+		returnCalendar = calendarURL(calendarDay, 1) + "#calendar-agenda"
+		savedCalendar = calendarURL(visit.CurrentOn, 1) + "#calendar-agenda"
+	} else {
+		calendarContext = ""
+	}
+	message, saved := "", false
+	status := http.StatusOK
+	if r.Method == http.MethodPost {
 		value = r.PostForm.Get("scheduled_on")
 		date, dateErr := time.Parse("2006-01-02", value)
 		revision, revisionErr := strconv.Atoi(r.PostForm.Get("revision"))
@@ -55,7 +68,11 @@ func (s *Server) handleVisitDate(w http.ResponseWriter, r *http.Request) {
 		} else {
 			err = s.store.MoveServiceVisit(r.Context(), user.ShopID, id, date, revision)
 			if err == nil {
-				http.Redirect(w, r, "/service-occurrences/"+id+"/date?saved="+url.QueryEscape(date.Format("2006-01-02")), http.StatusSeeOther)
+				query := url.Values{"saved": {date.Format("2006-01-02")}}
+				if hasCalendar {
+					query.Set("calendar_day", calendarContext)
+				}
+				http.Redirect(w, r, "/service-occurrences/"+id+"/date?"+query.Encode(), http.StatusSeeOther)
 				return
 			}
 			switch {
@@ -79,5 +96,6 @@ func (s *Server) handleVisitDate(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(status)
 	s.renderLayout(w, r, "Change service date — ClubDue", "visit_date_content", map[string]any{
 		"Nav": NavData{Active: "schedule", User: user}, "Visit": visit, "DateValue": value, "Error": message, "Saved": saved,
+		"CalendarDay": calendarContext, "CalendarURL": returnCalendar, "SavedCalendarURL": savedCalendar,
 	})
 }

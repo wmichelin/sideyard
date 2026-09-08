@@ -26,20 +26,21 @@
 {{ end }}
 
 {{ define "visit_date_content" }}
-<header class="page-header"><div><h2 class="page-title">Change service date</h2><p class="page-subtitle">Move one visit to a date that works better.</p></div><a href="/schedule" class="secondary-btn">Back to schedule</a></header>
+<header class="page-header"><div><h2 class="page-title">Change service date</h2><p class="page-subtitle">Move one visit to a date that works better.</p></div>{{ if .CalendarURL }}<a href="{{ .CalendarURL }}" class="secondary-btn">Back to calendar</a>{{ else }}<a href="/schedule" class="secondary-btn">Back to schedule</a>{{ end }}</header>
 <section class="panel visit-date-panel">
   <h3>{{ .Visit.CustomerName }}</h3>
   <p><strong>{{ .Visit.ServiceName }}</strong><span class="contact-detail">{{ .Visit.PropertyAddress }}</span></p>
-  {{ if .Saved }}<p class="work-success" role="status">Saved: this visit is planned for {{ .Visit.CurrentOn.Format "Jan 2, 2006" }}. Later visits keep their existing dates.</p><p><a class="primary-btn" href="/schedule">View updated schedule</a></p>{{ end }}
+  {{ if .Saved }}<p class="work-success" role="status">Saved: this visit is planned for {{ .Visit.CurrentOn.Format "Jan 2, 2006" }}. Later visits keep their existing dates.</p><p>{{ if .SavedCalendarURL }}<a class="primary-btn" href="{{ .SavedCalendarURL }}">View updated calendar</a>{{ else }}<a class="primary-btn" href="/schedule">View updated schedule</a>{{ end }}</p>{{ end }}
   {{ if .Error }}<p class="error-banner" role="alert">{{ .Error }}</p>{{ end }}
   <dl class="visit-date-details"><div><dt>Current service date</dt><dd>{{ .Visit.CurrentOn.Format "Mon, Jan 2, 2006" }}</dd></div><div><dt>Original recurring date</dt><dd>{{ .Visit.OriginalOn.Format "Mon, Jan 2, 2006" }}</dd></div></dl>
   {{ if .Visit.Actionable }}
   <form method="post" action="/service-occurrences/{{ .Visit.ID }}/date" class="form-stack">
     {{ template "csrf_field" . }}
     <input type="hidden" name="revision" value="{{ .Visit.Revision }}">
+    {{ if .CalendarDay }}<input type="hidden" name="calendar_day" value="{{ .CalendarDay }}">{{ end }}
     <label><span>New service date</span><input type="date" name="scheduled_on" value="{{ .DateValue }}" min="{{ .Visit.StartsOn.Format "2006-01-02" }}"{{ if .Visit.EndsOn }} max="{{ .Visit.EndsOn.Format "2006-01-02" }}"{{ end }} required aria-describedby="visit-date-scope"></label>
     <p id="visit-date-scope" class="muted">This visit only. Weekly, biweekly, or monthly recurrence stays on its existing dates. If another visit is earlier, that visit will become the next service.</p>
-    <div class="link-row"><button type="submit" class="primary-btn">Save this visit’s date</button><a href="/schedule" class="secondary-btn">Cancel</a></div>
+    <div class="link-row"><button type="submit" class="primary-btn">Save this visit’s date</button><a href="{{ if .CalendarURL }}{{ .CalendarURL }}{{ else }}/schedule{{ end }}" class="secondary-btn">Cancel</a></div>
   </form>
   {{ else }}<p class="empty-note">This visit is completed, skipped, or its service plan is paused or inactive. Its date cannot be changed.</p>{{ end }}
 </section>
