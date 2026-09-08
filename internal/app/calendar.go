@@ -85,7 +85,7 @@ func (view *dashboardCalendar) populate(data servicework.Calendar) {
 		}
 		day.Count = data.Counts[day.Date]
 		view.MonthTotal += day.Count
-		day.Label += fmt.Sprintf(": %d open visit", day.Count)
+		day.Label += fmt.Sprintf(": %d job", day.Count)
 		if day.Count != 1 {
 			day.Label += "s"
 		}

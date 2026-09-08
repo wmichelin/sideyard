@@ -1,14 +1,14 @@
 {{ define "dashboard_calendar" }}
 <section class="panel service-calendar" id="service-calendar" aria-labelledby="calendar-title">
   <header class="calendar-header">
-    <div><h3 id="calendar-title" class="section-title">Service calendar</h3><p class="muted">Open recurring visits by planned date. Select a day to organize its work.</p></div>
+    <div><h3 id="calendar-title" class="section-title">Service calendar</h3><p class="muted">Pending recurring jobs by planned date. Select a day to organize its work.</p></div>
     <a href="/schedule" class="secondary-btn">Last &amp; next service</a>
   </header>
   <div class="calendar-navigation">
     <h4>{{ .MonthLabel }}</h4>
     <nav aria-label="Calendar months">{{ if .PreviousURL }}<a href="{{ .PreviousURL }}" class="secondary-btn" aria-label="Previous month">←</a>{{ end }}<a href="{{ .TodayURL }}" class="secondary-btn">Today</a>{{ if .NextURL }}<a href="{{ .NextURL }}" class="secondary-btn" aria-label="Next month">→</a>{{ end }}</nav>
   </div>
-  <p class="calendar-legend muted">{{ .MonthTotal }} open visit{{ if ne .MonthTotal 1 }}s{{ end }} this month · Numbers show open visits per day.</p>
+  <p class="calendar-legend muted">{{ .MonthTotal }} job{{ if ne .MonthTotal 1 }}s{{ end }} this month · Numbers show pending jobs per day.</p>
   <div class="calendar-body">
     <div>
       <div class="calendar-weekdays" aria-hidden="true"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div>
@@ -16,18 +16,18 @@
         {{ range .Days }}
         {{ if .Date }}<a href="{{ .URL }}" class="calendar-day{{ if .Selected }} selected{{ end }}{{ if .Today }} today{{ end }}{{ if .BeyondHorizon }} incomplete{{ end }}" data-calendar-date="{{ .Date }}" data-open-count="{{ .Count }}" aria-label="{{ .Label }}"{{ if .Selected }} aria-current="date"{{ end }}>
           <span class="calendar-day-number">{{ .Number }}</span>
-          {{ if .Count }}<span class="calendar-count">{{ .Count }}<span class="calendar-open-word"> open</span></span>{{ else if .BeyondHorizon }}<span class="calendar-unplanned" aria-hidden="true">—</span>{{ else }}<span class="calendar-zero" aria-hidden="true">0</span>{{ end }}
+          {{ if .Count }}<span class="calendar-count">{{ .Count }}<span class="calendar-open-word"> job{{ if ne .Count 1 }}s{{ end }}</span></span>{{ else if .BeyondHorizon }}<span class="calendar-unplanned" aria-hidden="true">—</span>{{ else }}<span class="calendar-zero" aria-hidden="true">0</span>{{ end }}
           {{ if .Today }}<span class="calendar-today-label">Today</span>{{ end }}
         </a>{{ else }}<span class="calendar-padding" aria-hidden="true"></span>{{ end }}
         {{ end }}
       </div>
-      <p class="calendar-horizon muted">Recurring visits are planned through {{ .HorizonLabel }}. Later dates may be incomplete; any visits already moved there are shown.</p>
+      <p class="calendar-horizon muted">Recurring jobs are planned through {{ .HorizonLabel }}. Later dates may be incomplete; any jobs already moved there are shown.</p>
     </div>
     <section class="calendar-agenda" id="calendar-agenda" aria-labelledby="calendar-agenda-title">
       <h4 id="calendar-agenda-title">{{ .DayLabel }}</h4>
-      <p class="muted">{{ .Total }} open visit{{ if ne .Total 1 }}s{{ end }}{{ if and .Overdue .Total }} · <span class="calendar-overdue">Overdue</span>{{ end }}</p>
+      <p class="muted">{{ .Total }} job{{ if ne .Total 1 }}s{{ end }}{{ if and .Overdue .Total }} · <span class="calendar-overdue">Overdue</span>{{ end }}</p>
       <a href="#service-calendar" class="calendar-work-link">Back to month</a>
-      {{ if .BeyondHorizon }}<p class="calendar-notice">This date is beyond the planning window. More recurring visits may appear as it gets closer.</p>{{ end }}
+      {{ if .BeyondHorizon }}<p class="calendar-notice">This date is beyond the planning window. More recurring jobs may appear as it gets closer.</p>{{ end }}
       {{ if .Visits }}
       <p class="calendar-page-count muted">Showing {{ .First }}–{{ .Last }} of {{ .Total }}</p>
       <ul class="calendar-visit-list">
@@ -38,8 +38,8 @@
           <a class="secondary-btn calendar-change-date" href="/service-occurrences/{{ .ID }}/date?calendar_day={{ $.DayISO }}">Change date</a>
         </li>{{ end }}
       </ul>
-      <nav class="calendar-pagination" aria-label="Daily visit pages">{{ if .PreviousPageURL }}<a class="secondary-btn" href="{{ .PreviousPageURL }}">Previous visits</a>{{ end }}{{ if .NextPageURL }}<a class="secondary-btn" href="{{ .NextPageURL }}">More visits</a>{{ end }}</nav>
-      {{ else }}<p class="calendar-empty">{{ if .BeyondHorizon }}No visits planned here yet.{{ else }}No open recurring visits on this date.{{ end }}</p>{{ end }}
+      <nav class="calendar-pagination" aria-label="Daily job pages">{{ if .PreviousPageURL }}<a class="secondary-btn" href="{{ .PreviousPageURL }}">Previous jobs</a>{{ end }}{{ if .NextPageURL }}<a class="secondary-btn" href="{{ .NextPageURL }}">More jobs</a>{{ end }}</nav>
+      {{ else }}<p class="calendar-empty">{{ if .BeyondHorizon }}No jobs planned here yet.{{ else }}No pending recurring jobs on this date.{{ end }}</p>{{ end }}
       <a class="calendar-work-link" href="/visits">Record completed work</a>
     </section>
   </div>
