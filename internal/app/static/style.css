@@ -758,3 +758,23 @@ a.primary-btn {
     flex-direction: column;
   }
 }
+.schedule-field-label { display: none; }
+.schedule-table td { vertical-align: top; }
+.schedule-table .secondary-btn, .work-change-date { min-height: 44px; display: inline-flex; align-items: center; }
+.work-change-date { font-size: .85rem; }
+.visit-date-panel { max-width: 720px; }
+.visit-date-panel .primary-btn, .visit-date-panel .secondary-btn { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; }
+.visit-date-details { display: flex; gap: 2rem; flex-wrap: wrap; margin: 1.5rem 0; }
+.visit-date-details dt { color: #526079; font-size: .85rem; }
+.visit-date-details dd { margin: .4rem 0 0; font-weight: 600; }
+.visit-date-panel input[type=date] { min-height: 44px; width: 100%; min-width: 0; box-sizing: border-box; }
+@media (max-width: 640px) {
+  .schedule-table-wrap { overflow: visible; }
+  .schedule-table, .schedule-table tbody { display: block; width: 100%; }
+  .schedule-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .schedule-table tr { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); padding: 1rem; border-bottom: 1px solid #dce3ef; gap: 1rem; }
+  .schedule-table td { display: block; padding: 0; border: 0; overflow-wrap: anywhere; }
+  .schedule-customer, .schedule-service, .schedule-adjust { grid-column: 1 / -1; }
+  .schedule-field-label { display: block; color: #526079; font-size: .8rem; margin-bottom: .35rem; }
+  .schedule-adjust .secondary-btn { width: 100%; justify-content: center; box-sizing: border-box; }
+}

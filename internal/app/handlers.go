@@ -157,6 +157,10 @@ func publicDemoMutationAllowed(r *http.Request) bool {
 		}
 		action := r.PostForm.Get("action")
 		return action == "pause" || action == "resume"
+	case "service-occurrences":
+		return len(segments) == 3 && segments[2] == "date" && len(r.URL.Query()) == 0 && exactPostForm(r, map[string]string{
+			"csrf_token": "", "scheduled_on": "", "revision": "",
+		})
 	case "renewals":
 		if len(segments) != 1 {
 			return false

@@ -54,23 +54,29 @@ type Schedule struct {
 	CadenceLabel            string
 	StartsOnLabel           string
 	EndsOnLabel             string
+	LastCompletedLabel      string
+	NextServiceLabel        string
+	NextOccurrenceID        string
 }
 
 type Occurrence struct {
-	ID              string
-	ScheduleID      string
-	AgreementID     string
-	CustomerName    string
-	CustomerPhone   string
-	PropertyAddress string
-	ServiceName     string
-	DueOn           time.Time
-	Status          string
-	StatusLabel     string
-	Notes           string
-	DueOnLabel      string
-	IsOverdue       bool
-	Actionable      bool
+	ID                string
+	ScheduleID        string
+	AgreementID       string
+	CustomerName      string
+	CustomerPhone     string
+	PropertyAddress   string
+	ServiceName       string
+	DueOn             time.Time
+	Status            string
+	StatusLabel       string
+	Notes             string
+	DueOnLabel        string
+	IsOverdue         bool
+	Actionable        bool
+	OriginalDueOn     time.Time
+	OriginalDateLabel string
+	ScheduleRevision  int
 }
 
 type ExportRow struct {
@@ -189,6 +195,9 @@ func (s *Service) CreateSchedule(ctx context.Context, shopID string, input Sched
 }
 
 func (s *Service) ListSchedulesForAgreement(ctx context.Context, shopID, agreementID string) ([]Schedule, error) {
+	if err := s.GenerateShopOccurrences(ctx, shopID); err != nil {
+		return nil, err
+	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, agreement_id, COALESCE(external_id, ''), service_name, cadence_unit,
 			cadence_interval, starts_on, ends_on, active, counts_toward_entitlement
@@ -216,7 +225,25 @@ func (s *Service) ListSchedulesForAgreement(ctx context.Context, shopID, agreeme
 		}
 		schedules = append(schedules, schedule)
 	}
-	return schedules, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	summaries, err := s.ListScheduleSummaries(ctx, shopID, agreementID)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[string]ScheduleSummary, len(summaries))
+	for _, summary := range summaries {
+		byID[summary.ID] = summary
+	}
+	for i := range schedules {
+		summary := byID[schedules[i].ID]
+		schedules[i].LastCompletedLabel = summary.LastCompletedLabel
+		schedules[i].NextServiceLabel = summary.NextServiceLabel
+		schedules[i].NextOccurrenceID = summary.NextOccurrenceID
+	}
+	return schedules, nil
 }
 
 func (s *Service) SetScheduleActive(ctx context.Context, shopID, scheduleID string, active bool) error {
@@ -251,7 +278,8 @@ func (s *Service) SetScheduleActive(ctx context.Context, shopID, scheduleID stri
 	// today on the original cadence anchor, without backfilling the pause.
 	if _, err := tx.Exec(ctx, `
 		DELETE FROM service_occurrences
-		WHERE shop_id = $1 AND schedule_id = $2 AND status = 'due' AND due_on >= $3`,
+		WHERE shop_id = $1 AND schedule_id = $2 AND status = 'due'
+		  AND (due_on >= $3 OR COALESCE(scheduled_on, due_on) >= $3)`,
 		shopID, scheduleID, boundary); err != nil {
 		return err
 	}
@@ -389,8 +417,8 @@ func (s *Service) ListOccurrences(ctx context.Context, shopID string, dueOnly bo
 	query := `
 		SELECT o.id, o.schedule_id, sc.agreement_id, c.name, COALESCE(c.phone, ''),
 			COALESCE(p.address_line1 || ', ' || p.city || ', ' || p.state || ' ' || p.postal_code, ''),
-			sc.service_name, o.due_on, o.status, COALESCE(o.notes, ''),
-			sc.active, a.status = 'active'
+			sc.service_name, COALESCE(o.scheduled_on, o.due_on), o.status, COALESCE(o.notes, ''),
+			sc.active, a.status = 'active', o.due_on, o.schedule_revision
 		FROM service_occurrences o
 		JOIN service_schedules sc ON sc.id = o.schedule_id AND sc.shop_id = o.shop_id
 		JOIN agreements a ON a.id = sc.agreement_id AND a.shop_id = sc.shop_id
@@ -398,10 +426,10 @@ func (s *Service) ListOccurrences(ctx context.Context, shopID string, dueOnly bo
 		LEFT JOIN properties p ON p.id = a.property_id
 		WHERE o.shop_id = $1`
 	if dueOnly {
-		query += ` AND o.status = 'due' AND sc.active AND a.status = 'active' AND o.due_on <= $2`
+		query += ` AND o.status = 'due' AND sc.active AND a.status = 'active' AND COALESCE(o.scheduled_on, o.due_on) <= $2`
 		args = append(args, today)
 	}
-	query += ` ORDER BY o.due_on, c.name, sc.service_name`
+	query += ` ORDER BY COALESCE(o.scheduled_on, o.due_on), c.name, sc.service_name, o.id`
 
 	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {
@@ -416,11 +444,14 @@ func (s *Service) ListOccurrences(ctx context.Context, shopID string, dueOnly bo
 			&occurrence.ID, &occurrence.ScheduleID, &occurrence.AgreementID,
 			&occurrence.CustomerName, &occurrence.CustomerPhone, &occurrence.PropertyAddress,
 			&occurrence.ServiceName, &occurrence.DueOn, &occurrence.Status, &occurrence.Notes,
-			&scheduleActive, &agreementActive,
+			&scheduleActive, &agreementActive, &occurrence.OriginalDueOn, &occurrence.ScheduleRevision,
 		); err != nil {
 			return nil, err
 		}
 		occurrence.DueOnLabel = occurrence.DueOn.Format("Mon, Jan 2")
+		if !occurrence.OriginalDueOn.Equal(occurrence.DueOn) {
+			occurrence.OriginalDateLabel = occurrence.OriginalDueOn.Format("Jan 2, 2006")
+		}
 		occurrence.Actionable = occurrence.Status == "due" && scheduleActive && agreementActive
 		occurrence.IsOverdue = occurrence.Actionable && occurrence.DueOn.Before(today)
 		switch {

@@ -63,6 +63,7 @@ Without `DATABASE_URL`, ClubDue runs an in-memory legacy sample screen instead o
 - **CSV import** — export Google Sheets as CSV, inspect a mandatory dry-run, and commit it. Re-imports use `external_id` to update rather than duplicate records. Reordered/extra columns, BOM/CRLF files, common US/ISO dates, blank optional fields, and dollar prices are accepted. Try [`landscaping-google-sheets-template.csv`](internal/app/testdata/landscaping-google-sheets-template.csv).
 - **Renewals** — work deterministic 90/60/30/14/7-day tasks with customer contact details, property, agreement links, clear upcoming/due/past-due state, and recorded outcomes. Imported overdue agreements remain in the overdue cycle until an explicit outcome is recorded.
 - **Service work** — work recurring landscaping/service occurrences beside the established seasonal HVAC queue; complete, skip, pause, resume, or export work using its actual service name. A generic handoff is not an appointment time.
+- **Schedule** — see last recorded completion and next open visit per recurring service, then move an individual visit without shifting the weekly, biweekly, or monthly pattern. See [scheduling behavior](docs/SCHEDULING.md).
 - **Homeowner renewals** — from an agreement edit page, create a 30-day renewal link. Staging exposes only a clearly non-charging test stub; production asks the homeowner to contact the shop because online payment is unavailable.
 
 For a guided owner presentation, use [docs/demo-script.md](docs/demo-script.md).

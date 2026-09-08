@@ -102,7 +102,7 @@
   <div class="schedule-list">
     {{ range .Schedules }}
     <div class="schedule-row">
-      <div><strong>{{ .ServiceName }}</strong><span class="contact-detail">{{ .CadenceLabel }} from {{ .StartsOnLabel }}{{ if .EndsOnLabel }} through {{ .EndsOnLabel }}{{ end }}</span></div>
+      <div><strong>{{ .ServiceName }}</strong><span class="contact-detail">{{ .CadenceLabel }} from {{ .StartsOnLabel }}{{ if .EndsOnLabel }} through {{ .EndsOnLabel }}{{ end }}</span><span class="contact-detail">Last completed: {{ .LastCompletedLabel }}</span><span class="contact-detail">Next service: {{ .NextServiceLabel }}</span>{{ if .NextOccurrenceID }}<a class="work-change-date" href="/service-occurrences/{{ .NextOccurrenceID }}/date">Change next date</a>{{ end }}</div>
       <form method="post" action="/service-schedules/{{ .ID }}" class="inline-form">
         {{ template "csrf_field" $ }}
         <input type="hidden" name="agreement_id" value="{{ $.Form.ID }}">
@@ -112,6 +112,7 @@
     {{ end }}
   </div>
   {{ end }}
+  <p class="muted">Last completed is when completion was recorded. Pausing or importing changed service terms resets pending future visits, including manually moved dates. <a href="/schedule">View the full schedule</a>.</p>
 </section>
 
 <section class="panel renewal-link-panel">

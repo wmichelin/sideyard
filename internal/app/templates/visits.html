@@ -7,6 +7,7 @@
   <a href="/visits/export.csv{{ if not .DueOnly }}?filter=all{{ end }}" class="secondary-btn">Export CSV</a>
 </header>
 <div class="link-row filter-row">
+  <a href="/schedule" class="secondary-btn">Schedule: last &amp; next service</a>
   <a href="/visits?filter=due" class="secondary-btn{{ if .DueOnly }} active-filter{{ end }}">Due only</a>
   <a href="/visits?filter=all" class="secondary-btn{{ if not .DueOnly }} active-filter{{ end }}">All</a>
 </div>
@@ -56,7 +57,7 @@
             <td class="name-cell work-customer">{{ .CustomerName }}{{ if .CustomerPhone }}<a class="work-call" href="tel:{{ .CustomerPhone }}" aria-label="Call {{ .CustomerName }} at {{ .CustomerPhone }}">Call {{ .CustomerPhone }}</a>{{ end }}</td>
             <td class="muted work-property">{{ .PropertyAddress }}</td>
             <td class="work-service"><a href="/agreements/{{ .AgreementID }}">{{ .ServiceName }}<span class="link-detail">Open service plan</span></a></td>
-            <td class="work-date"><span class="work-field-label">Due</span>{{ .DueOnLabel }}</td>
+            <td class="work-date"><span class="work-field-label">Due</span>{{ .DueOnLabel }}{{ if .OriginalDateLabel }}<span class="contact-detail">Moved from {{ .OriginalDateLabel }}</span>{{ end }}{{ if .Actionable }}<a class="work-change-date" href="/service-occurrences/{{ .ID }}/date">Change date</a>{{ end }}</td>
             <td class="work-state"><span class="badge {{ .Status }}{{ if .IsOverdue }} overdue{{ end }}">{{ .StatusLabel }}</span></td>
           </tr>
           {{ else }}<tr><td colspan="6" class="empty-cell">{{ if .DueOnly }}No recurring services are due today or overdue. <a href="/visits?filter=all">View upcoming work and history</a>.{{ else }}No recurring service work in this view. Add a recurring service from an agreement.{{ end }}</td></tr>{{ end }}

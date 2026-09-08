@@ -11,6 +11,24 @@ type ServiceScheduleInput = servicework.ScheduleInput
 type ServiceSchedule = servicework.Schedule
 type ServiceOccurrence = servicework.Occurrence
 type ServiceExportRow = servicework.ExportRow
+type ServiceScheduleSummary = servicework.ScheduleSummary
+type ServiceVisitDate = servicework.VisitDate
+
+func (s *Store) ListServiceScheduleSummaries(ctx context.Context, shopID string) ([]ServiceScheduleSummary, error) {
+	service := s.serviceWorkService()
+	if err := service.GenerateShopOccurrences(ctx, shopID); err != nil {
+		return nil, err
+	}
+	return service.ListScheduleSummaries(ctx, shopID, "")
+}
+
+func (s *Store) GetServiceVisitDate(ctx context.Context, shopID, id string) (ServiceVisitDate, error) {
+	return s.serviceWorkService().GetVisitDate(ctx, shopID, id)
+}
+
+func (s *Store) MoveServiceVisit(ctx context.Context, shopID, id string, date time.Time, revision int) error {
+	return s.serviceWorkService().MoveVisit(ctx, shopID, id, date, revision)
+}
 
 func (s *Store) serviceWorkService() *servicework.Service {
 	return servicework.New(s.db.Pool, s.nowUTC)

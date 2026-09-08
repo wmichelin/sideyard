@@ -905,7 +905,8 @@ func (s *Store) upsertImportServiceSchedule(
 	}
 	if _, err := tx.Exec(ctx, `
 		DELETE FROM service_occurrences
-		WHERE shop_id = $1 AND schedule_id = $2 AND status = 'due' AND due_on >= $3::date`,
+		WHERE shop_id = $1 AND schedule_id = $2 AND status = 'due'
+		  AND (due_on >= $3::date OR COALESCE(scheduled_on, due_on) >= $3::date)`,
 		shopID, id, s.nowUTC()); err != nil {
 		return "", err
 	}

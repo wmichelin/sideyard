@@ -75,6 +75,7 @@ func TestEveryMutationRouteRejectsMissingCSRF(t *testing.T) {
 		"/agreements", "/agreements/id", "/agreements/id/renewal-link", "/agreements/id/service-schedules", "/service-schedules/id", "/renewals",
 		"/customers", "/customers/id", "/customers/id/delete", "/customers/id/properties",
 		"/properties/id/equipment", "/import", "/visits", "/plan-templates", "/plan-templates/id",
+		"/service-occurrences/id/date",
 	}
 	for _, path := range paths {
 		t.Run(path, func(t *testing.T) {
@@ -124,6 +125,7 @@ func TestPublicDemoMutationAllowlistIsFinite(t *testing.T) {
 		{"/agreements/existing/service-schedules", url.Values{}},
 		{"/service-schedules/existing", url.Values{"action": {"pause"}}},
 		{"/service-schedules/existing", url.Values{"action": {"resume"}}},
+		{"/service-occurrences/existing/date", url.Values{"csrf_token": {"token"}, "scheduled_on": {"2026-09-09"}, "revision": {"0"}}},
 		{"/renewals", url.Values{"status": {"open"}}},
 		{"/renewals", url.Values{"status": {"contacted"}}},
 		{"/renewals", url.Values{"status": {"renewed"}}},
