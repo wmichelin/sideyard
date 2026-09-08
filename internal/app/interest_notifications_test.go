@@ -52,7 +52,7 @@ func TestInterestEmailUsesFixedRecipientPlainTextAndStableIdempotency(t *testing
 	for _, env := range []Environment{EnvironmentProduction, EnvironmentProduction, EnvironmentStaging} {
 		s := resendInterestSender{config: InterestNotificationConfig{APIKey: "private-key", From: "Sideyard <alerts@getsideyard.com>", To: "owner@example.test"}, environment: env}
 		s.client = notificationHTTPFunc(func(r *http.Request) (*http.Response, error) {
-			if r.Method != "POST" || r.URL.String() != "https://api.resend.com/emails" || r.Header.Get("Authorization") != "Bearer private-key" {
+			if r.Method != "POST" || r.URL.String() != "https://api.resend.com/emails" || r.Header.Get("Authorization") != "Bearer private-key" || r.UserAgent() != "Sideyard/1.0" {
 				t.Fatal("wrong delivery endpoint or authentication")
 			}
 			keys = append(keys, r.Header.Get("Idempotency-Key"))

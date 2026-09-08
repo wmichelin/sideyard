@@ -85,6 +85,7 @@ func (s *resendInterestSender) Send(ctx context.Context, n interestNotification)
 	}
 	req.Header.Set("Authorization", "Bearer "+s.config.APIKey)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "Sideyard/1.0")
 	req.Header.Set("Idempotency-Key", "sideyard-interest/"+string(s.environment)+"/"+n.ID)
 	resp, err := s.client.Do(req)
 	if err != nil {
