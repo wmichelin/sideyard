@@ -58,7 +58,6 @@ func run(config Config, args []string) error {
 	closeResources := func() {}
 
 	if !srv.demo {
-		ctx := context.Background()
 		db, err := openDB(ctx, config.DatabaseURL)
 		if err != nil {
 			return err
@@ -90,6 +89,22 @@ func run(config Config, args []string) error {
 		}
 		runRenewalMaintenance(ctx, srv.store, time.Now, "startup")
 		go runDailyRenewalGeneration(ctx, srv.store, 24*time.Hour, time.Now)
+		if config.InterestNotifications.APIKey != "" {
+			notificationCtx, cancelNotifications := context.WithCancel(ctx)
+			done := make(chan struct{})
+			sender := &resendInterestSender{
+				client: &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
+				config: config.InterestNotifications, environment: config.Environment,
+			}
+			go func() {
+				defer close(done)
+				runInterestNotifications(notificationCtx, db, sender, time.Now)
+			}()
+			closeResources = func() { cancelNotifications(); <-done; db.Close() }
+			log.Print("Sideyard signup email notifications enabled")
+		} else {
+			log.Print("Sideyard signup email notifications unconfigured; alerts remain queued")
+		}
 		log.Print("Sideyard running with Postgres")
 	} else {
 		log.Print("Sideyard running in demo mode (set DATABASE_URL for Postgres)")

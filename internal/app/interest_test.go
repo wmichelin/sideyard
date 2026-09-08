@@ -148,9 +148,13 @@ func TestInterestPersistenceDeduplicatesWithoutOverwritingAndExportsPrivately(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	t.Cleanup(db.Close)
 	email := "sideyard-test-" + time.Now().UTC().Format("20060102150405.000000000") + "@example.test"
-	t.Cleanup(func() { _, _ = db.Pool.Exec(ctx, `DELETE FROM interest_signups WHERE email=$1`, email) })
+	t.Cleanup(func() {
+		if _, err := db.Pool.Exec(ctx, `DELETE FROM interest_signups WHERE email=$1`, email); err != nil {
+			t.Errorf("clean up synthetic signup: %v", err)
+		}
+	})
 	store := &postgresInterestRecorder{db: db}
 	in := interestSignup{Name: "=1+1", Email: email, Business: "A, B & C", Trade: "Plumbing", Message: "A multiline\nnote"}
 	if err := store.SaveInterest(ctx, in); err != nil {

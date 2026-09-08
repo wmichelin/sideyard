@@ -37,17 +37,18 @@ type OwnerCredentials struct {
 }
 
 type Config struct {
-	Environment      Environment
-	Address          string
-	DatabaseURL      string
-	SessionSecret    string
-	PublicURL        *url.URL
-	EnableDevRoutes  bool
-	EnablePublicDemo bool
-	SignupAllowlist  map[string]struct{}
-	BootstrapOwner   OwnerCredentials
-	ProvisionOwner   OwnerCredentials
-	RuntimeLimits    RuntimeLimits
+	Environment           Environment
+	Address               string
+	DatabaseURL           string
+	SessionSecret         string
+	PublicURL             *url.URL
+	EnableDevRoutes       bool
+	EnablePublicDemo      bool
+	SignupAllowlist       map[string]struct{}
+	BootstrapOwner        OwnerCredentials
+	ProvisionOwner        OwnerCredentials
+	RuntimeLimits         RuntimeLimits
+	InterestNotifications InterestNotificationConfig
 }
 
 func LoadConfig(getenv func(string) string) (Config, error) {
@@ -100,6 +101,10 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 		return Config{}, err
 	}
 	config.PublicURL = publicURL
+	config.InterestNotifications, err = loadInterestNotificationConfig(getenv)
+	if err != nil {
+		return Config{}, err
+	}
 
 	if config.RuntimeLimits.MaxRequestBodyBytes, err = parsePositiveInt64(getenv("MAX_REQUEST_BODY_BYTES"), config.RuntimeLimits.MaxRequestBodyBytes); err != nil {
 		return Config{}, fmt.Errorf("MAX_REQUEST_BODY_BYTES must be a positive integer")

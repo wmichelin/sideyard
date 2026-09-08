@@ -2,6 +2,7 @@
 <!doctype html>
 <html lang="en">
 <head>
+  {{ template "brand_head" . }}
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Sideyard — Simple software for service contractors</title>
@@ -10,16 +11,26 @@
   <meta property="og:title" content="Sideyard — Keep your work in good order.">
   <meta property="og:description" content="Customers, schedules, and repeat work. All together. Register your interest in Sideyard.">
   <meta property="og:type" content="website">
+  <meta property="og:image" content="https://getsideyard.com/static/sideyard-share-v2.png">
+  <meta property="og:image:secure_url" content="https://getsideyard.com/static/sideyard-share-v2.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Sideyard. Keep your work in good order. Simple software for service contractors.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Sideyard — Keep your work in good order.">
+  <meta name="twitter:description" content="Simple software for service contractors. Register your interest in early access.">
+  <meta name="twitter:image" content="https://getsideyard.com/static/sideyard-share-v2.png">
   <meta property="og:url" content="https://getsideyard.com/">
   <meta name="theme-color" content="#f0f7ff">
-  <link rel="icon" type="image/svg+xml" href="/static/sideyard-mark.svg">
+
   <link rel="stylesheet" href="/static/landing.css">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
   <header class="site-header">
     <div class="container nav-row">
-      <a class="wordmark" href="/" aria-label="Sideyard home"><img src="/static/sideyard-mark.svg" width="32" height="32" alt="">Sideyard<span class="wordmark-dot">.</span></a>
+      <a class="wordmark" href="/" aria-label="Sideyard home"><img src="/static/sideyard-mark.svg?v=2" width="32" height="32" alt="">Sideyard<span class="wordmark-dot">.</span></a>
       <nav aria-label="Main navigation"><a class="nav-about" href="#how-it-helps">How it helps</a><a href="/login">Sign in <span aria-hidden="true">↗</span></a><a class="button button-small" href="#interest">Get early access</a></nav>
     </div>
   </header>
@@ -35,7 +46,7 @@
         </div>
         <div class="preview-wrap">
           <div class="work-preview" aria-label="Illustrative example of an organized workday">
-            <div class="preview-top"><span class="mini-brand"><img src="/static/sideyard-mark.svg" width="22" height="22" alt=""> Your work, together</span><span class="preview-menu" aria-hidden="true">•••</span></div>
+            <div class="preview-top"><span class="mini-brand"><img src="/static/sideyard-mark.svg?v=2" width="22" height="22" alt=""> Your work, together</span><span class="preview-menu" aria-hidden="true">•••</span></div>
             <div class="preview-body">
               <div class="preview-heading"><div><p class="preview-eyebrow">A LITTLE CLARITY FOR YOUR DAY</p><h2>Here’s what’s next.</h2></div><span class="day-badge">Today</span></div>
               <div class="job-row"><span class="job-check checked" aria-hidden="true">✓</span><div><strong>Seasonal system check</strong><span>Morgan residence · Service visit</span></div><span class="job-status done">Complete</span></div>

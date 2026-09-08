@@ -25,8 +25,10 @@ type interestRecorder interface {
 type postgresInterestRecorder struct{ db *DB }
 
 func (s *postgresInterestRecorder) SaveInterest(ctx context.Context, in interestSignup) error {
-	_, err := s.db.Pool.Exec(ctx, `INSERT INTO interest_signups (name, email, business, trade, message)
-		VALUES ($1, $2, $3, $4, $5) ON CONFLICT (email) DO NOTHING`,
+	_, err := s.db.Pool.Exec(ctx, `WITH signup AS (
+		INSERT INTO interest_signups (name, email, business, trade, message)
+		VALUES ($1, $2, $3, $4, $5) ON CONFLICT (email) DO NOTHING RETURNING id
+	) INSERT INTO interest_notifications (signup_id) SELECT id FROM signup`,
 		in.Name, in.Email, in.Business, in.Trade, in.Message)
 	return err
 }

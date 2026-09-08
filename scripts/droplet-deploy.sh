@@ -303,7 +303,8 @@ if ! docker run -d --name "$CANDIDATE_CONTAINER" --restart always --network "$NE
   -p "127.0.0.1:${candidate_port}:8080" "${APP_ENV[@]}" \
   -e "PUBLIC_URL=https://${DOMAIN}" \
   -e "DATABASE_URL=postgres://clubdue:${POSTGRES_PASSWORD}@${DB}:5432/clubdue?sslmode=disable" \
-  -e "SESSION_SECRET=${SESSION_SECRET}" "$IMAGE" >/dev/null; then
+  -e "SESSION_SECRET=${SESSION_SECRET}" \
+  -e RESEND_API_KEY -e INTEREST_NOTIFY_FROM -e INTEREST_NOTIFY_TO "$IMAGE" >/dev/null; then
   docker rm -f "$CANDIDATE_CONTAINER" >/dev/null 2>&1 || true
   fail "candidate ${CANDIDATE_CONTAINER} could not start; active release remains unchanged"
 fi

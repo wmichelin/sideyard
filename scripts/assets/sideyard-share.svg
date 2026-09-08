@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+<defs><linearGradient id="paper" x2="1" y2="1"><stop stop-color="#f7faff"/><stop offset="1" stop-color="#e7f1ff"/></linearGradient></defs>
+<rect width="1200" height="630" fill="url(#paper)"/>
+<path d="M960 0H1200V630H1100Z" fill="#dceaff"/>
+<svg x="72" y="62" width="52" height="52" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="16" fill="#193653"/>
+  <path d="M17 36V19h17" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M30 45h17V28" fill="none" stroke="#83b8ff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+
+<g font-family="Arial, Helvetica, sans-serif" fill="#193653">
+<text x="140" y="102" font-size="43" font-weight="700" letter-spacing="-1.5">Sideyard<tspan fill="#1d4ed8">.</tspan></text>
+<text x="72" y="262" font-size="80" font-weight="700" letter-spacing="-3">Keep your work</text>
+<text x="72" y="354" font-size="80" font-weight="700" letter-spacing="-3" fill="#1d4ed8">in good order.</text>
+<text x="76" y="418" font-size="27" fill="#536b85">Simple software for service contractors.</text>
+<text x="76" y="560" font-size="19" font-weight="700" letter-spacing="1.5">CUSTOMERS. SCHEDULES. REPEAT WORK.</text>
+<text x="976" y="562" font-size="18" fill="#536b85">getsideyard.com</text>
+</g>
+<g transform="translate(867 204) rotate(6)">
+<rect x="0" y="0" width="248" height="215" rx="20" fill="#c7daf7"/>
+<rect x="-12" y="-14" width="248" height="215" rx="20" fill="#fff" stroke="#d5e3f4" stroke-width="2"/>
+<g fill="#193653" font-family="Arial, Helvetica, sans-serif"><text x="12" y="26" font-size="18" font-weight="700">A little more order.</text></g>
+<g fill="none" stroke="#6ea7eb" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 64l5 5 10-12"/><path d="M15 113l5 5 10-12"/><rect x="15" y="155" width="16" height="16" rx="4" stroke="#c7d7ea"/></g>
+<g fill="#d5e3f4"><rect x="47" y="57" width="160" height="9" rx="4.5"/><rect x="47" y="74" width="104" height="6" rx="3"/><rect x="47" y="106" width="141" height="9" rx="4.5"/><rect x="47" y="123" width="118" height="6" rx="3"/><rect x="47" y="155" width="158" height="9" rx="4.5"/><rect x="47" y="172" width="89" height="6" rx="3"/></g>
+</g>
+</svg>

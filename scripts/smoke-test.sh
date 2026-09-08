@@ -46,6 +46,10 @@ LANDING_FILE="$WORK_DIR/landing.html"
 curl -fsS -o "$LANDING_FILE" "${CLUBDUE_URL}/"
 grep -q 'Simple software for service contractors' "$LANDING_FILE"
 grep -q 'action="/interest#interest"' "$LANDING_FILE"
+grep -q 'property="og:image" content="https://getsideyard.com/static/sideyard-share-v2.png"' "$LANDING_FILE"
+curl -fsS "${CLUBDUE_URL}/static/sideyard-share-v2.png" -o /dev/null
+curl -fsS "${CLUBDUE_URL}/static/sideyard-icon-32-v2.png" -o /dev/null
+curl -fsS "${CLUBDUE_URL}/static/sideyard-icon-180-v2.png" -o /dev/null
 curl -fsS "${CLUBDUE_URL}/static/landing.css" -o /dev/null
 curl -fsS "${CLUBDUE_URL}/interest/thanks" | grep -q 'You’re on the list'
 echo "  ✓ Sideyard landing page and interest form"
