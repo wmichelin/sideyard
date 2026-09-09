@@ -7,32 +7,11 @@ import (
 	"time"
 )
 
-type assetNoteInput struct{ Key, Body, Date, Time, Zone, Offset string }
-type assetNote struct {
-	Body, RecordedBy string
-	Event            eventTime
-	RecordedAt       time.Time
-}
-
-func (n assetNote) EventLabel() string {
-	if n.Event.At == nil {
-		return n.Event.Date.Format("Jan 2, 2006") + " · Date only · " + n.Event.Zone
-	}
-	loc, err := time.LoadLocation(n.Event.Zone)
-	if err != nil {
-		return n.Event.At.UTC().Format(time.RFC3339)
-	}
-	at := n.Event.At.In(loc)
-	return at.Format("Jan 2, 2006 15:04 MST") + " (UTC" + eventOffset(at) + ")"
-}
-
-var errAssetNoteInput = errors.New("Enter a note up to 2,000 bytes. Reload the page if this form is out of date.")
+var errAssetNoteInput = errInternalNoteInput
 var errAssetNoteConflict = errors.New("This form was already used for a different note, or the asset is unavailable. Start a new note to preserve the earlier entry.")
 
-type assetHistoryTarget struct{ ID, Name, CustomerID, BackURL string }
-
-func (s *Store) GetAssetHistoryTarget(ctx context.Context, shopID, kind, id string) (assetHistoryTarget, error) {
-	var target assetHistoryTarget
+func (s *Store) GetAssetHistoryTarget(ctx context.Context, shopID, kind, id string) (historyTarget, error) {
+	var target historyTarget
 	var query string
 	switch kind {
 	case "vehicle":
@@ -50,15 +29,14 @@ func (s *Store) GetAssetHistoryTarget(ctx context.Context, shopID, kind, id stri
 	return target, err
 }
 
-func validateAssetNote(kind string, input assetNoteInput, now time.Time) (eventTime, error) {
-	body := strings.TrimSpace(input.Body)
-	if (kind != "vehicle" && kind != "equipment") || !noteSubmissionKey.MatchString(input.Key) || body == "" || len(body) > 2000 || strings.ContainsRune(body, '\x00') {
+func validateAssetNote(kind string, input internalNoteInput, now time.Time) (eventTime, error) {
+	if kind != "vehicle" && kind != "equipment" {
 		return eventTime{}, errAssetNoteInput
 	}
-	return parseEventTime(input.Date, input.Time, input.Zone, input.Offset, now)
+	return validateInternalNote(input, now)
 }
 
-func (s *Store) AddAssetNote(ctx context.Context, shopID, kind, id, author string, input assetNoteInput) error {
+func (s *Store) AddAssetNote(ctx context.Context, shopID, kind, id, author string, input internalNoteInput) error {
 	event, err := validateAssetNote(kind, input, s.nowUTC())
 	if err != nil {
 		return err
@@ -84,15 +62,15 @@ func (s *Store) AddAssetNote(ctx context.Context, shopID, kind, id, author strin
 	return nil
 }
 
-func (s *Store) ListAssetNotes(ctx context.Context, shopID, kind, id string) ([]assetNote, error) {
+func (s *Store) ListAssetNotes(ctx context.Context, shopID, kind, id string) ([]internalNote, error) {
 	rows, err := s.db.Pool.Query(ctx, `SELECT body,occurred_on,occurred_at,event_timezone,recorded_by,recorded_at FROM asset_notes WHERE shop_id=$1 AND (($2='vehicle' AND vehicle_id=$3) OR ($2='equipment' AND equipment_id=$3)) ORDER BY occurred_on DESC,recorded_at DESC,id DESC LIMIT 100`, shopID, kind, id)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var notes []assetNote
+	var notes []internalNote
 	for rows.Next() {
-		var n assetNote
+		var n internalNote
 		if err := rows.Scan(&n.Body, &n.Event.Date, &n.Event.At, &n.Event.Zone, &n.RecordedBy, &n.RecordedAt); err != nil {
 			return nil, err
 		}

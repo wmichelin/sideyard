@@ -42,7 +42,7 @@ func TestAssetNotesKeepIndependentAuthoredHistory(t *testing.T) {
 	if err != nil || len(equipment) != 1 {
 		t.Fatal("equipment fixture")
 	}
-	input := assetNoteInput{Key: strings.Repeat("a", 32), Body: "Inspected seats\nNo damage", Date: "2025-11-02", Time: "01:30", Zone: "America/New_York", Offset: "-04:00"}
+	input := internalNoteInput{Key: strings.Repeat("a", 32), Body: "Inspected seats\nNo damage", Date: "2025-11-02", Time: "01:30", Zone: "America/New_York", Offset: "-04:00"}
 	if _, err := s.GetAssetHistoryTarget(ctx, other, "vehicle", vehicles[0].ID); !errors.Is(err, pgx.ErrNoRows) {
 		t.Fatalf("foreign asset lookup: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestAssetNotesKeepIndependentAuthoredHistory(t *testing.T) {
 		t.Fatalf("authored note: %+v %v", notes, err)
 	}
 	originalTime := notes[0].RecordedAt
-	for _, change := range []func(*assetNoteInput){func(n *assetNoteInput) { n.Body = "Changed" }, func(n *assetNoteInput) { n.Offset = "-05:00" }, func(n *assetNoteInput) { n.Time = "" }} {
+	for _, change := range []func(*internalNoteInput){func(n *internalNoteInput) { n.Body = "Changed" }, func(n *internalNoteInput) { n.Offset = "-05:00" }, func(n *internalNoteInput) { n.Time = "" }} {
 		n := input
 		change(&n)
 		if err := s.AddAssetNote(ctx, shop, "vehicle", vehicles[0].ID, "owner@example.test", n); !errors.Is(err, errAssetNoteConflict) {

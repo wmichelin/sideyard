@@ -164,6 +164,9 @@ func publicDemoMutationAllowed(r *http.Request) bool {
 		action := r.PostForm.Get("action")
 		return action == "pause" || action == "resume"
 	case "service-occurrences":
+		if len(segments) == 3 && segments[2] == "history" {
+			return true
+		}
 		fields := map[string]string{
 			"csrf_token": "", "scheduled_on": "", "revision": "",
 		}
@@ -191,6 +194,9 @@ func publicDemoMutationAllowed(r *http.Request) bool {
 	case "vehicles":
 		return len(segments) == 3 && segments[2] == "history"
 	case "visits":
+		if len(segments) == 3 && segments[2] == "history" {
+			return true
+		}
 		if len(segments) != 1 {
 			return false
 		}

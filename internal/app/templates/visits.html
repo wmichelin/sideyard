@@ -56,7 +56,7 @@
             <td class="work-select">{{ if .Actionable }}<label class="work-check-target"><input type="checkbox" name="occurrence_id" value="{{ .ID }}" class="service-check" aria-label="Select {{ .ServiceName }} for {{ .CustomerName }} due {{ .DueOnLabel }}"{{ if index $.SelectedRecurring .ID }} checked{{ end }}></label>{{ end }}</td>
             <td class="name-cell work-customer">{{ .CustomerName }}{{ if .CustomerPhone }}<a class="work-call" href="tel:{{ .CustomerPhone }}" aria-label="Call {{ .CustomerName }} at {{ .CustomerPhone }}">Call {{ .CustomerPhone }}</a>{{ end }}</td>
             <td class="muted work-property">{{ .PropertyAddress }}</td>
-            <td class="work-service"><a href="/agreements/{{ .AgreementID }}">{{ .ServiceName }}<span class="link-detail">Open service plan</span></a></td>
+            <td class="work-service"><a href="/agreements/{{ .AgreementID }}">{{ .ServiceName }}<span class="link-detail">Open service plan</span></a>{{ if eq $.Nav.User.Role "owner" }}<a class="contact-detail" href="/service-occurrences/{{ .ID }}/history">Visit notes</a>{{ end }}</td>
             <td class="work-date"><span class="work-field-label">Due</span>{{ .DueOnLabel }}{{ if .OriginalDateLabel }}<span class="contact-detail">Moved from {{ .OriginalDateLabel }}</span>{{ end }}{{ if .Actionable }}<a class="work-change-date" href="/service-occurrences/{{ .ID }}/date">Change date</a>{{ end }}</td>
             <td class="work-state"><span class="badge {{ .Status }}{{ if .IsOverdue }} overdue{{ end }}">{{ .StatusLabel }}</span></td>
           </tr>
@@ -96,7 +96,7 @@
             <td class="work-select">{{ if ne .Status "completed" }}<label class="work-check-target"><input type="checkbox" name="visit_id" value="{{ .ID }}" class="visit-check" aria-label="Select {{ .PlanName }} {{ .Season }} service for {{ .CustomerName }}"{{ if index $.SelectedSeasonal .ID }} checked{{ end }}></label>{{ end }}</td>
             <td class="name-cell work-customer">{{ .CustomerName }}{{ if .CustomerPhone }}<a class="work-call" href="tel:{{ .CustomerPhone }}" aria-label="Call {{ .CustomerName }} at {{ .CustomerPhone }}">Call {{ .CustomerPhone }}</a>{{ end }}</td>
             <td class="muted work-property">{{ .PropertyAddress }}</td>
-            <td class="work-service">{{ .PlanName }}<span class="contact-detail">{{ .Season }}</span></td>
+            <td class="work-service">{{ .PlanName }}<span class="contact-detail">{{ .Season }}</span>{{ if eq $.Nav.User.Role "owner" }}<a class="contact-detail" href="/visits/{{ .ID }}/history">Visit notes</a>{{ end }}</td>
             <td class="work-date"><span class="work-field-label">Due window</span>{{ .WindowLabel }}</td>
             <td class="work-state"><span class="badge {{ .Status }}{{ if .IsOverdue }} overdue{{ end }}">{{ .StatusLabel }}{{ if .IsOverdue }} (overdue){{ end }}</span></td>
           </tr>

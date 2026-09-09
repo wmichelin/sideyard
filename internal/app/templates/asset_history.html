@@ -1,8 +1,8 @@
 {{ define "asset_history_content" }}
-<header class="page-header"><div><h2 class="page-title">Service history</h2><p class="page-subtitle">{{ .Target.Name }}</p></div><a class="secondary-btn" href="{{ .Target.BackURL }}">Back to asset</a></header>
+<header class="page-header"><div><h2 class="page-title">Service history</h2><p class="page-subtitle">{{ .Target.Name }}</p></div><a class="secondary-btn" href="{{ .Target.BackURL }}">{{ .BackLabel }}</a></header>
 {{ if .Saved }}<p role="status" class="success-banner">Service note saved.</p>{{ end }}
 {{ if .Error }}<p role="alert" class="error-banner">{{ .Error }} Your note is kept below. <a href="{{ .HistoryURL }}">Start a new note</a></p>{{ end }}
-<section class="panel"><h3 class="section-title">Add an internal note</h3><p>Record inspections, service work and follow-ups for this asset. Add a new entry for corrections so the earlier record stays available.</p>
+<section class="panel"><h3 class="section-title">Add an internal note</h3><p>{{ .Description }} Add a new entry for corrections so the earlier record stays available.</p>
 <form method="post" class="form-stack" data-history-defaults="{{ .Initial }}">
 {{ template "csrf_field" . }}<input type="hidden" name="note_key" value="{{ .Input.Key }}">
 <div class="form-row"><label><span>Event date</span><input name="occurred_on" type="date" value="{{ .Input.Date }}" required></label><label><span>Time (optional)</span><input name="event_time" type="time" step="60" value="{{ .Input.Time }}"></label></div>

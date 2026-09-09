@@ -246,6 +246,22 @@ history_status="$(curl -sS -o "$WORK_DIR/history-save.html" -w '%{http_code}' \
   --data-urlencode 'event_offset=-04:00' \
   "http://127.0.0.1:${PORT}/equipment/${history_equipment_id}/history")"
 [ "$history_status" = "303" ]
+visit_history_id="$(docker exec "$SOURCE_DB" psql -U clubdue -d clubdue -qAt -v ON_ERROR_STOP=1 -c "
+  WITH a AS (INSERT INTO agreements(shop_id,customer_id,property_id,anniversary_date)
+    SELECT shop_id,customer_id,id,'2027-01-01' FROM properties WHERE id='${photo_property_id}' RETURNING id,shop_id)
+  INSERT INTO visit_dues(shop_id,agreement_id,season,due_year)
+    SELECT shop_id,id,'fall',2026 FROM a RETURNING id")"
+for _ in 1 2; do
+  visit_history_status="$(curl -sS -o "$WORK_DIR/visit-history-save.html" -w '%{http_code}' \
+    -H "Cookie: clubdue_csrf=${csrf_cookie}; clubdue_session=${session_cookie}" \
+    --data-urlencode "csrf_token=${csrf_token}" \
+    --data-urlencode 'note_key=44444444444444444444444444444444' \
+    --data-urlencode 'note_body=Private visit inspection' --data-urlencode 'occurred_on=2025-11-02' \
+    --data-urlencode 'event_time=01:30' --data-urlencode 'event_timezone=America/New_York' \
+    --data-urlencode 'event_offset=-05:00' \
+    "http://127.0.0.1:${PORT}/visits/${visit_history_id}/history")"
+  [ "$visit_history_status" = "303" ]
+done
 export CLUBDUE_BACKUP_DIR="$WORK_DIR/backups"
 export CLUBDUE_BACKUP_PASSPHRASE="disposable-production-rehearsal-backup-passphrase"
 export CLUBDUE_BACKUP_HMAC_KEY="disposable-production-rehearsal-hmac-key"
@@ -290,6 +306,8 @@ restored_photo_fingerprint="$(docker exec "$RESTORE_DB" psql -U clubdue -d clubd
 [ "$restored_photo_fingerprint" = "$photo_fingerprint" ]
 restored_history_count="$(docker exec "$RESTORE_DB" psql -U clubdue -d clubdue -qAt -c "SELECT count(*) FROM asset_notes WHERE equipment_id='${history_equipment_id}' AND body='Rehearsal filter service' AND occurred_at='2025-11-02T05:30:00Z'::timestamptz AND event_timezone='America/New_York' AND recorded_by='owner@rehearsal.invalid'")"
 [ "$restored_history_count" = "1" ]
+restored_visit_history_count="$(docker exec "$RESTORE_DB" psql -U clubdue -d clubdue -qAt -c "SELECT count(*) FROM visit_notes n JOIN visit_dues v ON v.id=n.seasonal_visit_id JOIN agreements a ON a.id=v.agreement_id WHERE v.id='${visit_history_id}' AND n.body='Private visit inspection' AND n.occurred_at='2025-11-02T06:30:00Z'::timestamptz AND n.event_timezone='America/New_York' AND n.recorded_by='owner@rehearsal.invalid' AND v.status='due' AND a.visits_used=0")"
+[ "$restored_visit_history_count" = "1" ]
 
 expect_authenticated_restore_failure() {
   local candidate_backup="$1"
