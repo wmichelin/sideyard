@@ -13,13 +13,13 @@ for the distinction between provisioned resources and deployed app behavior.
 
 ## Availability snapshot
 
-Reviewed September 9, 2026 against staging release `b0ebaf2` and the recorded
+Reviewed September 9, 2026 against staging release `341e647` and the recorded
 release verification. These are verified release states, not a live deployment monitor.
 
 | Label | Meaning |
 | --- | --- |
 | **Live** | Available in production at [getsideyard.com](https://getsideyard.com), source `ae6f16a`, and on staging. The legacy ClubDue hostname remains supported. |
-| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), release `b0ebaf2`: standalone jobs/site surveys, the single-line work-status badge fix, and configured private Azure photo storage. |
+| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), release `341e647`: standalone jobs/site surveys, the single-line work-status badge fix, and configured private Azure photo storage. |
 | **Conditional** | Implemented but requires explicit deployment configuration; not a promise of availability to clients. |
 
 Unless marked otherwise, catalog nodes are **Live**. “Signed in” means a user
@@ -45,9 +45,9 @@ flowchart TB
   subgraph PUBLIC["Public entry"]
     LAND["LAND · Landing / interest<br/>Owner notification queue"]
     THANKS["THANKS · Interest saved"]
-    LOGIN["LOGIN · Sign in"]
-    DEMO["DEMO · Start isolated demo"]
-    SIGNUP["SIGNUP · Account enrollment (conditional)"]
+    LOGIN["LOGIN · Sign in<br/>Availability feedback pending staging"]
+    DEMO["DEMO · Start isolated demo<br/>Public entry availability pending staging"]
+    SIGNUP["SIGNUP · Account enrollment (conditional)<br/>Availability feedback pending staging"]
     RENEW["RENEW · Customer renewal link"]
     LAND -->|Submit interest| THANKS
     LAND --> LOGIN
@@ -170,11 +170,22 @@ Email/password authentication, validation and failed-attempt feedback; successfu
 login opens DASH. Offers the demo when enabled and enrollment only when open.
 There is no self-service password-reset screen; use [owner recovery](OWNER-PROVISIONING.md).
 
+**Pending staging verification:** GET renders without querying an old session;
+it does not automatically redirect a signed-in visitor. Sign-in/database failures
+return temporary-unavailability feedback with the email preserved, without
+counting a bad password or clearing an existing session. Missing/expired sessions
+still lead to sign-in; protected requests fail closed during an outage.
+
+
 ### DEMO — Isolated prospect demo
 
 **Route:** `GET /demo` → `POST /demo/session`. **Access:** Public when enabled;
 enabled on the recorded production and staging releases.
 [Source](../internal/app/templates/demo_entry.html) · [Handler](../internal/app/demo_handlers.go).
+
+**Pending staging verification:** the entry GET is database-free; its
+CSRF-protected POST recognizes an existing owner session and returns to DASH.
+A failed session lookup cannot replace that owner session with a new demo.
 
 Starts an isolated fictional landscaping shop with 30 customers, without shared
 credentials. Automatic entry has a manual button fallback. Sessions expire after
@@ -192,6 +203,11 @@ When explicitly enabled, collects shop name, email and password and opens the
 new account. Deployment allowlists restrict eligibility. Closed deployments show
 a closed-enrollment message. Provision real pilot owners through the operator
 runbook instead of sending them here or assuming interest registration enrolls them.
+
+**Pending staging verification:** the enrollment GET is database-free. Database
+failures preserve the entered shop name/email, return 503, and do not consume
+bad-credential attempts. Only validation errors are displayed as submitted-input
+feedback; database details stay internal. Passwords are never redisplayed.
 
 ### NAV — Shared workspace navigation
 

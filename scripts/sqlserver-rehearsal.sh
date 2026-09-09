@@ -23,6 +23,8 @@ PY
 # only the isolated database network, including on hosts that restrict bridge
 # egress. The test binary and synthetic credential files are removed on exit.
 docker run --rm -e GOTOOLCHAIN=local -e CGO_ENABLED=0 \
+  -v sideyard-go-modules:/go/pkg/mod \
+  -v sideyard-go-build:/root/.cache/go-build \
   -v "$repo_root:/src:ro" -v "$test_work:/output" -w /src \
   golang:1.23-alpine sh -c 'go test -c -o /output/sqlserver.test ./internal/sqlserver && go test -c -o /output/app.test ./internal/app'
 docker network create --internal "$test_name" >/dev/null

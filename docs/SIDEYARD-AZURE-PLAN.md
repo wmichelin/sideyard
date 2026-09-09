@@ -4,7 +4,7 @@
 
 Status: implementing — user authorized Azure SQL, versioned Blob and seven-day backups.
 Last completed: both environments provisioned; staging Blob and connection foundation verified; both Azure exports restored; real idle/resume probe completed in 45 seconds.
-Now: explicit SQL Server interest/auth/domain port and idle-safe background work, September 9, 2026.
+Now: tenant/auth native port verified in isolated engines; bounded connection and availability handling, then remaining domains and idle-safe background work, September 9, 2026.
 Next: verify both database backends and idle behavior before a reviewed database cutover.
 Evidence: Blob staging release `7181040`; exact artifacts in the delivery status.
 Staging: https://clubdue-staging.michelindigitalmedia.com (verified for Azure Blob; application database remains PostgreSQL).
@@ -276,6 +276,14 @@ Relevant current boundaries include [connection/migrations](../internal/postgres
 - Batch daily maintenance, reconciliation and logical backups into one active
   period. Make deployment migrations an explicit step. A restart during a SQL
   outage must still serve static/public pages without claiming database readiness.
+- Before SQL selection, align operation, HTTP read/write, shutdown and proxy
+  budgets with the measured 45-second resume. Planned defaults: 80-second total
+  database request budget, 90-second HTTP read/write and 110-second proxy/probe.
+  Protected form admission currently authenticates before body parsing; its
+  read deadline needs explicit treatment as well as its write deadline.
+  Native prelogin/TLS can ignore context, so own raw transports until Connect
+  succeeds and test cancellation against a silent peer. Retry only initial
+  database-unavailable connections; never replay a started transaction or write.
 - External process checks use `/livez`, not the database-pinging `/readyz`.
   Use database readiness during deployment and deliberate diagnostics. Database
   operations must preserve form input and show temporary unavailability on

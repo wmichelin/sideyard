@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"time"
@@ -9,16 +10,18 @@ import (
 
 func (s *Server) handlePublicDemoGet(w http.ResponseWriter, r *http.Request) {
 	s.setPublicDemoHeaders(w)
-	if user, _ := s.auth.userFromRequest(r.Context(), r); user != nil {
-		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
-		return
-	}
 	s.render(w, r, "demo_entry.html", map[string]any{"Error": ""})
 }
 
 func (s *Server) handlePublicDemoPost(w http.ResponseWriter, r *http.Request) {
 	s.setPublicDemoHeaders(w)
-	if user, _ := s.auth.userFromRequest(r.Context(), r); user != nil {
+	user, err := s.auth.userFromRequest(r.Context(), r)
+	if err != nil && !errors.Is(err, errUnauthenticated) {
+		w.Header().Set("Retry-After", "15")
+		http.Error(w, "The demo is temporarily unavailable. Please try again shortly.", http.StatusServiceUnavailable)
+		return
+	}
+	if user != nil {
 		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 		return
 	}

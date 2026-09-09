@@ -596,3 +596,47 @@ paid integrations or live customer payment collection are configured by this cha
 - The fix normalizes that typed nil before cleanup. A direct regression and
   twenty repetitions of the real SQL shutdown/last-signup scenario passed locally.
   CI and staging must pass again before this source is eligible for review.
+
+- Corrected source `341e647f17d93bd917fa94613938e87ebaf17479` passed all CI jobs
+  [34417010665](https://github.com/wmichelin/clubdue/actions/runs/34417010665) and
+  staging [34417010633](https://github.com/wmichelin/clubdue/actions/runs/34417010633).
+  Independent revision/image readback and manual staging smoke passed:
+  `ghcr.io/wmichelin/clubdue@sha256:3155a4769d42618f1ae3d0c5b0f6e8d09c3af32fe5fcf90e88529de4bec8e835`.
+  Production remains unchanged; the latest code is not approved for promotion.
+
+### Connection resume and availability — implementation
+
+- Azure connections retry only initial error 40613, with bounded 1/2/4/8/10-second
+  waits within an 80-second connection budget. No application statement or started
+  transaction is replayed, and 40613 alone is not labeled quota exhaustion.
+- DevOps/architect review found native prelogin/TLS IO can ignore context and lose
+  a raw socket before constructing its SQL connection. Each attempt now owns its
+  transports until native login/session initialization succeeds. Cancellation and
+  errors close them; successful ownership transfer stops the cancellation watcher.
+  A silent native prelogin test verifies 25ms cancellation despite the driver's
+  two-second socket timeout and observes peer closure. Real-engine tests verify
+  normal connection/session/migration behavior still works.
+- Product/QA: public landing, sign-in, enrollment, demo entry and assets remain
+  database-free on GET even with old cookies. Existing owner/demo recognition
+  remains in the protected POST. Authentication dependency failures return 503,
+  preserve session cookies and form identity fields, and do not charge the
+  invalid-password throttle. Protected demo admission fails closed on lookup
+  failures. Validation errors remain separate; passwords are not redisplayed.
+- Staff/testing: explicit error classification, injected failing pool/native
+  connector/wait seams; verify no false logout, account creation or successful
+  save during outages. Actual Azure application cold start remains unverified:
+  request read/write/proxy budgets, lazy startup, background ownership, the full
+  domain port and transfer/restore gates are still unfinished.
+- Availability tests cover login and enrollment outages, credential throttling,
+  public GET/CSRF admission without database IO, demo lookup failure, and an
+  existing owner's CSRF-protected demo POST preserving that account. The full
+  app/PostgreSQL suite passed. Native connector tests passed after correcting a
+  test's assumption about the driver's query interface; vet and static build pass.
+  A real successful SQL connection remains usable with a fresh query context
+  after its original Connect context is canceled.
+- Production backup/restore and pilot rehearsals passed. A local SQL rehearsal
+  encountered a transient module-download timeout; compiler caches are now reused
+  without changing the isolated engine network. The complete SQL rehearsal is
+  rerun passed after the final transport correction. Product graph renders 36 nodes and
+  64 edges; local links and catalog coverage pass. Availability changes are pending
+  staging verification; the latest verified staging source is `341e647`.

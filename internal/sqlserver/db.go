@@ -45,7 +45,11 @@ func NewAzure(server, name string, credential azcore.TokenCredential) (*Pool, er
 	if err != nil {
 		return nil, fmt.Errorf("initialize Azure SQL connector")
 	}
-	return OpenConnector(connector), nil
+	connector.SessionInitSQL = sessionInitSQL
+	return openDriverConnector(resumingConnector{
+		Connector: nativeConnector{connector}, budget: 80 * time.Second,
+		wait: waitForResume,
+	}), nil
 }
 
 func azureConfig(server, name string) (msdsn.Config, error) {
@@ -66,7 +70,11 @@ SET QUOTED_IDENTIFIER ON; SET NUMERIC_ROUNDABORT OFF;`
 // injected native connector as NewAzure. Construction performs no network IO.
 func OpenConnector(connector *mssql.Connector) *Pool {
 	connector.SessionInitSQL = sessionInitSQL
-	db := sql.OpenDB(cleanConnector{connector})
+	return openDriverConnector(nativeConnector{connector})
+}
+
+func openDriverConnector(connector driver.Connector) *Pool {
+	db := sql.OpenDB(connector)
 	db.SetMaxOpenConns(4)
 	db.SetMaxIdleConns(0)
 	db.SetConnMaxLifetime(30 * time.Minute)

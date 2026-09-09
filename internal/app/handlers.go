@@ -69,6 +69,12 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 		}
 		user, err := s.auth.userFromRequest(r.Context(), r)
 		if err != nil {
+			if !errors.Is(err, errUnauthenticated) {
+				log.Printf("session unavailable request_id=%s error=%v", requestIDFromContext(r.Context()), err)
+				w.Header().Set("Retry-After", "15")
+				http.Error(w, "Sideyard is temporarily unavailable. Please try again shortly.", http.StatusServiceUnavailable)
+				return
+			}
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
 		}
@@ -332,10 +338,6 @@ func (s *Server) handleSignupGet(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
-	if u, _ := s.auth.userFromRequest(r.Context(), r); u != nil {
-		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
-		return
-	}
 	s.render(w, r, "signup.html", map[string]any{
 		"Error":    "",
 		"ShopName": "",
@@ -349,10 +351,6 @@ func (s *Server) handleSignupPost(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
-	if user, _ := s.auth.userFromRequest(r.Context(), r); user != nil {
-		http.Error(w, "Sign out before creating another approved account.", http.StatusForbidden)
-		return
-	}
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "bad form", http.StatusBadRequest)
 		return
@@ -360,6 +358,15 @@ func (s *Server) handleSignupPost(w http.ResponseWriter, r *http.Request) {
 	shopName := r.FormValue("shop_name")
 	email := r.FormValue("email")
 	password := r.FormValue("password")
+	user, err := s.auth.userFromRequest(r.Context(), r)
+	if err != nil && !errors.Is(err, errUnauthenticated) {
+		s.renderSignupUnavailable(w, r, shopName, email)
+		return
+	}
+	if user != nil {
+		http.Error(w, "Sign out before creating another approved account.", http.StatusForbidden)
+		return
+	}
 	throttle := s.authLimiter()
 	throttleKey := authThrottleKey(r, "signup")
 	if !throttle.allowed(throttleKey) {
@@ -380,6 +387,12 @@ func (s *Server) handleSignupPost(w http.ResponseWriter, r *http.Request) {
 	}
 	token, err := s.auth.signup(r.Context(), shopName, email, password)
 	if err != nil {
+		var inputError accountInputError
+		if !errors.As(err, &inputError) {
+			log.Printf("enrollment unavailable request_id=%s error=%v", requestIDFromContext(r.Context()), err)
+			s.renderSignupUnavailable(w, r, shopName, email)
+			return
+		}
 		throttle.failure(throttleKey)
 		s.render(w, r, "signup.html", map[string]any{
 			"Error":    err.Error(),
@@ -392,6 +405,16 @@ func (s *Server) handleSignupPost(w http.ResponseWriter, r *http.Request) {
 	throttle.success(throttleKey)
 	s.auth.setSessionCookie(w, token)
 	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+}
+
+func (s *Server) renderSignupUnavailable(w http.ResponseWriter, r *http.Request, shopName, email string) {
+	w.Header().Set("Retry-After", "15")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusServiceUnavailable)
+	s.render(w, r, "signup.html", map[string]any{
+		"Error":    "Enrollment is temporarily unavailable. Please try again shortly.",
+		"ShopName": shopName, "Email": email, "Closed": !s.config.SignupOpen(),
+	})
 }
 
 func (s *Server) handleDevSeed(w http.ResponseWriter, r *http.Request) {
@@ -411,12 +434,7 @@ func (s *Server) handleDevSeed(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLoginGet(w http.ResponseWriter, r *http.Request) {
-	if !s.demo {
-		if u, _ := s.auth.userFromRequest(r.Context(), r); u != nil {
-			http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
-			return
-		}
-	}
+	// Public entry pages stay available while the database is paused or down.
 	s.render(w, r, "login.html", map[string]any{
 		"Error":      "",
 		"Email":      "",
@@ -447,6 +465,17 @@ func (s *Server) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 	}
 	token, err := s.auth.login(r.Context(), email, password)
 	if err != nil {
+		if !errors.Is(err, errInvalidCredentials) {
+			log.Printf("login unavailable request_id=%s error=%v", requestIDFromContext(r.Context()), err)
+			w.Header().Set("Retry-After", "15")
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			s.render(w, r, "login.html", map[string]any{
+				"Error": "Sign-in is temporarily unavailable. Please try again shortly.",
+				"Email": email, "Demo": false, "PublicDemo": s.config.EnablePublicDemo, "SignupOpen": s.config.SignupOpen(),
+			})
+			return
+		}
 		throttle.failure(throttleKey)
 		s.render(w, r, "login.html", map[string]any{
 			"Error": "Invalid email or password.",

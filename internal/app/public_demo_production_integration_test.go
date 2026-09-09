@@ -177,8 +177,20 @@ func TestProductionPublicDemoRouteIsExplicitIsolatedAndWritable(t *testing.T) {
 	realDemoRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: realSession})
 	realDemoResponse := httptest.NewRecorder()
 	handler.ServeHTTP(realDemoResponse, realDemoRequest)
-	if realDemoResponse.Code != http.StatusSeeOther || realDemoResponse.Header().Get("Location") != "/dashboard" {
+	if realDemoResponse.Code != http.StatusOK || !strings.Contains(realDemoResponse.Body.String(), `action="/demo/session"`) {
 		t.Fatalf("authenticated production owner demo route = %d %q", realDemoResponse.Code, realDemoResponse.Header().Get("Location"))
+	}
+	// GET stays database-free; the CSRF-protected POST recognizes and preserves
+	// an existing owner session before considering a new sandbox.
+	csrf := responseCookieValue(t, realDemoResponse, csrfCookieName)
+	realDemoPost := httptest.NewRequest(http.MethodPost, "https://clubdue.example.test/demo/session", strings.NewReader(url.Values{"csrf_token": {csrf}}.Encode()))
+	realDemoPost.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	realDemoPost.AddCookie(&http.Cookie{Name: csrfCookieName, Value: csrf})
+	realDemoPost.AddCookie(&http.Cookie{Name: sessionCookieName, Value: realSession})
+	realDemoResponse = httptest.NewRecorder()
+	handler.ServeHTTP(realDemoResponse, realDemoPost)
+	if realDemoResponse.Code != http.StatusSeeOther || realDemoResponse.Header().Get("Location") != "/dashboard" {
+		t.Fatal("demo POST did not preserve existing owner")
 	}
 	for _, cookie := range realDemoResponse.Result().Cookies() {
 		if cookie.Name == sessionCookieName {

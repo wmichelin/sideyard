@@ -21,6 +21,11 @@ const (
 	sessionTTL        = 14 * 24 * time.Hour
 )
 
+var (
+	errInvalidCredentials = errors.New("invalid email or password")
+	errUnauthenticated    = errors.New("unauthenticated")
+)
+
 type User struct {
 	ID       string
 	ShopID   string
@@ -159,19 +164,22 @@ func (a *Auth) provisionOwner(ctx context.Context, credentials OwnerCredentials)
 
 func (a *Auth) signup(ctx context.Context, shopName, email, password string) (string, error) {
 	if !validAccountText(email, shopName) {
-		return "", errors.New("email and shop name must be valid text without null characters")
+		return "", invalidAccountInput("email and shop name must be valid text without null characters")
 	}
 	email = strings.ToLower(strings.TrimSpace(email))
 	shopName = strings.TrimSpace(shopName)
 	if shopName == "" || email == "" || password == "" {
-		return "", errors.New("shop name, email, and password are required")
+		return "", invalidAccountInput("shop name, email, and password are required")
 	}
 	if len(password) < 8 {
-		return "", errors.New("password must be at least 8 characters")
+		return "", invalidAccountInput("password must be at least 8 characters")
 	}
 
 	hash, err := bcryptGenerate(password)
 	if err != nil {
+		if errors.Is(err, bcrypt.ErrPasswordTooLong) {
+			return "", invalidAccountInput("password is too long")
+		}
 		return "", err
 	}
 
@@ -189,7 +197,7 @@ func (a *Auth) signup(ctx context.Context, shopName, email, password string) (st
 		return "", err
 	}
 	if emailExists {
-		return "", errors.New("email already registered")
+		return "", invalidAccountInput("email already registered")
 	}
 
 	var shopID string
@@ -198,7 +206,7 @@ func (a *Auth) signup(ctx context.Context, shopName, email, password string) (st
 		shopName, slug,
 	).Scan(&shopID); err != nil {
 		if errors.Is(err, database.ErrNoRows) || strings.Contains(err.Error(), "duplicate") {
-			return "", errors.New("shop name already taken")
+			return "", invalidAccountInput("shop name already taken")
 		}
 		return "", err
 	}
@@ -210,7 +218,7 @@ func (a *Auth) signup(ctx context.Context, shopName, email, password string) (st
 		RETURNING id`, sqlServerInsertOwner), shopID, email, hash,
 	).Scan(&userID); err != nil {
 		if strings.Contains(err.Error(), "duplicate") {
-			return "", errors.New("email already registered")
+			return "", invalidAccountInput("email already registered")
 		}
 		return "", err
 	}
@@ -226,6 +234,9 @@ func (a *Auth) signup(ctx context.Context, shopName, email, password string) (st
 }
 
 func (a *Auth) login(ctx context.Context, email, password string) (string, error) {
+	if !validAccountText(email) {
+		return "", errInvalidCredentials
+	}
 	email = strings.ToLower(strings.TrimSpace(email))
 	var userID, hash string
 	err := a.db.Pool.QueryRow(ctx, database.Statement(a.db.Pool.Dialect(), `
@@ -233,11 +244,14 @@ func (a *Auth) login(ctx context.Context, email, password string) (string, error
 		FROM users u
 		WHERE u.email = $1
 		LIMIT 1`, sqlServerLoginByEmail), email).Scan(&userID, &hash)
+	if errors.Is(err, database.ErrNoRows) {
+		return "", errInvalidCredentials
+	}
 	if err != nil {
-		return "", errors.New("invalid email or password")
+		return "", fmt.Errorf("look up account: %w", err)
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)); err != nil {
-		return "", errors.New("invalid email or password")
+		return "", errInvalidCredentials
 	}
 	// Every successful authentication receives a new, independent session token.
 	// Do not revoke the user's other sessions here: deployment smoke tests and
@@ -290,7 +304,7 @@ func (a *Auth) logout(ctx context.Context, token string) error {
 func (a *Auth) userFromRequest(ctx context.Context, r *http.Request) (*User, error) {
 	cookie, err := r.Cookie(sessionCookieName)
 	if err != nil || cookie.Value == "" {
-		return nil, errors.New("unauthenticated")
+		return nil, errUnauthenticated
 	}
 	tokenHash := hashToken(cookie.Value, a.sessionSecret)
 
@@ -303,8 +317,11 @@ func (a *Auth) userFromRequest(ctx context.Context, r *http.Request) (*User, err
 		WHERE sess.token_hash = $1 AND sess.expires_at > $2
 		  AND (s.expires_at IS NULL OR s.expires_at > $2)
 		`, sqlServerSessionUser), tokenHash, a.nowUTC()).Scan(&u.ID, &u.ShopID, &u.Email, &u.Role, &u.ShopName, &u.IsDemo)
+	if errors.Is(err, database.ErrNoRows) {
+		return nil, errUnauthenticated
+	}
 	if err != nil {
-		return nil, errors.New("unauthenticated")
+		return nil, fmt.Errorf("look up session: %w", err)
 	}
 	return &u, nil
 }
@@ -380,3 +397,10 @@ func validAccountText(values ...string) bool {
 	}
 	return true
 }
+
+// Input errors are safe to present; dependency errors remain internal and must
+// not consume the bad-credential throttle or be rendered as database details.
+type accountInputError struct{ message string }
+
+func (e accountInputError) Error() string      { return e.message }
+func invalidAccountInput(message string) error { return accountInputError{message} }

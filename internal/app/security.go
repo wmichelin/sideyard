@@ -138,7 +138,12 @@ func (s *Server) securityHandler(next http.Handler) http.Handler {
 		setSecurityHeaders(w.Header())
 
 		if isStateChangingMethod(r.Method) {
-			requestLimit, publicDemoUser := s.requestBodyLimit(r)
+			requestLimit, publicDemoUser, err := s.requestBodyLimit(r)
+			if err != nil {
+				w.Header().Set("Retry-After", "15")
+				http.Error(w, "Sideyard is temporarily unavailable. Please try again shortly.", http.StatusServiceUnavailable)
+				return
+			}
 			if publicDemoUser != nil {
 				s.setPublicDemoHeaders(w)
 				if r.URL.Path != "/logout" && !s.publicDemoLimiter().take("public-demo-mutation:"+publicDemoUser.ID) {
@@ -168,24 +173,36 @@ func (s *Server) securityHandler(next http.Handler) http.Handler {
 	})
 }
 
-func (s *Server) requestBodyLimit(r *http.Request) (int64, *User) {
+func (s *Server) requestBodyLimit(r *http.Request) (int64, *User, error) {
 	limit := s.config.RuntimeLimits.MaxRequestBodyBytes
 	if r.URL.Path == "/interest" && limit > 16<<10 {
 		limit = 16 << 10
 	}
 	if s.auth == nil || !s.config.EnablePublicDemo {
-		return limit, nil
+		return limit, nil, nil
+	}
+	// These forms do their own authentication/recording after bounded body and
+	// CSRF admission. An old cookie must not trigger an optional lookup first.
+	switch r.URL.Path {
+	case "/login", "/signup", "/interest", "/demo/session":
+		return limit, nil, nil
 	}
 	user, err := s.auth.userFromRequest(r.Context(), r)
-	if err != nil || !user.IsDemo {
-		return limit, nil
+	if errors.Is(err, errUnauthenticated) {
+		return limit, nil, nil
+	}
+	if err != nil {
+		return 0, nil, err
+	}
+	if !user.IsDemo {
+		return limit, nil, nil
 	}
 	if r.Method == http.MethodPost && r.URL.Path == "/import" {
 		if mediaType, ok := normalizedMediaType(r.Header.Get("Content-Type")); ok && mediaType == "multipart/form-data" {
-			return publicDemoMaxImportRequestBytes, user
+			return publicDemoMaxImportRequestBytes, user, nil
 		}
 	}
-	return publicDemoMaxMutationFormBytes, user
+	return publicDemoMaxMutationFormBytes, user, nil
 }
 
 func setSecurityHeaders(header http.Header) {
