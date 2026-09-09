@@ -1,0 +1,17 @@
+{{ define "equipment_record_content" }}
+<header class="page-header"><div><h2 class="page-title">Equipment record</h2><p class="page-subtitle">{{ .Equipment.Address }}</p></div><a class="secondary-btn" href="/customers/{{ .Equipment.CustomerID }}">Back to customer</a></header>
+{{ if .Saved }}<p class="success-banner" role="status">Equipment saved.</p>{{ end }}
+{{ if .Error }}<p class="error-banner" role="alert">{{ .Error }} <a href="/equipment/{{ .Equipment.ID }}">Reload record</a></p>{{ end }}
+<section class="panel"><h3 class="section-title">Equipment details</h3><p>Keep a separate record for each unit, fixture or system. Leave unknown dates blank.</p>
+<form method="post" class="form-stack">
+{{ template "csrf_field" . }}<input type="hidden" name="revision" value="{{ .Equipment.Revision }}">
+<label><span>Equipment name or type</span><input name="kind" maxlength="120" required value="{{ .Equipment.Kind }}" placeholder="Upstairs heat pump, water heater, panel…"></label>
+<div class="form-row"><label><span>Make</span><input name="make" maxlength="120" value="{{ .Equipment.Make }}"></label><label><span>Model</span><input name="model" maxlength="120" value="{{ .Equipment.Model }}"></label></div>
+<label><span>Serial number / reference</span><input name="serial_number" maxlength="120" value="{{ .Equipment.SerialNumber }}"></label>
+<label><span>Location at property</span><input name="location" maxlength="120" value="{{ .Equipment.Location }}" placeholder="Basement utility room"></label>
+<div class="form-row"><label><span>Installed on (optional)</span><input type="date" name="installed_on" value="{{ .Equipment.InstalledOn }}"></label><label><span>Warranty ends (optional)</span><input type="date" name="warranty_until" value="{{ .Equipment.WarrantyUntil }}"></label></div>
+<label><span>Internal service details</span><textarea name="notes" rows="4" maxlength="2000">{{ .Equipment.Notes }}</textarea></label><p class="muted">Location, dates and service details are visible only to the business owner.</p>
+<button class="primary-btn">Save equipment</button>
+</form></section>
+<a class="secondary-btn" href="/properties/{{ .Equipment.PropertyID }}">Property record</a>
+{{ end }}

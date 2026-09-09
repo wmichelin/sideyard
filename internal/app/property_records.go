@@ -191,6 +191,11 @@ func (s *Server) handlePropertyRecord(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	address := strings.Join([]string{p.AddressLine1, p.AddressLine2, p.City, p.State, p.PostalCode}, " ")
+	p.Equipment, err = s.store.ListEquipment(r.Context(), u.ShopID, id)
+	if err != nil {
+		http.Error(w, "Could not load equipment. Please retry.", 503)
+		return
+	}
 	journal, err := s.store.ListPropertyNotes(r.Context(), u.ShopID, id)
 	if err != nil {
 		http.Error(w, "Could not load site notes. Please retry.", 503)

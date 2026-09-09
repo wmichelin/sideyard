@@ -73,7 +73,7 @@
   {{ if .Equipment }}
   <ul class="equipment-list">
     {{ range .Equipment }}
-    <li>{{ .Kind }}{{ if .Make }} — {{ .Make }} {{ .Model }}{{ end }}{{ if .SerialNumber }} (ID {{ .SerialNumber }}){{ end }}</li>
+    <li>{{ .Kind }}{{ if .Make }} — {{ .Make }} {{ .Model }}{{ end }}{{ if .SerialNumber }} (ID {{ .SerialNumber }}){{ end }}{{ if eq $.Nav.User.Role "owner" }} · <a href="/equipment/{{ .ID }}">Edit equipment</a>{{ end }}</li>
     {{ end }}
   </ul>
   {{ end }}

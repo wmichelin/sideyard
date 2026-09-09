@@ -75,7 +75,7 @@ func TestEveryMutationRouteRejectsMissingCSRF(t *testing.T) {
 		"/login", "/signup", "/logout", "/renew/token", "/dev/seed", "/demo/session",
 		"/agreements", "/agreements/id", "/agreements/id/renewal-link", "/agreements/id/service-schedules", "/service-schedules/id", "/renewals",
 		"/customers", "/customers/id", "/customers/id/delete", "/customers/id/properties",
-		"/properties/id/equipment", "/properties/id", "/customers/id/vehicles", "/import", "/visits", "/plan-templates", "/plan-templates/id", "/business",
+		"/properties/id/equipment", "/properties/id", "/equipment/id", "/customers/id/vehicles", "/import", "/visits", "/plan-templates", "/plan-templates/id", "/business",
 		"/service-occurrences/id/date",
 	}
 	for _, path := range paths {
@@ -137,6 +137,7 @@ func TestPublicDemoMutationAllowlistIsFinite(t *testing.T) {
 		{"/customers/existing/delete", url.Values{}},
 		{"/customers/existing/properties", url.Values{}},
 		{"/properties/existing/equipment", url.Values{}},
+		{"/equipment/existing", url.Values{"revision": {"1"}, "kind": {"Heat pump"}}},
 		{"/visits", url.Values{"action": {"completed"}}},
 		{"/visits", url.Values{"action": {"skipped"}}},
 		{"/visits", url.Values{"action": {"scheduled"}}},
