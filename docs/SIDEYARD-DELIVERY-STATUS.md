@@ -414,7 +414,7 @@ paid integrations or live customer payment collection are configured by this cha
   A direct backup test email was accepted by Resend. Initial Python default
   User-Agent received HTTP 403; identifying requests as `Sideyard/1.0` fixed it,
   matching the app's existing notification client.
-- Staging: https://clubdue-staging.michelindigitalmedia.com (pending for Azure).
+- Staging: https://clubdue-staging.michelindigitalmedia.com (verified for Azure Blob; SQL application port pending).
 - Three read-only specialist agents reviewed all six delivery perspectives.
   Product/QA: retain tenant/owner photo access, reservations and tombstones;
   prove oldest retained backup with an old photo deleted recently. Architect/
@@ -433,3 +433,32 @@ paid integrations or live customer payment collection are configured by this cha
 - Execution order: infrastructure and authenticated recovery, Blob integration,
   explicit SQL Server domain port, isolated migration/restore and staging soak,
   then reviewed production cutover under the existing release workflow.
+
+### Azure Blob final staging verification
+
+- Current staging source `7181040659452d11b966e755efb8cd44502f748d`; CI
+  [34410708421](https://github.com/wmichelin/clubdue/actions/runs/34410708421) and staging
+  [34410708450](https://github.com/wmichelin/clubdue/actions/runs/34410708450) succeeded.
+  Running revision and image verified:
+  `ghcr.io/wmichelin/clubdue@sha256:61834ce74a7bd52f77b14aca8d388d2c6e68a1caf86ac7fd691515f36b029c35`.
+  Final manual staging smoke passed. Go application code is unchanged from the
+  `90bcf58` mobile/desktop Azure photo acceptance run above.
+- Downloaded the latest encrypted exports and their authenticated exact-version
+  manifests from each Azure account. Restored into isolated, network-disabled
+  PostgreSQL containers using temporary memory-backed data directories. Staging:
+  9 shops, 220 customers, 2 photos, 31 migrations. Production: 6 shops, 152 customers,
+  0 photos, 29 migrations. The active Azure-backed staging photo's retained
+  database bytes matched its SHA-256 hash after restore. Synthetic demo/QA rows
+  explain staging counts; no customer record contents are included in this log.
+- Native Azure SQL restore windows now report earliest restore dates:
+  staging `2026-09-09T22:02:16Z`, production `2026-09-09T22:16:12Z`.
+  Both retention policies are seven days. This confirms available restore
+  history, not a completed native point-in-time restore into another database.
+- A real TLS-verified Entra SQL connection to staging returned database
+  `sideyard`, engine edition 5. Closing the query left zero idle connections.
+  This was a read-only connection probe; no application schema or data was moved.
+- Production's separate, container-scoped photo identity is provisioned, and
+  its protected configuration is prepared for the reviewed app promotion.
+  Current production app and database backend remain unchanged. Promoting this
+  staging artifact also includes the previously staged jobs and status-badge fix;
+  user review must cover that complete artifact before production deployment.

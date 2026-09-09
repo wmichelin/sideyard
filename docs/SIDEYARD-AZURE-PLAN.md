@@ -3,11 +3,11 @@
 ## Status update
 
 Status: implementing — user authorized Azure SQL, versioned Blob and seven-day backups.
-Last completed: CLI login, free staging SQL, versioned Blob, seven-day export and isolated restore.
-Now: staging application integration and matching production infrastructure, September 9, 2026.
-Next: verify the Blob app release, then port the PostgreSQL domains explicitly to SQL Server.
-Evidence: repository baseline `cc356f3`; linked Microsoft sources and code below.
-Staging: https://clubdue-staging.michelindigitalmedia.com (pending for Azure work; no new deployment).
+Last completed: both environments provisioned; staging Blob application verified; both Azure exports restored, including staging photo recovery bytes.
+Now: explicit PostgreSQL-to-SQL Server application port, September 9, 2026.
+Next: verify both database backends and idle behavior before a reviewed database cutover.
+Evidence: Blob staging release `7181040`; exact artifacts in the delivery status.
+Staging: https://clubdue-staging.michelindigitalmedia.com (verified for Azure Blob; application database remains PostgreSQL).
 Blocker: no sign-in blocker. The live free SQL API requires a 60-minute idle delay; the plan below reflects that correction.
 
 The user accepted Blob Storage's 12-month free offer, the 0.5–1 vCore database
@@ -16,7 +16,7 @@ plan was reviewed locally; the implementation has additional architect/staff,
 DevOps/testing and product/QA agent reviews recorded in the delivery status.
 
 [PRODUCT-MAP.md](PRODUCT-MAP.md) remains the source of truth for implemented
-features and client onboarding. This is proposed infrastructure, not a release
+features and client onboarding. This plan includes unfinished work; it is not a release
 availability claim. Deployment evidence belongs in
 [SIDEYARD-DELIVERY-STATUS.md](SIDEYARD-DELIVERY-STATUS.md).
 
