@@ -61,3 +61,15 @@ timeline pagination, asset photos and crew permissions remain later work.
   screenshot inspected; scripts/screenshots retained under `/tmp/sideyard-qa/`.
 - Migration 028 is additive. Rolling back the application can leave the table
   and its history intact; it does not require removing stored notes.
+
+## Staging validation and slow-script correction
+
+- Initial source `d33983fe0ed1de3620979fc50686f35cd2f87736`: CI
+  `34314565779` and Deploy Staging `34314565730` passed. Manual smoke passed.
+- The first browser attempt read defaults before the deferred script loaded.
+  Waiting for DOMContentLoaded made the complete staging flow pass. Investigation
+  also found a real slow-script edge case: defaults could overwrite values entered
+  before the script arrived. A deliberately held script reproduced that failure
+  against the original binary; guarding changed fields fixed it.
+- Static rebuild and the complete local browser flow, including deliberately
+  delayed JavaScript, passed with the correction. Final staging checks follow.
