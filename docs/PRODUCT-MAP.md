@@ -6,19 +6,20 @@ Read this before onboarding a business or planning a product change. The
 [execution plan](SIDEYARD-EXECUTION-PLAN.md) describes future work;
 [delivery status](SIDEYARD-DELIVERY-STATUS.md) holds deployment evidence.
 The [Azure execution plan](SIDEYARD-AZURE-PLAN.md) tracks the infrastructure
-migration. Cloud resources exist; product integration is still being verified.
+migration. Azure photo integration is verified on staging; the main application
+database still uses PostgreSQL. Production cloud resources are provisioned.
 See [delivery status](SIDEYARD-DELIVERY-STATUS.md#azure-migration--implementation-started-september-9-2026)
 for the distinction between provisioned resources and deployed app behavior.
 
 ## Availability snapshot
 
-Reviewed September 9, 2026 against application source `53b7878` and the recorded
+Reviewed September 9, 2026 against application source `90bcf58` and the recorded
 release verification. These are verified release states, not a live deployment monitor.
 
 | Label | Meaning |
 | --- | --- |
 | **Live** | Available in production at [getsideyard.com](https://getsideyard.com), source `ae6f16a`, and on staging. The legacy ClubDue hostname remains supported. |
-| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), source `53b7878`: standalone jobs/site surveys and the single-line work-status badge fix. |
+| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), source `90bcf58`: standalone jobs/site surveys, the single-line work-status badge fix, and configured private Azure photo storage. |
 | **Conditional** | Implemented but requires explicit deployment configuration; not a promise of availability to clients. |
 
 Unless marked otherwise, catalog nodes are **Live**. “Signed in” means a user
@@ -78,7 +79,7 @@ flowchart TB
     CUSTOMER["CUSTOMER · Contact, properties, vehicles"]
     PROPERTY["PROPERTY · Site notes / measurements"]
     ADDRESS["ADDRESS · Correct property address"]
-    PHOTOS["PHOTOS · Private property photos<br/>Azure option pending deployment"]
+    PHOTOS["PHOTOS · Private property photos<br/>Azure storage on staging"]
     IMAGE["IMAGE · Private image viewer"]
     EQUIPMENT["EQUIPMENT · Equipment record"]
     EHISTORY["EHISTORY · Equipment service history"]
@@ -278,7 +279,7 @@ and 50 MiB per shop. Deletion removes live image content; older encrypted backup
 may retain it for up to 30 days. Photos belong to properties, not individual jobs
 or visits. Open IMAGE for a full image or return to PROPERTY.
 
-**Azure integration — local implementation, deployment pending:** configuration
+**Azure integration — Staging, requires deployment configuration:** configuration
 can store normalized images in private, versioned Blob storage. New uploads count
 toward quota while awaiting confirmation and appear only after it succeeds.
 Retries reuse the same object; failed migration of an existing photo preserves
@@ -295,7 +296,7 @@ at seven days. [Storage implementation](../internal/app/azure_photos.go) ·
 
 Authenticated image response opened from PHOTOS. It has no management form and
 is not a public sharing URL. Browser back returns to the photo collection.
-With the pending Azure configuration enabled, authorization happens before the
+With Azure configured (verified on staging), authorization happens before the
 exact saved Blob version is fetched and its hash, size and MIME type verified.
 Azure outages return a retryable error; disabling Azure explicitly enables the
 retained database recovery copies. Storage keys and direct Blob URLs are never

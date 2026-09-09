@@ -22,7 +22,7 @@ def send_notice(env, environment, incident, message, opener):
     if env.get("INTEREST_NOTIFY_TO") != "wmichelin@gmail.com":
         raise ValueError("backup notifications require the configured Sideyard owner address")
     data = json.dumps({"from": env["INTEREST_NOTIFY_FROM"], "to": [env["INTEREST_NOTIFY_TO"]], "subject": f"Sideyard {environment} backup alert", "text": message + "\n\nInspect sideyard-azure-backup@" + environment + ".service and the Azure backup manifest before relying on recovery."}).encode()
-    request = urllib.request.Request("https://api.resend.com/emails", data=data, headers={"Authorization": "Bearer " + env["RESEND_API_KEY"], "Content-Type": "application/json", "Idempotency-Key": f"sideyard-backups/{environment}/{incident}"})
+    request = urllib.request.Request("https://api.resend.com/emails", data=data, headers={"Authorization": "Bearer " + env["RESEND_API_KEY"], "Content-Type": "application/json", "User-Agent": "Sideyard/1.0", "Idempotency-Key": f"sideyard-backups/{environment}/{incident}"})
     with opener.open(request, timeout=20) as response:
         result = json.loads(response.read(4096))
         if not result.get("id"):

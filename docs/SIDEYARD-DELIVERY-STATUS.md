@@ -398,6 +398,22 @@ paid integrations or live customer payment collection are configured by this cha
   not supported`. Quota rules are configured but synthetic Azure email delivery
   is unverified. Backup failure/staleness notifications use the existing Resend
   integration; independent monitoring for complete droplet loss remains pending.
+- Blob app source `90bcf58f1fa34faac1733ecf5ecc89a4539c94d5`: CI
+  `34410242419` and staging `34410242364` succeeded. Immutable image
+  `ghcr.io/wmichelin/clubdue@sha256:c0e694f9bac08e1277d6898b3786654a3cbb231f04f9d2575ac66725e166b188`
+  is running on staging with Azure photo configuration; revision/digest/logs and
+  migration 031 verified. Manual smoke and desktop/mobile (390/1440) real-browser
+  photo upload, large proxy upload, private/foreign/demo access and deletion passed.
+  `sync-photos` on the deployed container completed with zero pending handoffs.
+- Production Azure SQL/Blob resources and two quota alerts applied successfully;
+  free-limit flags, 0.5–1 vCore, 60-minute idle delay and seven-day retention read
+  back. The main production app is still on its previously approved release and
+  PostgreSQL. No SQL Server application port or production Blob cutover is claimed.
+- Production encrypted Azure export completed `2026-09-09T22:06:41Z`. Daily
+  export and hourly/OnFailure monitor units are installed for both environments.
+  A direct backup test email was accepted by Resend. Initial Python default
+  User-Agent received HTTP 403; identifying requests as `Sideyard/1.0` fixed it,
+  matching the app's existing notification client.
 - Staging: https://clubdue-staging.michelindigitalmedia.com (pending for Azure).
 - Three read-only specialist agents reviewed all six delivery perspectives.
   Product/QA: retain tenant/owner photo access, reservations and tombstones;
