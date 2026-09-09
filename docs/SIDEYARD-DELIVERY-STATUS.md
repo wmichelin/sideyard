@@ -1,10 +1,10 @@
 # Sideyard delivery status
 
-Status: verified — eight foundational slices on staging. Overall execution plan remains in progress.
-Last completed: vehicle and equipment service histories verified on staging, including optional event times.
+Status: verified — nine foundational slices on staging. Overall execution plan remains in progress.
+Last completed: recurring and seasonal visit notes verified on staging, including preserved work state and CSV privacy.
 Now: durable handoff and staging review.
 Next: expanded internal timelines and scheduling; production promotion only after approval.
-Staging: https://clubdue-staging.michelindigitalmedia.com (verified through asset service histories).
+Staging: https://clubdue-staging.michelindigitalmedia.com (verified through visit-linked notes).
 Blocker: none for continued development. Production requires review and approval.
 
 The user explicitly authorized continued building on September 8, 2026. The
@@ -118,7 +118,8 @@ foundation of Release 1, not completion of the entire execution plan.
 Use [execution plan](SIDEYARD-EXECUTION-PLAN.md) for the seven releases and billing
 patterns. Site details, manual measurement history and vehicle records are implemented;
 dated property notes are also implemented. Equipment editing and address correction are now implemented. Authored notes
-linked directly to jobs and staff permissions remain. Vehicle/equipment histories
+linked directly to standalone jobs and staff permissions remain. Existing recurring
+and seasonal visit notes are implemented in the next slice below. Vehicle/equipment histories
 are implemented in the next slice below. Private
 property photos are verified on staging.
 Billing, scheduling extensions and provider integrations remain as planned. No
@@ -126,8 +127,8 @@ paid integrations or live customer payment collection are configured by this cha
 
 ## Continuation details
 
-- Migrations 021–028 are committed and applied on staging. Migration 028 adds
-  vehicle/equipment note history. Do not edit committed migrations'
+- Migrations 021–029 are committed and applied on staging. Migration 028 adds
+  vehicle/equipment note history; 029 adds visit history. Do not edit committed migrations'
   checksummed contents; future changes require a new migration.
 - Vehicle/equipment event notes default to the browser's date/timezone, with an
   editable UTC fallback without JavaScript. Time is optional and remains unknown
@@ -252,12 +253,12 @@ paid integrations or live customer payment collection are configured by this cha
   delayed JavaScript, no-JavaScript fallback and 390/1440-pixel views.
 - Both local history QA servers and the task-owned disposable database were
   removed. Scripts/screenshots and build caches remain available.
-- Remaining E2 work includes customer/visit-linked notes, property event-time
+- Remaining E2 work includes customer-linked notes, property event-time
   upgrades and vehicle/equipment photo associations. E3 adds jobs, finite
   programs and crew scheduling; E4 adds configurable contract billing across
   trades. Four/five treatments are one use case, not a universal billing rule.
 
-## Current verified staging artifact
+## Asset-history staging artifact
 
 - Source: `ea9d91d9f6892a8b1a7d036429081a819eed3e82`.
 - Image: `ghcr.io/wmichelin/clubdue@sha256:6567c243466dc954ece39c91d5a2210c73879b63fee9ec359b2c80d92a751e32`.
@@ -266,3 +267,38 @@ paid integrations or live customer payment collection are configured by this cha
   script regression. No browser errors, overflow or unexpected staging errors.
 - Running staging image/revision verified directly. Production remains on
   `7d33ab7ff1c05a796bd351b647f81eea58729726` and its gate is false. No promotion.
+
+## Visit-linked notes
+
+- Owner-only **Visit notes** links on recurring and seasonal Service work rows.
+  Each existing visit keeps its own dated/timed internal history, with authorship,
+  immutable corrections and safe duplicate retries. Completed visits accept
+  follow-up notes. Rescheduling retains the same visit/history identity.
+- Adding a note does not change work status, create visits or consume included
+  services. Private notes stay out of the established CSV exports; existing work
+  outcome and legacy export-note behavior remains unchanged.
+- Shared event-time validation and form rendering also serve vehicle/equipment
+  histories. Unknown event times remain blank; DST ambiguity is explicit.
+- Migration 029 has tenant-safe recurring/seasonal foreign keys and exactly one
+  parent per note. The app can roll back while retaining new history rows.
+- Full Go/Postgres tests, vet, static build, both operational rehearsals and
+  local visit/asset browser checks passed. See
+  [visit history delivery](SIDEYARD-VISIT-HISTORY-DELIVERY.md) for review and evidence.
+- QA scripts: `/tmp/sideyard-qa/visit-history.cjs` and existing `history.cjs`;
+  screenshots retained there. Local test server/database were removed.
+- Next: customer history and property event-time upgrades, followed by standalone
+  jobs/site surveys, finite service programs, appointments/crew assignment and
+  configurable contract billing. No new payment or billing integration yet.
+
+## Current verified staging artifact
+
+- Source: `ae6f16ae9f9feaf52bf58093cf1f0c3b8c7a7c34`.
+- Image: `ghcr.io/wmichelin/clubdue@sha256:a57a268f081b8f2c96550eb2d61b00e36faae855757662c0a62b27162f5d319c`.
+- CI `34353916568` and staging `34353916405` succeeded. Manual smoke and both
+  visit/asset history browser flows passed at 390/1440 pixels. No browser errors,
+  overflow or unexpected staging log errors. Running source/image verified.
+- Production remains on `7d33ab7ff1c05a796bd351b647f81eea58729726`; gate false.
+  The user's “Do it” was ambiguous between promotion and further development;
+  clarification was requested and standing build authorization used to continue.
+  No production approval was assumed. See the visit delivery artifact for the
+  exact earlier reviewed release if that is the one they approve.

@@ -1,11 +1,19 @@
 # Visit-linked internal notes
 
-Status: testing
-Last completed: implementation, full checks and local browser acceptance passed.
-Now: publishing authored notes tied to existing visit identities.
-Next: CI, staging smoke and browser verification.
-Staging: https://clubdue-staging.michelindigitalmedia.com (pending for this slice)
+Status: verified
+Last completed: CI, staging smoke, both browser flows and running artifact verification passed.
+Now: durable handoff of visit-linked notes.
+Next: remaining customer/property timeline work, then standalone jobs and scheduling.
+Staging: https://clubdue-staging.michelindigitalmedia.com (verified)
 Blocker: none for development. Production scope clarification is pending.
+
+The user's “Do it” followed a message containing both a verified staging release
+and further development steps. Asked which action they meant and continued under
+the standing development authorization. No production dispatch or gate change.
+If they approve the release already shown before this slice, its reviewed source
+is `ea9d91d9f6892a8b1a7d036429081a819eed3e82`, image
+`sha256:6567c243466dc954ece39c91d5a2210c73879b63fee9ec359b2c80d92a751e32`.
+Do not silently substitute this newer visit-note build for that earlier review.
 
 ## Delivery brief and team review
 
@@ -57,3 +65,18 @@ upgrades and job/asset photos remain separate steps in the execution plan.
   button label; matching the actual label fixed the script without app changes.
 - `node /tmp/sideyard-qa/history.cjs http://127.0.0.1:18894`: existing vehicle and
   equipment flow passed, including delayed JavaScript and no-JavaScript fallback.
+
+## Staging evidence
+
+- Source: `ae6f16ae9f9feaf52bf58093cf1f0c3b8c7a7c34`.
+- Image: `ghcr.io/wmichelin/clubdue@sha256:a57a268f081b8f2c96550eb2d61b00e36faae855757662c0a62b27162f5d319c`.
+- [CI](https://github.com/wmichelin/clubdue/actions/runs/34353916568) and
+  [Deploy Staging](https://github.com/wmichelin/clubdue/actions/runs/34353916405)
+  succeeded. Source/image read directly from the running staging container.
+- `./scripts/smoke-test.sh staging`: passed.
+- `node /tmp/sideyard-qa/visit-history.cjs https://clubdue-staging.michelindigitalmedia.com staging`
+  and `node /tmp/sideyard-qa/history.cjs https://clubdue-staging.michelindigitalmedia.com staging`:
+  both passed on isolated fictional demos at 390/1440 pixels. No browser errors,
+  document overflow or unexpected staging log errors. Mobile screenshot reviewed.
+- Local QA server and disposable database removed. No production promotion;
+  its source remains `7d33ab7ff1c05a796bd351b647f81eea58729726`, gate `false`.
