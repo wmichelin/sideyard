@@ -14,6 +14,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+	mssql "github.com/microsoft/go-mssqldb"
 	"github.com/microsoft/go-mssqldb/msdsn"
 	"github.com/wmichelin/clubdue/internal/database"
 	"github.com/wmichelin/clubdue/internal/testdb"
@@ -124,6 +125,11 @@ func TestSQLServerFailedSessionInitializationClosesUnownedConnection(t *testing.
 	got, err := (cleanConnector{failedInitConnector{conn: c, err: want}}).Connect(context.Background())
 	if got != nil || !errors.Is(err, want) || !c.closed {
 		t.Fatal("failed initialization leaked a driver connection or its error")
+	}
+	var absent *mssql.Conn
+	got, err = (cleanConnector{failedInitConnector{conn: absent, err: context.Canceled}}).Connect(context.Background())
+	if got != nil || !errors.Is(err, context.Canceled) {
+		t.Fatal("typed nil connection was not normalized after canceled dial")
 	}
 }
 

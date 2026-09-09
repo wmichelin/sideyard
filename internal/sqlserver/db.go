@@ -77,6 +77,11 @@ type cleanConnector struct{ driver.Connector }
 
 func (c cleanConnector) Connect(ctx context.Context) (driver.Conn, error) {
 	conn, err := c.Connector.Connect(ctx)
+	// A failed native dial may return a typed nil *mssql.Conn through the
+	// driver.Conn interface. It is not a connection we can close.
+	if native, ok := conn.(*mssql.Conn); ok && native == nil {
+		return nil, err
+	}
 	// The Microsoft driver can return a connection alongside an initialization
 	// error. database/sql will not own it in this path, so release it here.
 	if err != nil && conn != nil {

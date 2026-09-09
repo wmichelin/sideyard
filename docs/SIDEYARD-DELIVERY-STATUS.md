@@ -586,3 +586,13 @@ paid integrations or live customer payment collection are configured by this cha
 - Production backup/restore and pilot-onboarding rehearsals also passed. These
   use isolated local containers and do not promote the production application.
   Staging remains verified at `b0ebaf2`; tenant/auth slice awaits staging delivery.
+
+- Tenant/auth source `fcb47f73087f9b867bb1597d6e7ffe888ca86956` deployed to
+  staging [34416609502](https://github.com/wmichelin/clubdue/actions/runs/34416609502),
+  but CI [34416609579](https://github.com/wmichelin/clubdue/actions/runs/34416609579)
+  found a canceled native dial returning a typed-nil driver connection. Cleanup
+  attempted to close it and panicked. This dormant SQL path is a release blocker;
+  staging deployment alone is not verification. PostgreSQL app traffic is unaffected.
+- The fix normalizes that typed nil before cleanup. A direct regression and
+  twenty repetitions of the real SQL shutdown/last-signup scenario passed locally.
+  CI and staging must pass again before this source is eligible for review.
