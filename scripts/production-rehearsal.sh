@@ -213,12 +213,16 @@ photo_property_id="$(docker exec "$SOURCE_DB" psql -U clubdue -d clubdue -qAt -v
   INSERT INTO properties(shop_id,customer_id,address_line1,city,state,postal_code)
   SELECT shop_id,id,'12 Photo Street','Cary','NC','27511' FROM c RETURNING id")"
 [ -n "$photo_property_id" ]
+cp "$ROOT/internal/app/static/sideyard-icon-32-v2.png" "$WORK_DIR/photo-upload.png"
+# Trailing bytes force the real scratch image's multipart temp-file path. Image
+# normalization discards them; a missing /tmp must fail this release rehearsal.
+dd if=/dev/zero bs=1048576 count=2 >> "$WORK_DIR/photo-upload.png" 2>/dev/null
 for _ in 1 2; do
   photo_upload_status="$(curl -sS -o "$WORK_DIR/photo-upload.html" -w '%{http_code}' \
     -H "Cookie: clubdue_csrf=${csrf_cookie}; clubdue_session=${session_cookie}" \
     -F "csrf_token=${csrf_token}" -F 'photo_key=11111111111111111111111111111111' \
     -F 'caption=Production rehearsal property photo' -F 'category=before' \
-    -F "photo=@${ROOT}/internal/app/static/sideyard-icon-32-v2.png;type=image/png" \
+    -F "photo=@${WORK_DIR}/photo-upload.png;type=image/png" \
     "http://127.0.0.1:${PORT}/properties/${photo_property_id}/photos")"
   [ "$photo_upload_status" = "303" ]
 done

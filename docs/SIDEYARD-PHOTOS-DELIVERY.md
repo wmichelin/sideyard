@@ -69,3 +69,17 @@ sync, automatic HEIC conversion and media storage scaling are not in this slice.
   repeated proxy rewrite passed; staging will exercise a >1 MiB multipart upload.
 - Public-demo uploads and deletion remain rejected. Staging photo upload QA uses
   a dedicated synthetic owner; its temporary tenant will be removed afterward.
+
+## Large-upload staging correction
+
+The first staging browser run failed on its >2 MiB upload after the proxy limit
+was corrected. The scratch image had no `/tmp` directory, so Go's multipart
+spooling path could not create its temporary file. Confirmed the directory was
+absent in the running staging container. Small uploads had passed because they
+stayed in memory.
+
+The image now includes an empty `/tmp` directory. The production rehearsal uses
+an input larger than 2 MiB, exercises the real scratch container upload/retry path,
+then verifies normalized bytes and metadata after encrypted restore. That expanded
+rehearsal passed locally. This corrects the release fixture gap; final staging
+browser verification must pass again before this slice is marked verified.
