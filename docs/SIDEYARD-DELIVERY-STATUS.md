@@ -498,3 +498,49 @@ paid integrations or live customer payment collection are configured by this cha
 - Runtime SQL Server selection, native application schema/queries, data transfer,
   SQL export/recovery and actual Azure pause/resume remain unfinished. Both app
   environments still use PostgreSQL. No new production release is claimed.
+
+- Connection foundation source `365d511b697ac5af6ddaf81762181b70670a0831`
+  passed CI [34413139882](https://github.com/wmichelin/clubdue/actions/runs/34413139882)
+  and staging [34413139702](https://github.com/wmichelin/clubdue/actions/runs/34413139702).
+  Running image/revision verified:
+  `ghcr.io/wmichelin/clubdue@sha256:af0a9a7f568b17d41b4fbdcd62524183528c212a861fbe37d6dc8fa084782731`.
+  Manual staging smoke passed. Production approval remains pending for the
+  earlier reviewed Blob release `7181040`; no approval is inferred for later code.
+
+### Native interest/outbox and idle worker — implementation
+
+- Added native SQL Server signup/outbox schema and explicit T-SQL queries.
+  Signups and alerts commit together; concurrent duplicate emails retain the
+  original details and enqueue once. Claim locks work with SQL Server's
+  read-committed snapshot setting enabled. UUID projections preserve the same
+  lowercase provider idempotency keys used by PostgreSQL.
+- Real-engine tests share retry/acknowledgement and competing-worker scenarios
+  across PostgreSQL and SQL Server. Additional SQL tests verify concurrent save,
+  failed queue insertion rollback, after-commit wakes, supplementary Unicode at
+  current limits, and rejection of a mixed-width 2,001-character message. Review
+  caught SQL Server's 8,000-byte concatenation truncation; an explicit large-value
+  cast preserves the sentinel-based character count.
+- Replaced perpetual empty-queue polling with a buffered post-commit wake,
+  startup recovery, durable next-attempt timers and daily maintenance reconciliation.
+  Tests verify the empty-query/wait race, bursts beyond the 20-item batch limit,
+  no idle polling, bounded lock contention, interrupted retry waits and database
+  failure backoff. Worker shutdown follows HTTP drain. Lost process handoffs may
+  wait for reconciliation; no unconditional exactly-once delivery is claimed.
+- Full Go suite with both real engines, vet, static build and the expanded
+  isolated SQL rehearsal passed locally. Native application SQL selection remains
+  disabled. Next: remaining tenant/auth and operational domains, migration/export
+  tooling, cold-start behavior and actual Azure idle/resume proof.
+- Staging: https://clubdue-staging.michelindigitalmedia.com (verified foundation;
+  native interest/worker changes pending deployment).
+- A real two-instance SQL test now covers a last HTTP signup committing during
+  shutdown after the surviving worker already observed an empty queue. The row
+  remains durable and the reconciliation wake delivers/acknowledges it once.
+- Azure staging SQL was observed `Paused` via the management API. A subsequent
+  TLS/Entra read-only probe starting `2026-09-09T23:00:22Z` succeeded after three
+  connection attempts in **45.064 seconds**, ending with zero open/idle sessions.
+  Only database-unavailable error 40613 was retried; no writes were involved.
+  This verifies resource pause/resume, not the app's cold-start experience.
+  The current 20-second HTTP response timeout remains a cutover blocker.
+- Before SQL activation, resolve repeated hourly mail failures and overlapping
+  retained-container maintenance: these can prevent a 60-minute idle window and
+  exhaust the free quota. Empty-queue sleep alone is not proof of quota fit.

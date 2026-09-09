@@ -24,7 +24,7 @@ PY
 # egress. The test binary and synthetic credential files are removed on exit.
 docker run --rm -e GOTOOLCHAIN=local -e CGO_ENABLED=0 \
   -v "$repo_root:/src:ro" -v "$test_work:/output" -w /src \
-  golang:1.23-alpine go test -c -o /output/sqlserver.test ./internal/sqlserver
+  golang:1.23-alpine sh -c 'go test -c -o /output/sqlserver.test ./internal/sqlserver && go test -c -o /output/app.test ./internal/app'
 docker network create --internal "$test_name" >/dev/null
 docker run -d --name "$test_name" --network "$test_name" --memory 4g --cpus 2 \
   --env-file "$test_work/server.env" \
@@ -47,4 +47,7 @@ docker exec "$test_name" sh -c \
 docker run --rm --network "$test_name" --env-file "$test_work/test.env" \
   -v "$test_work/sqlserver.test:/sqlserver.test:ro" \
   golang:1.23-alpine /sqlserver.test -test.count=1 -test.v
+docker run --rm --network "$test_name" --env-file "$test_work/test.env" \
+  -v "$test_work/app.test:/app.test:ro" \
+  golang:1.23-alpine /app.test -test.count=1 -test.v -test.run '^TestSQLServer'
 echo "SQL Server connection and migration rehearsal passed"

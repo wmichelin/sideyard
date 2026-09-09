@@ -43,7 +43,7 @@ Orange nodes explicitly marked “staging” are not yet production features.
 ```mermaid
 flowchart TB
   subgraph PUBLIC["Public entry"]
-    LAND["LAND · Landing / interest"]
+    LAND["LAND · Landing / interest<br/>Owner notification queue"]
     THANKS["THANKS · Interest saved"]
     LOGIN["LOGIN · Sign in"]
     DEMO["DEMO · Start isolated demo"]
@@ -150,6 +150,7 @@ shop; it is not a client-facing identifier to invent during onboarding.
 - Introduces Sideyard, links to sign-in and the enabled demo, and collects early-access interest.
 - Required name and email; optional business, trade and free-text needs. Trade accepts free text; marketing suggestions are separate from business presets.
 - Saves interest and queues an owner email through Resend. Production notification delivery is configured; duplicate email submissions do not create repeated alerts. Failed delivery retries without losing the signup.
+- **New worker, pending staging verification:** successful saves wake delivery after commit; empty queues stop polling. Startup and daily maintenance reconcile durable work, while known pending failures keep their retry timers. A lost process handoff can delay recovery until reconciliation; prolonged outages can produce a duplicate beyond the provider's deduplication window. This does not enable SQL Server for the application.
 - Submission leads to THANKS. It does not create a shop or login. There is no in-app lead-management page yet.
 
 ### THANKS — Interest confirmation

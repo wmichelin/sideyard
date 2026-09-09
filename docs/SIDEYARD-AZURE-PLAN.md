@@ -3,8 +3,8 @@
 ## Status update
 
 Status: implementing — user authorized Azure SQL, versioned Blob and seven-day backups.
-Last completed: both environments provisioned; staging Blob application verified; both Azure exports restored, including staging photo recovery bytes.
-Now: explicit PostgreSQL-to-SQL Server application port, September 9, 2026.
+Last completed: both environments provisioned; staging Blob and connection foundation verified; both Azure exports restored; real idle/resume probe completed in 45 seconds.
+Now: explicit SQL Server interest/auth/domain port and idle-safe background work, September 9, 2026.
 Next: verify both database backends and idle behavior before a reviewed database cutover.
 Evidence: Blob staging release `7181040`; exact artifacts in the delivery status.
 Staging: https://clubdue-staging.michelindigitalmedia.com (verified for Azure Blob; application database remains PostgreSQL).
@@ -260,6 +260,10 @@ Relevant current boundaries include [connection/migrations](../internal/postgres
   with a post-commit wake signal and durable queue drain, startup recovery and
   bounded retry for known pending work. Keep idempotency and crash recovery;
   do not make email delivery depend only on an in-memory signal.
+- Account for known failed deliveries as well as empty queues: an hourly retry
+  can prevent the required 60-minute idle window. Select a bounded failure policy
+  and alerting path before SQL activation; avoid independent daily work in both
+  current and retained rollback containers.
 - Batch daily maintenance, reconciliation and logical backups into one active
   period. Make deployment migrations an explicit step. A restart during a SQL
   outage must still serve static/public pages without claiming database readiness.

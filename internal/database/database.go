@@ -16,6 +16,19 @@ const (
 
 var ErrNoRows = sql.ErrNoRows
 
+// Statement selects explicitly authored native SQL. It never rewrites SQL or
+// guesses parameter/result types. An unknown internal dialect fails closed.
+func Statement(dialect Dialect, postgres, sqlserver string) string {
+	switch dialect {
+	case Postgres:
+		return postgres
+	case SQLServer:
+		return sqlserver
+	default:
+		panic("unsupported database dialect")
+	}
+}
+
 type Row interface{ Scan(...any) error }
 type Rows interface {
 	Row

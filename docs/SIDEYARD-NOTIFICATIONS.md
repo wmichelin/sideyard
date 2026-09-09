@@ -43,6 +43,27 @@ only to the configured owner, with the visitor's name, email, business, trade,
 and message. Provider acknowledgement is recorded in `interest_notifications`.
 Existing signups are preserved and are not automatically re-mailed.
 
+**Azure preparation update — pending staging verification:** the new worker uses
+a buffered wake after a committed signup and sleeps without a timer when no work
+is pending. It checks queued work at startup, retries known pending work at its
+stored deadline (with a 15-second minimum for contention/batch continuation), and
+backs off database failures from one minute up to one hour. Daily reconciliation
+shares the existing maintenance window rather than waking an idle database on a
+separate schedule. Wakes can interrupt a later retry deadline.
+
+The worker remains alive through graceful HTTP shutdown so in-flight signups can
+still wake it. Current deployments retain the previous app container running;
+its pending work stays recoverable and row locks prevent simultaneous claims.
+An interrupted process handoff can still require startup/daily reconciliation,
+potentially delaying an alert up to a day if no earlier wake occurs. This remains
+at-least-once delivery with the provider's bounded duplicate suppression below.
+Production still uses the previously verified polling release until promotion.
+
+Native SQL Server schema and queries for interest/outbox pass the same retry and
+concurrent-worker tests as PostgreSQL, plus atomic concurrent signup and Unicode
+boundary checks. The application's SQL Server selector remains disabled; this is
+one ported domain, not a completed database migration.
+
 Workers coordinate with Postgres row locks across rolling deployments. Stable
 [idempotency keys](https://resend.com/docs/dashboard/emails/idempotency-keys)
 protect retries within Resend's 24-hour deduplication window. Delivery is at

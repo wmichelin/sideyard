@@ -12,6 +12,8 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/wmichelin/clubdue/internal/database"
 )
 
 type interestSignup struct {
@@ -22,9 +24,42 @@ type interestRecorder interface {
 	SaveInterest(context.Context, interestSignup) error
 }
 
-type postgresInterestRecorder struct{ db *DB }
+type databaseInterestRecorder struct {
+	db   *DB
+	wake func()
+}
 
-func (s *postgresInterestRecorder) SaveInterest(ctx context.Context, in interestSignup) error {
+func (s *databaseInterestRecorder) SaveInterest(ctx context.Context, in interestSignup) error {
+	if err := s.save(ctx, in); err != nil {
+		return err
+	}
+	if s.wake != nil {
+		s.wake()
+	}
+	return nil
+}
+
+func (s *databaseInterestRecorder) save(ctx context.Context, in interestSignup) error {
+	if s.db.Pool.Dialect() == database.SQLServer {
+		tx, err := s.db.Pool.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback(ctx)
+		// Hold the unique-email key range until both rows are durable. A repeat
+		// signup succeeds without replacing details or queuing another email.
+		_, err = tx.Exec(ctx, `DECLARE @new TABLE(id uniqueidentifier);
+			INSERT INTO dbo.interest_signups(name,email,business,trade,message)
+			OUTPUT inserted.id INTO @new
+			SELECT @p1,@p2,@p3,@p4,@p5
+			WHERE NOT EXISTS(SELECT 1 FROM dbo.interest_signups WITH (UPDLOCK,HOLDLOCK) WHERE email=@p2);
+			INSERT INTO dbo.interest_notifications(signup_id) SELECT id FROM @new;`,
+			in.Name, in.Email, in.Business, in.Trade, in.Message)
+		if err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
+	}
 	_, err := s.db.Pool.Exec(ctx, `WITH signup AS (
 		INSERT INTO interest_signups (name, email, business, trade, message)
 		VALUES ($1, $2, $3, $4, $5) ON CONFLICT (email) DO NOTHING RETURNING id

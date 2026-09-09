@@ -115,10 +115,15 @@ func deliverInterestNotification(ctx context.Context, db *DB, sender interestNot
 	defer tx.Rollback(ctx)
 	var n interestNotification
 	var attempts int
-	err = tx.QueryRow(ctx, `SELECT s.id::text, s.name, s.email, s.business, s.trade, s.message, n.attempts
+	err = tx.QueryRow(ctx, database.Statement(tx.Dialect(), `SELECT s.id::text, s.name, s.email, s.business, s.trade, s.message, n.attempts
 		FROM interest_notifications n JOIN interest_signups s ON s.id=n.signup_id
 		WHERE n.sent_at IS NULL AND n.next_attempt_at <= $1
-		ORDER BY n.next_attempt_at, n.signup_id FOR UPDATE OF n SKIP LOCKED LIMIT 1`, now).
+		ORDER BY n.next_attempt_at, n.signup_id FOR UPDATE OF n SKIP LOCKED LIMIT 1`,
+		`SELECT TOP (1) LOWER(CONVERT(char(36),s.id)),s.name,s.email,s.business,s.trade,s.message,n.attempts
+		FROM dbo.interest_notifications n WITH (UPDLOCK,READPAST,READCOMMITTEDLOCK)
+		JOIN dbo.interest_signups s ON s.id=n.signup_id
+		WHERE n.sent_at IS NULL AND n.next_attempt_at<=@p1
+		ORDER BY n.next_attempt_at,n.signup_id`), now).
 		Scan(&n.ID, &n.Name, &n.Email, &n.Business, &n.Trade, &n.Message, &attempts)
 	if errors.Is(err, database.ErrNoRows) {
 		return false, nil
@@ -128,11 +133,13 @@ func deliverInterestNotification(ctx context.Context, db *DB, sender interestNot
 	}
 	messageID, sendErr := sender.Send(ctx, n)
 	if sendErr == nil {
-		_, err = tx.Exec(ctx, `UPDATE interest_notifications SET sent_at=$2,
-			provider_message_id=$3, attempts=attempts+1 WHERE signup_id=$1`, n.ID, now, messageID)
+		_, err = tx.Exec(ctx, database.Statement(tx.Dialect(), `UPDATE interest_notifications SET sent_at=$2,
+			provider_message_id=$3, attempts=attempts+1 WHERE signup_id=$1`,
+			`UPDATE dbo.interest_notifications SET sent_at=@p2,provider_message_id=@p3,attempts=attempts+1 WHERE signup_id=@p1`), n.ID, now, messageID)
 	} else {
-		_, err = tx.Exec(ctx, `UPDATE interest_notifications SET attempts=attempts+1,
-			next_attempt_at=$2 WHERE signup_id=$1`, n.ID, now.Add(interestNotificationBackoff(attempts)))
+		_, err = tx.Exec(ctx, database.Statement(tx.Dialect(), `UPDATE interest_notifications SET attempts=attempts+1,
+			next_attempt_at=$2 WHERE signup_id=$1`,
+			`UPDATE dbo.interest_notifications SET attempts=attempts+1,next_attempt_at=@p2 WHERE signup_id=@p1`), n.ID, now.Add(interestNotificationBackoff(attempts)))
 	}
 	if err != nil {
 		return true, errors.New("update notification delivery state")
@@ -154,13 +161,59 @@ func interestNotificationBackoff(attempts int) time.Duration {
 	return delay
 }
 
-func runInterestNotifications(ctx context.Context, db *DB, sender interestNotificationSender, now func() time.Time) {
-	ticker := time.NewTicker(15 * time.Second)
-	defer ticker.Stop()
+// The channel coalesces bursts. Durable rows, startup recovery and the existing
+// daily maintenance wake provide recovery if a process exits during handoff.
+func newInterestNotificationSignal() (<-chan struct{}, func()) {
+	wake := make(chan struct{}, 1)
+	return wake, func() {
+		select {
+		case wake <- struct{}{}:
+		default:
+		}
+	}
+}
+
+type interestNotificationQueue interface {
+	Deliver(context.Context, time.Time) (bool, error)
+	Next(context.Context) (*time.Time, error)
+}
+
+type databaseInterestQueue struct {
+	db     *DB
+	sender interestNotificationSender
+}
+
+func (q databaseInterestQueue) Deliver(ctx context.Context, now time.Time) (bool, error) {
+	return deliverInterestNotification(ctx, q.db, q.sender, now)
+}
+func (q databaseInterestQueue) Next(ctx context.Context) (*time.Time, error) {
+	var next *time.Time
+	err := q.db.Pool.QueryRow(ctx, `SELECT MIN(next_attempt_at) FROM interest_notifications WHERE sent_at IS NULL`).Scan(&next)
+	return next, err
+}
+
+type interestNotificationWorker struct {
+	queue interestNotificationQueue
+	wake  <-chan struct{}
+	now   func() time.Time
+	wait  func(context.Context, <-chan struct{}, *time.Duration) bool
+}
+
+// The caller stops the worker after draining HTTP requests, so a final signup
+// can commit and signal even after the process begins graceful shutdown.
+func startInterestNotificationWorker(ctx context.Context, worker interestNotificationWorker) func() {
+	workerCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	done := make(chan struct{})
+	go func() { defer close(done); worker.run(workerCtx) }()
+	return func() { cancel(); <-done }
+}
+
+func (worker interestNotificationWorker) run(ctx context.Context) {
+	consecutiveFailures := 0
 	for {
 		for i := 0; i < 20 && ctx.Err() == nil; i++ {
 			attemptCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-			found, err := deliverInterestNotification(attemptCtx, db, sender, now())
+			found, err := worker.queue.Deliver(attemptCtx, worker.now())
 			cancel()
 			if err != nil {
 				// Keep recipient details, submitted content, and provider secrets out of logs.
@@ -172,10 +225,54 @@ func runInterestNotifications(ctx context.Context, db *DB, sender interestNotifi
 			}
 			log.Print("interest notification accepted by email service")
 		}
-		select {
-		case <-ctx.Done():
+		if ctx.Err() != nil {
 			return
-		case <-ticker.C:
 		}
+		lookup, cancel := context.WithTimeout(ctx, 15*time.Second)
+		next, err := worker.queue.Next(lookup)
+		cancel()
+		var delay *time.Duration
+		if err != nil {
+			// A database outage is known unfinished work. Retry with a bounded
+			// backoff; never interpret an unsuccessful lookup as an empty queue.
+			backoff := interestNotificationBackoff(consecutiveFailures)
+			if consecutiveFailures < 6 {
+				consecutiveFailures++
+			}
+			delay = &backoff
+		} else {
+			consecutiveFailures = 0
+			if next != nil {
+				until := next.Sub(worker.now())
+				// Another instance may hold a due row. Do not spin on that lock;
+				// polling is bounded and occurs only while work remains queued.
+				if until < 15*time.Second {
+					until = 15 * time.Second
+				}
+				delay = &until
+			}
+		}
+		// A nil delay means no timer and no database polling while idle.
+		if !worker.wait(ctx, worker.wake, delay) {
+			return
+		}
+	}
+}
+
+func waitForInterestNotification(ctx context.Context, wake <-chan struct{}, delay *time.Duration) bool {
+	var timer *time.Timer
+	var timeout <-chan time.Time
+	if delay != nil {
+		timer = time.NewTimer(*delay)
+		timeout = timer.C
+		defer timer.Stop()
+	}
+	select {
+	case <-ctx.Done():
+		return false
+	case <-wake:
+		return true
+	case <-timeout:
+		return true
 	}
 }

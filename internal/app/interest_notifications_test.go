@@ -10,6 +10,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/wmichelin/clubdue/internal/database"
 )
 
 type notificationHTTPFunc func(*http.Request) (*http.Response, error)
@@ -127,7 +129,7 @@ func (f interestSendFunc) Send(ctx context.Context, n interestNotification) (str
 func createNotificationTestSignup(t *testing.T, db *DB) string {
 	t.Helper()
 	email := "notify-" + time.Now().UTC().Format("20060102150405.000000000") + "@example.test"
-	store := postgresInterestRecorder{db: db}
+	store := databaseInterestRecorder{db: db}
 	in := interestSignup{Name: "Notification test", Email: email, Trade: "Plumbing"}
 	for i := 0; i < 2; i++ {
 		if err := store.SaveInterest(context.Background(), in); err != nil {
@@ -135,12 +137,12 @@ func createNotificationTestSignup(t *testing.T, db *DB) string {
 		}
 	}
 	t.Cleanup(func() {
-		_, _ = db.Pool.Exec(context.Background(), `DELETE FROM interest_signups WHERE email=$1`, email)
+		_, _ = db.Pool.Exec(context.Background(), database.Statement(db.Pool.Dialect(), `DELETE FROM interest_signups WHERE email=$1`, `DELETE FROM dbo.interest_signups WHERE email=@p1`), email)
 	})
 	var id string
 	var count int
-	if err := db.Pool.QueryRow(context.Background(), `SELECT min(s.id::text), count(*)
-		FROM interest_signups s JOIN interest_notifications n ON n.signup_id=s.id WHERE s.email=$1`, email).Scan(&id, &count); err != nil || count != 1 {
+	if err := db.Pool.QueryRow(context.Background(), database.Statement(db.Pool.Dialect(), `SELECT min(s.id::text), count(*)
+		FROM interest_signups s JOIN interest_notifications n ON n.signup_id=s.id WHERE s.email=$1`, `SELECT MIN(LOWER(CONVERT(char(36),s.id))),COUNT(*) FROM dbo.interest_signups s JOIN dbo.interest_notifications n ON n.signup_id=s.id WHERE s.email=@p1`), email).Scan(&id, &count); err != nil || count != 1 {
 		t.Fatalf("signup must enqueue exactly once: count=%d err=%v", count, err)
 	}
 	return id
@@ -153,6 +155,12 @@ func TestInterestNotificationPersistsRetryThenAcknowledgesOnlySuccess(t *testing
 		t.Fatal(err)
 	}
 	t.Cleanup(db.Close)
+	testInterestDeliveryRetry(t, db)
+}
+
+func testInterestDeliveryRetry(t *testing.T, db *DB) {
+	t.Helper()
+	ctx := context.Background()
 	id := createNotificationTestSignup(t, db)
 	now := time.Now().Add(time.Second)
 	calls := 0
@@ -171,7 +179,7 @@ func TestInterestNotificationPersistsRetryThenAcknowledgesOnlySuccess(t *testing
 	}
 	var attempts int
 	var pending bool
-	if err := db.Pool.QueryRow(ctx, `SELECT attempts,sent_at IS NULL FROM interest_notifications WHERE signup_id=$1`, id).Scan(&attempts, &pending); err != nil || attempts != 1 || !pending {
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `SELECT attempts,sent_at IS NULL FROM interest_notifications WHERE signup_id=$1`, `SELECT attempts,CAST(CASE WHEN sent_at IS NULL THEN 1 ELSE 0 END AS bit) FROM dbo.interest_notifications WHERE signup_id=@p1`), id).Scan(&attempts, &pending); err != nil || attempts != 1 || !pending {
 		t.Fatalf("failure lost pending notification: attempts=%d pending=%v err=%v", attempts, pending, err)
 	}
 	if found, err := deliverInterestNotification(ctx, db, sender, now.Add(30*time.Second)); found || err != nil || calls != 1 {
@@ -184,7 +192,7 @@ func TestInterestNotificationPersistsRetryThenAcknowledgesOnlySuccess(t *testing
 		t.Fatal("successful notification sent again")
 	}
 	var messageID string
-	if err := db.Pool.QueryRow(ctx, `SELECT provider_message_id FROM interest_notifications WHERE signup_id=$1`, id).Scan(&messageID); err != nil || messageID != "accepted-message" {
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `SELECT provider_message_id FROM interest_notifications WHERE signup_id=$1`, `SELECT provider_message_id FROM dbo.interest_notifications WHERE signup_id=@p1`), id).Scan(&messageID); err != nil || messageID != "accepted-message" {
 		t.Fatal("provider acknowledgement not persisted")
 	}
 }
@@ -197,6 +205,13 @@ func TestInterestNotificationConcurrentWorkersDoNotSendTheSameSignup(t *testing.
 		t.Fatal(err)
 	}
 	t.Cleanup(db.Close)
+	testInterestConcurrentWorkers(t, db)
+}
+
+func testInterestConcurrentWorkers(t *testing.T, db *DB) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	createNotificationTestSignup(t, db)
 	now := time.Now().Add(time.Second)
 	started, release := make(chan struct{}), make(chan struct{})

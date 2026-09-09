@@ -58,7 +58,7 @@ func serveHTTP(ctx context.Context, config Config, handler http.Handler, listene
 	}
 }
 
-func runDailyRenewalGeneration(ctx context.Context, store *Store, interval time.Duration, now func() time.Time) {
+func runDailyRenewalGeneration(ctx context.Context, store *Store, interval time.Duration, now func() time.Time, wakeInterest func()) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
@@ -67,6 +67,11 @@ func runDailyRenewalGeneration(ctx context.Context, store *Store, interval time.
 			return
 		case <-ticker.C:
 			runRenewalMaintenance(ctx, store, now, "scheduled")
+			// Reconcile durable signup work in the same active database window.
+			// This also catches handoffs interrupted during a rolling deployment.
+			if wakeInterest != nil {
+				wakeInterest()
+			}
 		}
 	}
 }

@@ -76,7 +76,8 @@ func run(config Config, args []string) error {
 			}
 			log.Print("Sideyard Azure private photo storage enabled; database recovery copies retained")
 		}
-		srv.interest = &postgresInterestRecorder{db: db}
+		interestWake, wakeInterest := newInterestNotificationSignal()
+		srv.interest = &databaseInterestRecorder{db: db, wake: wakeInterest}
 		if config.Environment == EnvironmentStaging {
 			retired, err := srv.store.RetireLegacySharedDemo(ctx)
 			if err != nil {
@@ -99,19 +100,17 @@ func run(config Config, args []string) error {
 			log.Printf("renewal maintenance failed phase=startup operation=sync_visit_dues error=%v", err)
 		}
 		runRenewalMaintenance(ctx, srv.store, time.Now, "startup")
-		go runDailyRenewalGeneration(ctx, srv.store, 24*time.Hour, time.Now)
+		go runDailyRenewalGeneration(ctx, srv.store, 24*time.Hour, time.Now, wakeInterest)
 		if config.InterestNotifications.APIKey != "" {
-			notificationCtx, cancelNotifications := context.WithCancel(ctx)
-			done := make(chan struct{})
 			sender := &resendInterestSender{
 				client: &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 				config: config.InterestNotifications, environment: config.Environment,
 			}
-			go func() {
-				defer close(done)
-				runInterestNotifications(notificationCtx, db, sender, time.Now)
-			}()
-			closeResources = func() { cancelNotifications(); <-done; db.Close() }
+			stopNotifications := startInterestNotificationWorker(ctx, interestNotificationWorker{
+				queue: databaseInterestQueue{db: db, sender: sender}, wake: interestWake,
+				now: time.Now, wait: waitForInterestNotification,
+			})
+			closeResources = func() { stopNotifications(); db.Close() }
 			log.Print("Sideyard signup email notifications enabled")
 		} else {
 			log.Print("Sideyard signup email notifications unconfigured; alerts remain queued")

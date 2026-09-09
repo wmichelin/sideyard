@@ -44,7 +44,7 @@ func NewAzure(server, name string, credential azcore.TokenCredential) (*Pool, er
 	if err != nil {
 		return nil, fmt.Errorf("initialize Azure SQL connector")
 	}
-	return newPool(sql.OpenDB(connector)), nil
+	return Wrap(sql.OpenDB(connector)), nil
 }
 
 func azureConfig(server, name string) (msdsn.Config, error) {
@@ -55,7 +55,9 @@ func azureConfig(server, name string) (msdsn.Config, error) {
 	return msdsn.Parse("server=" + server + ";database=" + name + ";encrypt=true;TrustServerCertificate=false;tlsmin=1.2;connection timeout=60;app name=Sideyard;disableretry=true")
 }
 
-func newPool(db *sql.DB) *Pool {
+// Wrap takes ownership of an injected native SQL Server database connection pool.
+// It applies the same connection limits used by NewAzure.
+func Wrap(db *sql.DB) *Pool {
 	db.SetMaxOpenConns(4)
 	db.SetMaxIdleConns(0)
 	db.SetConnMaxLifetime(30 * time.Minute)

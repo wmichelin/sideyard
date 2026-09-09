@@ -155,7 +155,7 @@ func TestInterestPersistenceDeduplicatesWithoutOverwritingAndExportsPrivately(t 
 			t.Errorf("clean up synthetic signup: %v", err)
 		}
 	})
-	store := &postgresInterestRecorder{db: db}
+	store := &databaseInterestRecorder{db: db}
 	in := interestSignup{Name: "=1+1", Email: email, Business: "A, B & C", Trade: "Plumbing", Message: "A multiline\nnote"}
 	if err := store.SaveInterest(ctx, in); err != nil {
 		t.Fatal(err)
