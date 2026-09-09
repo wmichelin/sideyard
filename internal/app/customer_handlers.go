@@ -80,8 +80,17 @@ func (s *Server) renderCustomerEdit(w http.ResponseWriter, r *http.Request, user
 		http.Error(w, "server error", http.StatusInternalServerError)
 		return
 	}
+	var vehicles []customerVehicle
+	if user.Role == "owner" {
+		vehicles, err = s.store.ListCustomerVehicles(r.Context(), user.ShopID, customerID)
+		if err != nil {
+			http.Error(w, "Could not load vehicle records. Please retry.", http.StatusServiceUnavailable)
+			return
+		}
+	}
 	s.renderLayout(w, r, "Edit customer — Sideyard", "customer_form_content", map[string]any{
 		"Nav": NavData{Active: "customers", User: user}, "Customer": customer, "Properties": properties,
 		"UpdateError": r.Method == http.MethodPost,
+		"Vehicles":    vehicles, "VehicleSaved": r.URL.Query().Get("vehicle_saved") == "1",
 	})
 }

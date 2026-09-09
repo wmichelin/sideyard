@@ -26,6 +26,31 @@
   </form>
 </section>
 
+{{ if eq .Nav.User.Role "owner" }}
+<section class="panel" id="vehicles">
+  <h3 class="section-title">Vehicles</h3>
+  <p>Keep each vehicle with its customer, independent of the address where you work. Vehicle notes are internal to your business.</p>
+  {{ if .VehicleSaved }}<p role="status" class="success-banner">Vehicle saved.</p>{{ end }}
+  {{ range .Vehicles }}
+  <form method="post" action="/customers/{{ $.Customer.ID }}/vehicles" class="form-stack vehicle-form">
+    {{ template "csrf_field" $ }}<input type="hidden" name="vehicle_id" value="{{ .ID }}"><input type="hidden" name="revision" value="{{ .Revision }}">
+    <label><span>Vehicle name</span><input name="name" maxlength="120" required value="{{ .Name }}"></label>
+    <div class="form-row"><label><span>Make</span><input name="make" maxlength="120" value="{{ .Make }}"></label><label><span>Model</span><input name="model" maxlength="120" value="{{ .Model }}"></label><label><span>Model year</span><input name="year" type="number" min="1886" max="9999" value="{{ .Year }}"></label></div>
+    <label><span>Identifier (optional)</span><input name="identifier" maxlength="120" value="{{ .Identifier }}"></label>
+    <label><span>Internal vehicle notes</span><textarea name="notes" rows="2" maxlength="2000">{{ .Notes }}</textarea></label>
+    <button class="secondary-btn">Save vehicle</button>
+  </form>
+  {{ else }}<p class="empty-note">No vehicles recorded.</p>{{ end }}
+  <details class="vehicle-form"><summary>Add a vehicle</summary>
+  <form method="post" action="/customers/{{ .Customer.ID }}/vehicles" class="form-stack">
+    {{ template "csrf_field" . }}<label><span>Vehicle name</span><input name="name" required maxlength="120" placeholder="Blue sedan, work truck…"></label>
+    <div class="form-row"><label><span>Make</span><input name="make" maxlength="120"></label><label><span>Model</span><input name="model" maxlength="120"></label><label><span>Model year</span><input name="year" type="number" min="1886" max="9999"></label></div>
+    <label><span>Identifier (optional)</span><input name="identifier" maxlength="120" placeholder="Plate or your own reference"></label>
+    <label><span>Internal vehicle notes</span><textarea name="notes" maxlength="2000" rows="2"></textarea></label><button class="secondary-btn">Add vehicle</button>
+  </form></details>
+</section>
+{{ end }}
+
 <section class="panel">
   <h3 class="section-title">Add property</h3>
   <form method="post" action="/customers/{{ .Customer.ID }}/properties" class="form-stack">

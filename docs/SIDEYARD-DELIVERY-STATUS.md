@@ -1,10 +1,10 @@
 # Sideyard delivery status
 
-Status: implementing — business setup verified on staging; property records ready to stage.
-Last completed: internal site details, measurement history and navigation links.
-Now: publish the verified property-record slice to staging.
-Next: verify property records; continue vehicle/equipment records and authored notes/photos.
-Staging: https://clubdue-staging.michelindigitalmedia.com (verified for business setup; property records pending).
+Status: implementing — business setup and property records verified on staging; vehicles ready to stage.
+Last completed: customer-owned vehicle records independent of service locations.
+Now: publish the verified vehicle-record slice to staging.
+Next: verify vehicles; continue equipment editing and authored notes/photos.
+Staging: https://clubdue-staging.michelindigitalmedia.com (verified through property records; vehicles pending).
 Blocker: none for staging. Production requires review and approval.
 
 Implementation was started after the user's instruction to proceed on September
@@ -70,11 +70,27 @@ foundation of Release 1, not completion of the entire execution plan.
   demo banner also has role=status. Narrowing to the save message fixed the QA
   script; the app required no change.
 - Production remains on the prior approved release.
+- Property-record source: `f8362210702c578d4db7564940eae286ad46f8d3`.
+- CI `34297309111` and staging `34297309143` succeeded. Manual staging smoke
+  and property-record browser checks at 390/1440 pixels passed.
+
+## Vehicle-record slice
+
+- A customer can have multiple vehicles without assigning them to a property.
+- Editable name, make/model/year, optional identifier and internal notes, with
+  separate records and concurrent-edit protection. Owner-only reading/editing.
+- Migration 023 enforces tenant-safe customer ownership. Tests cover separate
+  vehicles, foreign tenants/customers, stale edits, optional year, invalid input,
+  property-independent identity and staff denial.
+- Full fresh-Postgres suite, vet, static build, production and pilot rehearsals
+  passed. Mobile/desktop browser checks created two vehicles, edited one, verified
+  the other was unchanged and found no overflow or browser errors. Screenshot
+  reviewed at 390 pixels.
 
 ## Remaining work
 
 Use [execution plan](SIDEYARD-EXECUTION-PLAN.md) for the seven releases and billing
-patterns. Site details and manual measurement history are implemented; vehicle
-assets, expanded equipment editing, authored visit notes and private photos remain.
+patterns. Site details, manual measurement history and vehicle records are implemented;
+expanded equipment editing, authored visit notes and private photos remain.
 Billing, scheduling extensions and provider integrations remain as planned. No
 paid integrations or live customer payment collection are configured by this change.

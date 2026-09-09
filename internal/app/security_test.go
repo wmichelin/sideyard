@@ -75,7 +75,7 @@ func TestEveryMutationRouteRejectsMissingCSRF(t *testing.T) {
 		"/login", "/signup", "/logout", "/renew/token", "/dev/seed", "/demo/session",
 		"/agreements", "/agreements/id", "/agreements/id/renewal-link", "/agreements/id/service-schedules", "/service-schedules/id", "/renewals",
 		"/customers", "/customers/id", "/customers/id/delete", "/customers/id/properties",
-		"/properties/id/equipment", "/properties/id", "/import", "/visits", "/plan-templates", "/plan-templates/id", "/business",
+		"/properties/id/equipment", "/properties/id", "/customers/id/vehicles", "/import", "/visits", "/plan-templates", "/plan-templates/id", "/business",
 		"/service-occurrences/id/date",
 	}
 	for _, path := range paths {
@@ -143,6 +143,7 @@ func TestPublicDemoMutationAllowlistIsFinite(t *testing.T) {
 		{"/plan-templates", url.Values{}},
 		{"/business", url.Values{"action": {"preview"}, "primary": {"landscaping"}, "revision": {"0"}}},
 		{"/properties/existing", url.Values{"action": {"details"}, "access_notes": {"Side gate"}, "revision": {"0"}}},
+		{"/customers/existing/vehicles", url.Values{"name": {"Blue sedan"}}},
 		{"/plan-templates/existing", url.Values{}},
 	}
 	for _, tc := range allowed {
