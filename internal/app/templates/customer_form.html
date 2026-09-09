@@ -6,6 +6,7 @@
   </div>
   <a href="/customers" class="secondary-btn">Back to customers</a>
 </header>
+{{ if eq .Nav.User.Role "owner" }}<div class="link-row"><a class="secondary-btn" href="/jobs/new?customer_id={{ .Customer.ID }}">New job or site survey</a></div>{{ end }}
 
 {{ if .UpdateError }}<p class="error-banner">Enter a customer name to save changes.</p>{{ end }}
 

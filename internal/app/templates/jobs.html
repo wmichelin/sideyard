@@ -1,0 +1,37 @@
+{{ define "jobs_content" }}
+<header class="page-header"><div><h2 class="page-title">Jobs</h2><p class="page-subtitle">One-time service work and site surveys.</p></div><a class="primary-btn" href="/jobs/new">New job</a></header>
+<div class="link-row filter-row"><a class="secondary-btn{{ if eq .Filter "open" }} active-filter{{ end }}" href="/jobs">Open jobs</a><a class="secondary-btn{{ if eq .Filter "all" }} active-filter{{ end }}" href="/jobs?filter=all">All jobs</a></div>
+<section class="panel"><p class="muted">Up to 100 jobs, ordered by planned date. Jobs without a date appear last.</p>
+{{ range .Jobs }}<article class="measurement-entry"><h3><a href="/jobs/{{ .ID }}">{{ .Title }}</a></h3><p>{{ .CustomerName }} · {{ .KindLabel }}</p>{{ if .Address }}<p class="muted">{{ .Address }}</p>{{ end }}<p>{{ .DateLabel }} · {{ .Status }}</p></article>{{ else }}<p class="empty-note">No jobs in this view. Create a job or site survey to get started.</p>{{ end }}
+</section>
+{{ end }}
+
+{{ define "job_customer_content" }}
+<header class="page-header"><div><h2 class="page-title">New job</h2><p class="page-subtitle">Choose the customer for this service job or site survey.</p></div><a class="secondary-btn" href="/jobs">Back to jobs</a></header>
+{{ if .Error }}<p class="error-banner" role="alert">{{ .Error }}</p>{{ end }}
+<section class="panel">{{ if .Customers }}<form method="get" action="/jobs/new" class="form-stack"><label><span>Customer</span><select name="customer_id" required><option value="">Choose a customer</option>{{ range .Customers }}<option value="{{ .ID }}">{{ .Name }}</option>{{ end }}</select></label><button class="primary-btn">Continue</button></form>{{ else }}<p>Add a customer before creating their first job.</p><a class="primary-btn" href="/customers">Add a customer</a>{{ end }}</section>
+{{ end }}
+
+{{ define "job_form_content" }}
+<header class="page-header"><div><h2 class="page-title">{{ if .IsEdit }}{{ .Job.Title }}{{ else }}New job{{ end }}</h2><p class="page-subtitle">{{ .Job.CustomerName }}{{ if .IsEdit }} · {{ .Job.Status }}{{ end }}</p></div><a class="secondary-btn" href="/jobs">Back to jobs</a></header>
+{{ if .Saved }}<p class="success-banner" role="status">Job saved.</p>{{ end }}
+{{ if .Error }}<p class="error-banner" role="alert">{{ .Error }}{{ if .IsEdit }} Your entered details are kept below. <a href="{{ .ReloadURL }}">Reload current job</a>{{ else }} <a href="/jobs/new?customer_id={{ .Job.CustomerID }}">Start a new job</a>{{ end }}</p>{{ end }}
+<div class="link-row"><a href="/customers/{{ .Job.CustomerID }}">Customer record</a>{{ if .Job.PropertyID }}<a href="/properties/{{ .Job.PropertyID }}">Property record</a>{{ end }}</div>
+<section class="panel"><h3 class="section-title">Job details</h3>
+<form method="post" action="{{ if .IsEdit }}/jobs/{{ .Job.ID }}{{ else }}/jobs{{ end }}" class="form-stack">
+{{ template "csrf_field" . }}<input type="hidden" name="customer_id" value="{{ .Job.CustomerID }}"><input type="hidden" name="job_key" value="{{ .Key }}"><input type="hidden" name="revision" value="{{ .Job.Revision }}"><input type="hidden" name="action" value="edit">
+<fieldset class="form-fieldset" {{ if ne .Job.Status "planned" }}disabled{{ end }}>
+<label><span>Type</span><select name="kind"><option value="job" {{ if eq .Job.Kind "job" }}selected{{ end }}>Service job</option><option value="survey" {{ if eq .Job.Kind "survey" }}selected{{ end }}>Site survey / estimate visit</option></select></label>
+<label><span>Job title</span><input name="title" value="{{ .Job.Title }}" maxlength="160" required placeholder="Replace kitchen faucet"></label>
+<label><span>Service location</span><select name="property_id"><option value="">No linked property</option>{{ range .Properties }}<option value="{{ .ID }}" {{ if eq $.Job.PropertyID .ID }}selected{{ end }}>{{ .AddressLine1 }}{{ if .AddressLine2 }}, {{ .AddressLine2 }}{{ end }}, {{ .City }}</option>{{ end }}</select></label>
+<label><span>Planned date (optional)</span><input name="scheduled_on" type="date" value="{{ .Job.Date }}"></label><p class="muted">Leave blank until a day is agreed. Review planned dates in Jobs.</p>
+<label><span>Internal work details</span><textarea name="details" rows="5" maxlength="4000">{{ .Job.Details }}</textarea></label>
+{{ if eq .Job.Status "planned" }}<button class="primary-btn">{{ if .IsEdit }}Save job{{ else }}Create job{{ end }}</button>{{ end }}
+</fieldset></form></section>
+{{ if .IsEdit }}
+<section class="panel"><h3 class="section-title">Work outcome</h3>
+{{ if eq .Job.Status "planned" }}<p>Record the outcome when the work is done or called off. Completion records the work; payment is tracked separately.</p>{{ else }}<p>This job is {{ .Job.Status }}. Reopen it before changing details. Earlier outcomes remain in its history.</p>{{ end }}
+<form method="post" class="link-row">{{ template "csrf_field" . }}<input type="hidden" name="revision" value="{{ .Job.Revision }}">{{ if eq .Job.Status "planned" }}<button class="primary-btn" name="action" value="completed">Mark completed</button><button class="secondary-btn" name="action" value="cancelled">Cancel job</button>{{ else }}<button class="secondary-btn" name="action" value="reopened">Reopen job</button>{{ end }}</form></section>
+<section class="panel"><h3 class="section-title">Change history</h3><p class="muted">Latest 100 changes. Earlier records are retained.</p>{{ range .History }}<article class="measurement-entry"><h4>{{ .Action }} · {{ .At.UTC.Format "Jan 2, 2006 15:04" }} UTC</h4><p>{{ .Snapshot.Title }} · {{ .Snapshot.DateLabel }} · {{ .Snapshot.Status }}</p>{{ if .Snapshot.Details }}<p class="property-note-body">{{ .Snapshot.Details }}</p>{{ end }}<p class="muted">{{ .Author }}</p></article>{{ end }}</section>
+{{ end }}
+{{ end }}

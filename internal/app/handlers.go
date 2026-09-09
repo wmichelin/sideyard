@@ -151,6 +151,8 @@ func publicDemoMutationAllowed(r *http.Request) bool {
 		return false
 	}
 	switch segments[0] {
+	case "jobs":
+		return len(segments) == 1 || (len(segments) == 2 && segments[1] != "new")
 	case "business":
 		return len(segments) == 1
 	case "agreements":

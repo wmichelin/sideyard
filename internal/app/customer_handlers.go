@@ -29,7 +29,7 @@ func (s *Server) handleCustomerDelete(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r.Context())
 	if err := s.store.DeleteCustomer(r.Context(), user.ShopID, r.PathValue("id")); err != nil {
 		log.Printf("delete customer: %v", err)
-		http.Error(w, "customer cannot be deleted while agreements exist", http.StatusConflict)
+		http.Error(w, "Customer cannot be deleted while agreements or jobs exist.", http.StatusConflict)
 		return
 	}
 	http.Redirect(w, r, "/customers", http.StatusSeeOther)

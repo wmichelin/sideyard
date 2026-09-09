@@ -262,6 +262,22 @@ for _ in 1 2; do
     "http://127.0.0.1:${PORT}/visits/${visit_history_id}/history")"
   [ "$visit_history_status" = "303" ]
 done
+job_customer_id="$(docker exec "$SOURCE_DB" psql -U clubdue -d clubdue -qAt -c "SELECT customer_id FROM properties WHERE id='${photo_property_id}'")"
+for _ in 1 2; do
+  job_status="$(curl -sS -o "$WORK_DIR/job-create.html" -w '%{http_code}' \
+    -H "Cookie: clubdue_csrf=${csrf_cookie}; clubdue_session=${session_cookie}" \
+    --data-urlencode "csrf_token=${csrf_token}" --data-urlencode "customer_id=${job_customer_id}" \
+    --data-urlencode "property_id=${photo_property_id}" --data-urlencode 'job_key=55555555555555555555555555555555' \
+    --data-urlencode 'kind=survey' --data-urlencode 'title=Rehearsal site survey' \
+    --data-urlencode 'details=Inspect access before quoting' "http://127.0.0.1:${PORT}/jobs")"
+  [ "$job_status" = "303" ]
+done
+job_id="$(docker exec "$SOURCE_DB" psql -U clubdue -d clubdue -qAt -c "SELECT id FROM jobs WHERE customer_id='${job_customer_id}' AND submission_key='55555555555555555555555555555555'")"
+job_outcome_status="$(curl -sS -o "$WORK_DIR/job-outcome.html" -w '%{http_code}' \
+  -H "Cookie: clubdue_csrf=${csrf_cookie}; clubdue_session=${session_cookie}" \
+  --data-urlencode "csrf_token=${csrf_token}" --data-urlencode 'revision=1' --data-urlencode 'action=completed' \
+  "http://127.0.0.1:${PORT}/jobs/${job_id}")"
+[ "$job_outcome_status" = "303" ]
 export CLUBDUE_BACKUP_DIR="$WORK_DIR/backups"
 export CLUBDUE_BACKUP_PASSPHRASE="disposable-production-rehearsal-backup-passphrase"
 export CLUBDUE_BACKUP_HMAC_KEY="disposable-production-rehearsal-hmac-key"
@@ -308,6 +324,10 @@ restored_history_count="$(docker exec "$RESTORE_DB" psql -U clubdue -d clubdue -
 [ "$restored_history_count" = "1" ]
 restored_visit_history_count="$(docker exec "$RESTORE_DB" psql -U clubdue -d clubdue -qAt -c "SELECT count(*) FROM visit_notes n JOIN visit_dues v ON v.id=n.seasonal_visit_id JOIN agreements a ON a.id=v.agreement_id WHERE v.id='${visit_history_id}' AND n.body='Private visit inspection' AND n.occurred_at='2025-11-02T06:30:00Z'::timestamptz AND n.event_timezone='America/New_York' AND n.recorded_by='owner@rehearsal.invalid' AND v.status='due' AND a.visits_used=0")"
 [ "$restored_visit_history_count" = "1" ]
+restored_job_count="$(docker exec "$RESTORE_DB" psql -U clubdue -d clubdue -qAt -c "SELECT count(*) FROM jobs WHERE id='${job_id}' AND title='Rehearsal site survey' AND status='completed' AND completed_at IS NOT NULL AND scheduled_on IS NULL AND revision=2")"
+[ "$restored_job_count" = "1" ]
+restored_job_events="$(docker exec "$RESTORE_DB" psql -U clubdue -d clubdue -qAt -c "SELECT count(*) FROM job_events WHERE job_id='${job_id}' AND recorded_by='owner@rehearsal.invalid' AND snapshot->>'Details'='Inspect access before quoting'")"
+[ "$restored_job_events" = "2" ]
 
 expect_authenticated_restore_failure() {
   local candidate_backup="$1"
