@@ -136,6 +136,11 @@ switch_proxy() {
   cp --preserve=mode,ownership "$SITE_PATH" "$candidate"
   cp --preserve=mode,ownership "$SITE_PATH" "$backup"
   sed -E -i "s#proxy_pass[[:space:]]+http://127\\.0\\.0\\.1:(${PORT}|${ALT_PORT});#proxy_pass http://127.0.0.1:${target_port};#" "$candidate"
+  # Keep the proxy envelope aligned with the app's bounded multipart requests.
+  # Only our marked directive is replaced; nginx -t still rejects conflicts with
+  # any independently managed directive and preserves the previous vhost.
+  sed -i '/^[[:space:]]*client_max_body_size 8m; # sideyard-upload-limit$/d' "$candidate"
+  sed -E -i "/proxy_pass[[:space:]]+http:\/\/127\\.0\\.0\\.1:${target_port};/a\\        client_max_body_size 8m; # sideyard-upload-limit" "$candidate"
   mv "$candidate" "$SITE_PATH"
   if ! nginx -t; then
     cp --preserve=mode,ownership "$backup" "$SITE_PATH"; rm -f "$backup"

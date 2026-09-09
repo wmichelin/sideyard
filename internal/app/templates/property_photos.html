@@ -1,0 +1,23 @@
+{{ define "property_photos_content" }}
+<header class="page-header"><div><h2 class="page-title">Private photos</h2><p class="page-subtitle">{{ .Property.AddressLine1 }} {{ .Property.AddressLine2 }}</p></div><a class="secondary-btn" href="/properties/{{ .Property.ID }}">Back to property</a></header>
+{{ if .Saved }}<p class="success-banner" role="status">Photo saved.</p>{{ end }}
+{{ if .Deleted }}<p class="success-banner" role="status">Photo deleted.</p>{{ end }}
+{{ if .Error }}<p class="error-banner" role="alert">{{ .Error }} Your caption is kept below; select the file again to retry. <a href="/properties/{{ .Property.ID }}/photos">Start a new upload</a></p>{{ end }}
+<section class="panel"><h3 class="section-title">Add a photo</h3><p>Visible only to your business owner. Photos stay out of customer pages and exports.</p>
+<p class="muted">Business storage: {{ .Count }} / 100 photos · {{ .UsedMB }} / 50 MB.</p>
+{{ if .Nav.User.IsDemo }}<p class="empty-note">Photo uploads are disabled in the public demo.</p>{{ else }}
+<form method="post" enctype="multipart/form-data" class="form-stack">
+{{ template "csrf_field" . }}<input type="hidden" name="photo_key" value="{{ .PhotoKey }}">
+<label><span>Photo</span><input type="file" name="photo" accept="image/jpeg,image/png" required aria-describedby="photo-help"></label>
+<p id="photo-help" class="muted">JPEG or PNG, up to 5 MB and 12 megapixels. For HEIC, export as JPEG or PNG first. Location metadata is removed when saved.</p>
+<label><span>Category</span><select name="category">{{ range .Categories }}<option value="{{ .ID }}" {{ if eq $.Category .ID }}selected{{ end }}>{{ .Name }}</option>{{ end }}</select></label>
+<label><span>Caption (optional)</span><textarea name="caption" rows="2" maxlength="500">{{ .Caption }}</textarea></label>
+<button class="primary-btn">Upload photo</button><p class="muted">Keep this page open until you see “Photo saved.” Uploads need an internet connection.</p>
+</form>{{ end }}</section>
+<section class="panel"><h3 class="section-title">Photo history</h3>
+{{ range .Photos }}<article class="property-photo">
+<a href="/property-photos/{{ .ID }}" target="_blank" rel="noreferrer"><img src="/property-photos/{{ .ID }}" alt="{{ if .Caption }}{{ .Caption }}{{ else }}Property photo{{ end }}" loading="lazy"></a>
+<p><strong>{{ .Category }}</strong>{{ if .Caption }} · {{ .Caption }}{{ end }}</p><p class="muted">Uploaded {{ .RecordedAt.UTC.Format "Jan 2, 2006 15:04" }} UTC by {{ .RecordedBy }}</p>
+{{ if not $.Nav.User.IsDemo }}<details><summary>Delete photo</summary><form method="post" action="/property-photos/{{ .ID }}/delete" class="form-stack">{{ template "csrf_field" $ }}<label class="checkbox-label"><input type="checkbox" name="confirm" value="1" required> Delete this photo and its caption</label><button class="ghost-btn">Delete photo</button></form><p class="muted">Removed from the live app immediately. Older backups may retain a copy until they expire.</p></details>{{ end }}
+</article>{{ else }}<p class="empty-note">No photos recorded.</p>{{ end }}</section>
+{{ end }}

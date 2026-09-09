@@ -205,6 +205,32 @@ if printf '%s' "$owner_dashboard_after_demo" | grep -q 'Fictional public demo'; 
 fi
 
 export CLUBDUE_BACKUP_DB_CONTAINER="$SOURCE_DB"
+# Exercise the real private upload path before backup. Bytes and metadata must
+# restore together, and a retried multipart submission must not create duplicates.
+photo_property_id="$(docker exec "$SOURCE_DB" psql -U clubdue -d clubdue -qAt -v ON_ERROR_STOP=1 -c "
+  WITH c AS (INSERT INTO customers(shop_id,name)
+    SELECT shop_id,'Photo rehearsal customer' FROM users WHERE email='owner@rehearsal.invalid' RETURNING id,shop_id)
+  INSERT INTO properties(shop_id,customer_id,address_line1,city,state,postal_code)
+  SELECT shop_id,id,'12 Photo Street','Cary','NC','27511' FROM c RETURNING id")"
+[ -n "$photo_property_id" ]
+for _ in 1 2; do
+  photo_upload_status="$(curl -sS -o "$WORK_DIR/photo-upload.html" -w '%{http_code}' \
+    -H "Cookie: clubdue_csrf=${csrf_cookie}; clubdue_session=${session_cookie}" \
+    -F "csrf_token=${csrf_token}" -F 'photo_key=11111111111111111111111111111111' \
+    -F 'caption=Production rehearsal property photo' -F 'category=before' \
+    -F "photo=@${ROOT}/internal/app/static/sideyard-icon-32-v2.png;type=image/png" \
+    "http://127.0.0.1:${PORT}/properties/${photo_property_id}/photos")"
+  [ "$photo_upload_status" = "303" ]
+done
+photo_count="$(docker exec "$SOURCE_DB" psql -U clubdue -d clubdue -qAt -c "SELECT count(*) FROM property_photos WHERE property_id='${photo_property_id}'")"
+[ "$photo_count" = "1" ]
+photo_id="$(docker exec "$SOURCE_DB" psql -U clubdue -d clubdue -qAt -c "SELECT id FROM property_photos WHERE property_id='${photo_property_id}'")"
+photo_fingerprint="$(docker exec "$SOURCE_DB" psql -U clubdue -d clubdue -qAt -c "SELECT md5(image_data)||':'||caption||':'||recorded_by FROM property_photos WHERE id='${photo_id}'")"
+curl -fsS -H "Cookie: clubdue_csrf=${csrf_cookie}; clubdue_session=${session_cookie}" \
+  "http://127.0.0.1:${PORT}/property-photos/${photo_id}" -o "$WORK_DIR/private-photo.png"
+[ -s "$WORK_DIR/private-photo.png" ]
+photo_anonymous_status="$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:${PORT}/property-photos/${photo_id}")"
+[ "$photo_anonymous_status" = "303" ]
 export CLUBDUE_BACKUP_DIR="$WORK_DIR/backups"
 export CLUBDUE_BACKUP_PASSPHRASE="disposable-production-rehearsal-backup-passphrase"
 export CLUBDUE_BACKUP_HMAC_KEY="disposable-production-rehearsal-hmac-key"
@@ -245,6 +271,8 @@ export CLUBDUE_RESTORE_DB_CONTAINER="$RESTORE_DB"
 restored_owner_count="$(docker exec "$RESTORE_DB" psql --username=clubdue --dbname=clubdue --tuples-only --no-align \
   --command "SELECT count(*) FROM users WHERE email = 'owner@rehearsal.invalid'")"
 [ "$restored_owner_count" = "1" ]
+restored_photo_fingerprint="$(docker exec "$RESTORE_DB" psql -U clubdue -d clubdue -qAt -c "SELECT md5(image_data)||':'||caption||':'||recorded_by FROM property_photos WHERE id='${photo_id}'")"
+[ "$restored_photo_fingerprint" = "$photo_fingerprint" ]
 
 expect_authenticated_restore_failure() {
   local candidate_backup="$1"

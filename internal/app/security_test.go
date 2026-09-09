@@ -77,6 +77,7 @@ func TestEveryMutationRouteRejectsMissingCSRF(t *testing.T) {
 		"/customers", "/customers/id", "/customers/id/delete", "/customers/id/properties",
 		"/properties/id/equipment", "/properties/id", "/properties/id/address", "/equipment/id", "/customers/id/vehicles", "/import", "/visits", "/plan-templates", "/plan-templates/id", "/business",
 		"/service-occurrences/id/date",
+		"/properties/id/photos", "/property-photos/id/delete",
 	}
 	for _, path := range paths {
 		t.Run(path, func(t *testing.T) {
@@ -188,6 +189,8 @@ func TestPublicDemoMutationAllowlistIsFinite(t *testing.T) {
 		{http.MethodPost, "/agreements/existing/renewal-link/extra", "application/x-www-form-urlencoded", url.Values{}},
 		{http.MethodPost, "/customers/existing/unknown", "application/x-www-form-urlencoded", url.Values{}},
 		{http.MethodPost, "/properties/existing/equipment/extra", "application/x-www-form-urlencoded", url.Values{}},
+		{http.MethodPost, "/properties/existing/photos", "multipart/form-data; boundary=fake", url.Values{}},
+		{http.MethodPost, "/property-photos/existing/delete", "application/x-www-form-urlencoded", url.Values{"confirm": {"1"}}},
 		{http.MethodPost, "/plan-templates/existing/extra", "application/x-www-form-urlencoded", url.Values{}},
 		{http.MethodPost, "/renewals", "application/x-www-form-urlencoded", url.Values{"status": {"unexpected"}}},
 		{http.MethodPost, "/service-schedules/existing", "application/x-www-form-urlencoded", url.Values{"action": {"unexpected"}}},

@@ -29,6 +29,7 @@ type Server struct {
 	interestThrottle     *authThrottle
 	interestThrottleOnce sync.Once
 	clock                Clock
+	photoProcessing      sync.Mutex
 }
 
 func (s *Server) nowUTC() time.Time {

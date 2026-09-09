@@ -831,3 +831,7 @@ a.primary-btn {
   .calendar-open-word { display: none; }
   .calendar-day { min-height: 80px; }
 }
+
+.property-photo { padding: 1.25rem 0; border-top: 1px solid #d5dfee; overflow-wrap: anywhere; }
+.property-photo img { display: block; max-width: 100%; max-height: 420px; width: auto; height: auto; border-radius: 8px; }
+.property-photo details { margin-top: 0.75rem; }

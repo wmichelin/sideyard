@@ -2,6 +2,7 @@
 <header class="page-header"><div><h2 class="page-title">Property record</h2><p class="page-subtitle">{{ .Property.AddressLine1 }} {{ .Property.AddressLine2 }}, {{ .Property.City }}, {{ .Property.State }} {{ .Property.PostalCode }}</p></div><a class="secondary-btn" href="/customers/{{ .Property.CustomerID }}">Back to customer</a></header>
 {{ if .Saved }}<p class="success-banner" role="status">Property record saved.</p>{{ end }}
 <p><a class="secondary-btn" href="/properties/{{ .Property.ID }}/address">Correct address</a></p>
+<p><a class="secondary-btn" href="/properties/{{ .Property.ID }}/photos">Private photos</a></p>
 <section class="panel"><h3 class="section-title">Equipment</h3>{{ range .Property.Equipment }}<p>{{ .Kind }} · <a href="/equipment/{{ .ID }}">Edit equipment</a></p>{{ else }}<p class="empty-note">No equipment recorded.</p>{{ end }}<a href="/customers/{{ .Property.CustomerID }}">Add equipment from customer record</a></section>
 <section class="panel"><h3 class="section-title">Directions</h3><div class="form-row"><a class="secondary-btn" href="{{ .GoogleMaps }}" target="_blank" rel="noreferrer">Google Maps</a><a class="secondary-btn" href="{{ .AppleMaps }}" target="_blank" rel="noreferrer">Apple Maps</a></div></section>
 <section class="panel"><h3 class="section-title">Internal site details</h3><p>Access instructions, gates, pets, water supply and other details for your business. These details stay out of customer-facing pages.</p>
