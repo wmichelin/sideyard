@@ -57,6 +57,10 @@ Without `DATABASE_URL`, Sideyard runs an in-memory legacy sample screen instead 
 
 ## Feature tour
 
+- **Business setup** — choose one or more of six trades, preview starter service
+  names, then customize or disable them. Setup preserves existing agreements and
+  schedules; starter services are drafts for future workflows, not priced plans.
+
 - **Dashboard** — active agreements, renewals due this month, lapsed month-to-date, and overdue service commitments, plus a month calendar of open recurring visits and a daily agenda with date-change links.
 - **Agreement book** — create customers and service templates, then create or edit a plan with renewal date, status, price, and optional included-service entitlement.
 - **Recurring services** — attach daily, every-N-weeks, or monthly work to a plan, optionally end-date it, then pause or resume it without changing renewal terms.

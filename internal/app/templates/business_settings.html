@@ -1,0 +1,53 @@
+{{ define "business_settings_content" }}
+<div class="business-setup">
+<header class="page-header"><div><h2 class="page-title">Business setup</h2><p class="page-subtitle">Choose your trades and make the service names your own.</p></div></header>
+{{ if .Saved }}<p class="success-banner" role="status">Business setup saved.</p>{{ end }}
+{{ if .Preview }}
+<section class="panel">
+  <h3 class="section-title">Review your setup</h3>
+  <p>Selected trades: {{ range .Presets }}{{ if $.Settings.Selected .ID }}<strong>{{ .Name }}</strong> · {{ end }}{{ end }}</p>
+  <p>Choose the starter services to add. Existing service names, agreements and schedules stay as you have them.</p>
+  <form method="post" action="/business" class="form-stack">
+    {{ template "csrf_field" . }}
+    <input type="hidden" name="action" value="apply">
+    <input type="hidden" name="primary" value="{{ .Settings.Primary }}">
+    <input type="hidden" name="revision" value="{{ .Settings.Revision }}">
+    {{ range .Settings.Trades }}<input type="hidden" name="trade" value="{{ . }}">{{ end }}
+    {{ range .Suggested }}
+      <label><span><input type="checkbox" name="service" value="{{ .PresetKey }}" checked> {{ .Name }}</span><span class="muted">{{ .Description }}</span></label>
+    {{ else }}<p>No new starter services to add. Your existing services are preserved.</p>{{ end }}
+    <div class="form-row"><button class="primary-btn">Apply setup</button><a href="/business" class="secondary-btn">Cancel</a></div>
+  </form>
+</section>
+{{ else }}
+<section class="panel">
+  <h3 class="section-title">Your trades</h3>
+  <form method="post" action="/business" class="form-stack">
+    {{ template "csrf_field" . }}
+    <input type="hidden" name="action" value="preview">
+    <input type="hidden" name="revision" value="{{ .Settings.Revision }}">
+    <label><span>Primary trade</span><select name="primary">{{ range .Presets }}<option value="{{ .ID }}" {{ if eq $.Settings.Primary .ID }}selected{{ end }}>{{ .Name }}</option>{{ end }}</select></label>
+    <fieldset class="form-fieldset"><legend>Trades you offer (choose any that apply)</legend>
+      {{ range .Presets }}<label><span><input type="checkbox" name="trade" value="{{ .ID }}" {{ if $.Settings.Selected .ID }}checked{{ end }}> {{ .Name }}</span><span class="muted">{{ .Description }}</span></label>{{ end }}
+    </fieldset>
+    <p class="muted">Your primary trade is included automatically. You can offer services from any trade.</p>
+    <button class="primary-btn">Review changes</button>
+  </form>
+</section>
+<section class="panel">
+  <h3 class="section-title">Starter services</h3>
+  <p>Prepare names and descriptions for the services you offer. These drafts do not create priced plans or scheduled work. Use <a href="/plan-templates">Plan templates</a> for your current maintenance agreements.</p>
+  {{ range .Services }}
+  <form method="post" action="/business" class="form-stack">
+    {{ template "csrf_field" $ }}
+    <input type="hidden" name="action" value="service"><input type="hidden" name="id" value="{{ .ID }}"><input type="hidden" name="revision" value="{{ .Revision }}">
+    <label><span>Service name</span><input name="name" value="{{ .Name }}" maxlength="120" required></label>
+    <label><span>Description</span><textarea name="description" maxlength="2000" rows="2">{{ .Description }}</textarea></label>
+    <label><span><input type="checkbox" name="enabled" value="1" {{ if .Enabled }}checked{{ end }}> Offered by this business</span></label>
+    <button class="secondary-btn">Save service</button>
+  </form>
+  {{ else }}<p class="empty-note">Select your trades and review their starter services to begin.</p>{{ end }}
+</section>
+{{ end }}
+</div>
+{{ end }}

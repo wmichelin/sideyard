@@ -153,6 +153,8 @@ func (s *Server) handler(static fs.FS) http.Handler {
 		s.handleLanding(w, r)
 	})
 	mux.HandleFunc("GET /dashboard", auth(s.handleDashboard))
+	mux.HandleFunc("GET /business", auth(s.handleBusinessSettings))
+	mux.HandleFunc("POST /business", auth(s.handleBusinessSettings))
 	mux.HandleFunc("GET /agreements", auth(s.handleAgreementsList))
 	mux.HandleFunc("GET /agreements/new", auth(s.handleAgreementNew))
 	mux.HandleFunc("POST /agreements", auth(s.handleAgreementCreate))
