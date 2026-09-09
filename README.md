@@ -57,6 +57,11 @@ Without `DATABASE_URL`, Sideyard runs an in-memory legacy sample screen instead 
 
 ## Feature tour
 
+Start with the [product map](docs/PRODUCT-MAP.md): a directed page graph, the
+features and access available on every page, production/staging availability,
+and a client-onboarding checklist for each trade. This is the canonical product
+reference; the overview below is a quick introduction.
+
 - **Business setup** — choose one or more of six trades, preview starter service
   names, then customize or disable them. Setup preserves existing agreements and
   schedules; starter services are drafts for future workflows, not priced plans.

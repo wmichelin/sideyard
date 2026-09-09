@@ -1,5 +1,25 @@
 # Agent instructions
 
+## Product documentation
+
+[docs/PRODUCT-MAP.md](docs/PRODUCT-MAP.md) is the canonical product documentation
+for Sideyard and the starting point for client onboarding and product awareness.
+Read it before planning or changing product behavior or setting up a new client.
+
+- Update its directed graph and page catalog in the same change as additions,
+  removals or changes to pages, navigation, features, permissions, configuration,
+  integrations or user-visible limits. Every graph node must document the page's
+  features, route, access requirements and release availability, with source links.
+- Keep the client-onboarding paths and trade-specific capabilities/gaps current.
+  Document form actions within their page; account for new routes with a node or
+  an explicit exclusion. Preserve stable node IDs and check links and graph syntax.
+- Distinguish verified production behavior, staging-only features, conditional
+  capabilities and future work. Update release labels after verified deployment;
+  do not present roadmap items or marketing claims as implemented features.
+- Keep this map as the product source of truth; link to it from other documents
+  instead of creating competing feature catalogs. Release evidence belongs in
+  `docs/SIDEYARD-DELIVERY-STATUS.md`; future scope belongs in the execution plan.
+
 ## Release workflow
 
 ClubDue uses **staging → review → production**:
