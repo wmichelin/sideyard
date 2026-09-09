@@ -1,10 +1,10 @@
 # Sideyard delivery status
 
-Status: verified — seven foundational slices on staging. Overall execution plan remains in progress.
-Last completed: private property photos verified on staging, including large uploads and deletion.
+Status: verified — eight foundational slices on staging. Overall execution plan remains in progress.
+Last completed: vehicle and equipment service histories verified on staging, including optional event times.
 Now: durable handoff and staging review.
 Next: expanded internal timelines and scheduling; production promotion only after approval.
-Staging: https://clubdue-staging.michelindigitalmedia.com (verified through private property photos).
+Staging: https://clubdue-staging.michelindigitalmedia.com (verified through asset service histories).
 Blocker: none for continued development. Production requires review and approval.
 
 The user explicitly authorized continued building on September 8, 2026. The
@@ -118,17 +118,21 @@ foundation of Release 1, not completion of the entire execution plan.
 Use [execution plan](SIDEYARD-EXECUTION-PLAN.md) for the seven releases and billing
 patterns. Site details, manual measurement history and vehicle records are implemented;
 dated property notes are also implemented. Equipment editing and address correction are now implemented. Authored notes
-linked directly to jobs/vehicles/equipment and staff permissions remain. Private
+linked directly to jobs and staff permissions remain. Vehicle/equipment histories
+are implemented in the next slice below. Private
 property photos are verified on staging.
 Billing, scheduling extensions and provider integrations remain as planned. No
 paid integrations or live customer payment collection are configured by this change.
 
 ## Continuation details
 
-- Migrations 021–027 are committed and applied on staging. Do not edit their
+- Migrations 021–028 are committed and applied on staging. Migration 028 adds
+  vehicle/equipment note history. Do not edit committed migrations'
   checksummed contents; future changes require a new migration.
-- Dates currently default to UTC, consistent with existing app behavior. Shop
-  timezone and actual appointment/application times remain part of later work.
+- Vehicle/equipment event notes default to the browser's date/timezone, with an
+  editable UTC fallback without JavaScript. Time is optional and remains unknown
+  when blank. Older property notes remain date-only; shop timezone and actual
+  appointment/application times remain part of later work.
 - Property measurement and note histories display the latest 100 records while
   retaining older rows. Pagination/export improvements remain future work.
 - Presets currently prepare service names/descriptions; new billing, checklist,
@@ -162,8 +166,8 @@ paid integrations or live customer payment collection are configured by this cha
   production backup/restore and pilot rehearsals, and local phone/desktop checks.
 - Equipment/date/address forms retain entered values on validation errors or
   conflicts. Unknown dates and optional unit remain blank when cleared.
-- Equipment private details are current editable information; they are not yet
-  an authored equipment service-event timeline. Address correction changes the
+- Equipment private details are current editable information; the new asset
+  history slice adds a separate authored service-event timeline. Address correction changes the
   current address displayed by existing work/export views. Historical quote and
   contract address snapshots remain part of E4.
 - QA scripts: `/tmp/sideyard-qa/equipment.cjs` and `address.cjs`. Equipment uses
@@ -207,7 +211,7 @@ paid integrations or live customer payment collection are configured by this cha
   expanded >2 MiB container/backup rehearsal passed. Final staging recheck also
   passed; see the verified artifact below. No production promotion.
 
-## Current verified staging artifact
+## Private photo staging artifact
 
 - Source: `1df43d3dd4140141ad3f05e8fd6e93876c8627a5`.
 - Image: `ghcr.io/wmichelin/clubdue@sha256:b178cdb5312fc5e20d1cdb10fa4af9853d77e3648373d0dde02bec871bed79aa`.
@@ -226,3 +230,39 @@ paid integrations or live customer payment collection are configured by this cha
   crew access remain; separate object storage is the scaling path beyond the
   bounded database-backed pilot. Owners can try photos from their own staging
   customer/property record, not through public-demo uploads.
+
+## Vehicle and equipment service histories
+
+- Each vehicle/equipment record now links to a separate internal service
+  history. Entries keep event date, optional actual time, event timezone, author
+  and recording time. Unknown time stays unknown; corrections preserve earlier
+  entries. Current standing asset details remain independently editable.
+- Owner-only routes and tenant-safe parent constraints; concurrent identical
+  retries acknowledge one note, while changed or cross-asset submissions fail.
+  Histories show the latest 100 entries and retain all earlier rows.
+- Migration 028 and embedded timezone data support the scratch image. Invalid
+  local clock times are rejected; repeated times require an explicit occurrence.
+  A slow default script preserves date/timezone fields already changed by a user.
+- Full Go/Postgres tests, vet, static build, both operational rehearsals and local
+  browser checks passed. The backup rehearsal proves exact timestamp/timezone/
+  author/body restoration. See [asset history delivery](SIDEYARD-ASSET-HISTORY-DELIVERY.md)
+  for review, regression evidence and staging verification.
+- QA script: `/tmp/sideyard-qa/history.cjs`; supports local owner or isolated
+  staging demo. Covers two vehicles, equipment, corrections, DST handling,
+  delayed JavaScript, no-JavaScript fallback and 390/1440-pixel views.
+- Both local history QA servers and the task-owned disposable database were
+  removed. Scripts/screenshots and build caches remain available.
+- Remaining E2 work includes customer/visit-linked notes, property event-time
+  upgrades and vehicle/equipment photo associations. E3 adds jobs, finite
+  programs and crew scheduling; E4 adds configurable contract billing across
+  trades. Four/five treatments are one use case, not a universal billing rule.
+
+## Current verified staging artifact
+
+- Source: `ea9d91d9f6892a8b1a7d036429081a819eed3e82`.
+- Image: `ghcr.io/wmichelin/clubdue@sha256:6567c243466dc954ece39c91d5a2210c73879b63fee9ec359b2c80d92a751e32`.
+- CI `34314814217` and staging `34314814203` succeeded. Manual smoke and
+  390/1440-pixel browser acceptance passed, including the deliberately delayed
+  script regression. No browser errors, overflow or unexpected staging errors.
+- Running staging image/revision verified directly. Production remains on
+  `7d33ab7ff1c05a796bd351b647f81eea58729726` and its gate is false. No promotion.

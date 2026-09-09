@@ -1,10 +1,10 @@
 # Vehicle and equipment service histories
 
-Status: testing
-Last completed: implementation, automated checks and local browser acceptance passed.
-Now: publishing independent authored timelines for vehicles and equipment.
-Next: CI, staging smoke and staging browser flows.
-Staging: https://clubdue-staging.michelindigitalmedia.com (pending for this slice)
+Status: verified
+Last completed: CI, staging smoke, browser acceptance and running artifact verification passed.
+Now: durable handoff of vehicle and equipment histories.
+Next: customer/visit-linked notes and remaining E2 timeline work, then E3 scheduling.
+Staging: https://clubdue-staging.michelindigitalmedia.com (verified)
 Blocker: none. Production requires separate approval.
 
 ## Delivery brief and team review
@@ -72,4 +72,21 @@ timeline pagination, asset photos and crew permissions remain later work.
   before the script arrived. A deliberately held script reproduced that failure
   against the original binary; guarding changed fields fixed it.
 - Static rebuild and the complete local browser flow, including deliberately
-  delayed JavaScript, passed with the correction. Final staging checks follow.
+  delayed JavaScript, passed with the correction.
+
+## Final staging evidence
+
+- Source: `ea9d91d9f6892a8b1a7d036429081a819eed3e82`.
+- Image: `ghcr.io/wmichelin/clubdue@sha256:6567c243466dc954ece39c91d5a2210c73879b63fee9ec359b2c80d92a751e32`.
+- [CI](https://github.com/wmichelin/clubdue/actions/runs/34314814217) and
+  [Deploy Staging](https://github.com/wmichelin/clubdue/actions/runs/34314814203)
+  succeeded. Running image/revision read directly from the staging container.
+- `./scripts/smoke-test.sh staging`: passed.
+- `node /tmp/sideyard-qa/history.cjs https://clubdue-staging.michelindigitalmedia.com staging`:
+  passed separate vehicle/equipment histories, date-only/timed notes, DST
+  validation/selection, corrections, delayed defaults and no-JavaScript fallback
+  at 390/1440 pixels. No browser errors or horizontal document overflow; final
+  mobile screenshot reviewed. Only isolated fictional demo records were used.
+- Recent staging logs showed no unexpected errors. Production remains on
+  `7d33ab7ff1c05a796bd351b647f81eea58729726`; its gate remains `false`.
+- Local QA servers and disposable database removed. No production deployment.
