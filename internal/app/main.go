@@ -180,6 +180,8 @@ func (s *Server) handler(static fs.FS) http.Handler {
 	mux.HandleFunc("POST /equipment/{id}", auth(s.handleEquipmentRecord))
 	mux.HandleFunc("GET /properties/{id}", auth(s.handlePropertyRecord))
 	mux.HandleFunc("POST /properties/{id}", auth(s.handlePropertyRecord))
+	mux.HandleFunc("GET /properties/{id}/address", auth(s.handlePropertyAddress))
+	mux.HandleFunc("POST /properties/{id}/address", auth(s.handlePropertyAddress))
 	mux.HandleFunc("GET /import", auth(s.handleImport))
 	mux.HandleFunc("POST /import", auth(s.handleImport))
 	mux.HandleFunc("GET /visits/export.csv", auth(s.handleVisitsExport))

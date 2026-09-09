@@ -1,0 +1,13 @@
+{{ define "property_address_content" }}
+<header class="page-header"><div><h2 class="page-title">Correct property address</h2><p class="page-subtitle">Keep this location's records together.</p></div><a class="secondary-btn" href="/properties/{{ .Property.ID }}">Back to property</a></header>
+{{ if .Saved }}<p role="status" class="success-banner">Address saved.</p>{{ end }}
+{{ if .Error }}<p role="alert" class="error-banner">{{ .Error }} <a href="/properties/{{ .Property.ID }}/address">Reload address</a></p>{{ end }}
+<section class="panel"><h3 class="section-title">Service address</h3><p>Correct the address for this site. Its notes, measurements, equipment and work stay attached. For a different site, <a href="/customers/{{ .Property.CustomerID }}">add another property</a>.</p>
+<form method="post" class="form-stack">
+{{ template "csrf_field" . }}<input type="hidden" name="revision" value="{{ .Property.Revision }}">
+<label><span>Address</span><input name="address_line1" required maxlength="200" value="{{ .Property.AddressLine1 }}" autocomplete="address-line1"></label>
+<label><span>Unit / suite (optional)</span><input name="address_line2" maxlength="200" value="{{ .Property.AddressLine2 }}" autocomplete="address-line2"></label>
+<div class="form-row"><label><span>City</span><input name="city" required maxlength="200" value="{{ .Property.City }}" autocomplete="address-level2"></label><label><span>State / region</span><input name="state" required maxlength="200" value="{{ .Property.State }}" autocomplete="address-level1"></label><label><span>Postal code</span><input name="postal_code" required maxlength="200" value="{{ .Property.PostalCode }}" autocomplete="postal-code"></label></div>
+<button class="primary-btn">Save address</button>
+</form></section>
+{{ end }}

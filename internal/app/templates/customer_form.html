@@ -68,7 +68,7 @@
 
 {{ range .Properties }}
 <section class="panel">
-  <h3 class="section-title">{{ .AddressLine1 }}, {{ .City }}, {{ .State }} {{ .PostalCode }}</h3>
+  <h3 class="section-title">{{ .AddressLine1 }}{{ if .AddressLine2 }}, {{ .AddressLine2 }}{{ end }}, {{ .City }}, {{ .State }} {{ .PostalCode }}</h3>
   {{ if eq $.Nav.User.Role "owner" }}<p><a class="secondary-btn" href="/properties/{{ .ID }}">Property details &amp; measurements</a></p>{{ end }}
   {{ if .Equipment }}
   <ul class="equipment-list">
