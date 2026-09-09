@@ -1,10 +1,10 @@
 # Standalone jobs and site surveys
 
-Status: testing
-Last completed: implementation, full local checks and browser acceptance passed.
-Now: publishing standalone work and the reported status-badge layout fix.
-Next: CI, staging smoke and browser verification.
-Staging: https://clubdue-staging.michelindigitalmedia.com (pending for this slice)
+Status: verified
+Last completed: CI, staging smoke, job/badge browser checks and running artifact verification passed.
+Now: durable handoff of standalone work and the status-badge layout fix.
+Next: calendar integration, appointment windows and remaining E3 scheduling work.
+Staging: https://clubdue-staging.michelindigitalmedia.com (verified)
 Blocker: none. This new slice will be staged for review.
 
 ## Production promotion
@@ -73,3 +73,22 @@ associations remain later slices. Customer/property timeline finish remains open
   encountered `ERR_NETWORK_CHANGED` during Docker network setup; rerun passed.
 - The badge change is scoped to service-work status labels and their mobile grid.
   Label text and business state are unchanged.
+
+## Verified staging artifact
+
+- Source: `53b7878955e9eac7f3288e926218dfdbd612c427`.
+- Image: `ghcr.io/wmichelin/clubdue@sha256:61d6c07c1fc88becb1a69e09f170a9ec94eb4857509ec438a1eb5f37eb6b584a`.
+- [CI](https://github.com/wmichelin/clubdue/actions/runs/34356135588) and
+  [Deploy Staging](https://github.com/wmichelin/clubdue/actions/runs/34356135565)
+  succeeded. Source and digest read from the running staging container.
+- `./scripts/smoke-test.sh staging`: passed.
+- `node /tmp/sideyard-qa/jobs.cjs https://clubdue-staging.michelindigitalmedia.com staging`:
+  passed standalone creation, optional dates, stale protection, outcomes/history,
+  separate jobs and open/all filters at 390/1440 pixels. Mobile screenshot reviewed.
+- `node /tmp/sideyard-qa/status-badges.cjs https://clubdue-staging.michelindigitalmedia.com`:
+  all 90 statuses stayed on one line at 320/390/900/1024/1200/1440 pixels; no
+  document overflow or browser errors. Final row screenshots reviewed.
+- Staging logs showed no unexpected errors. Tests used isolated fictional demos.
+  Local QA server and disposable database removed; scripts/screenshots retained.
+- Production remains on the approved `ae6f16a` release above. Gate remains false;
+  standalone jobs and the badge correction are staged for separate review.

@@ -1,16 +1,17 @@
 # Sideyard delivery status
 
-Status: verified — nine foundational slices on staging. Overall execution plan remains in progress.
-Last completed: recurring and seasonal visit notes verified on staging, including preserved work state and CSV privacy.
+Status: verified — nine foundational slices in production; standalone jobs and the badge fix verified on staging. Overall execution plan remains in progress.
+Last completed: approved production promotion, standalone job/site-survey workflow and single-line status badges.
 Now: durable handoff and staging review.
-Next: expanded internal timelines and scheduling; production promotion only after approval.
-Staging: https://clubdue-staging.michelindigitalmedia.com (verified through visit-linked notes).
+Next: calendar integration, appointments and remaining scheduling work; new production promotion only after approval.
+Staging: https://clubdue-staging.michelindigitalmedia.com (verified through standalone jobs and the badge fix).
 Blocker: none for continued development. Production requires review and approval.
 
-The user explicitly authorized continued building on September 8, 2026. The
-earlier planning-only status in the execution/requirements documents describes
-their original handoff; this file tracks subsequent implementation. Production
-promotion has not been authorized for these new features.
+The user explicitly authorized continued building on September 8, 2026, and
+production promotion through visit-linked notes on September 9. The earlier
+planning-only status in the execution/requirements documents describes the
+original handoff; this file tracks subsequent implementation. New standalone
+jobs and the status-badge fix are a separate staging review after that promotion.
 
 ## Completed locally
 
@@ -127,8 +128,8 @@ paid integrations or live customer payment collection are configured by this cha
 
 ## Continuation details
 
-- Migrations 021–029 are committed and applied on staging. Migration 028 adds
-  vehicle/equipment note history; 029 adds visit history. Do not edit committed migrations'
+- Migrations 021–030 are committed and applied on staging; production is through
+  029. Migration 030 adds jobs and their history. Do not edit committed migrations'
   checksummed contents; future changes require a new migration.
 - Vehicle/equipment event notes default to the browser's date/timezone, with an
   editable UTC fallback without JavaScript. Time is optional and remains unknown
@@ -290,7 +291,7 @@ paid integrations or live customer payment collection are configured by this cha
   jobs/site surveys, finite service programs, appointments/crew assignment and
   configurable contract billing. No new payment or billing integration yet.
 
-## Current verified staging artifact
+## Visit-note staging artifact
 
 - Source: `ae6f16ae9f9feaf52bf58093cf1f0c3b8c7a7c34`.
 - Image: `ghcr.io/wmichelin/clubdue@sha256:a57a268f081b8f2c96550eb2d61b00e36faae855757662c0a62b27162f5d319c`.
@@ -302,3 +303,55 @@ paid integrations or live customer payment collection are configured by this cha
   clarification was requested and standing build authorization used to continue.
   No production approval was assumed. See the visit delivery artifact for the
   exact earlier reviewed release if that is the one they approve.
+
+## Approved production release — September 9
+
+- User explicitly requested production promotion followed by the next feature.
+- Reviewed source: `ae6f16ae9f9feaf52bf58093cf1f0c3b8c7a7c34`.
+- Image: `ghcr.io/wmichelin/clubdue@sha256:a57a268f081b8f2c96550eb2d61b00e36faae855757662c0a62b27162f5d319c`.
+- [Production workflow](https://github.com/wmichelin/clubdue/actions/runs/34354641834)
+  succeeded, including authenticated smoke. The running production revision and
+  digest matched. The 390/1440-pixel visit-history browser workflow passed on
+  getsideyard.com; the legacy ClubDue demo/dashboard remained accessible.
+- Production logs had no unexpected errors. Gate returned to false immediately
+  after successful promotion. All nine foundational slices are now in production.
+- No new production approval is assumed for the subsequent standalone-job and
+  badge-fix build; that work is staged separately.
+
+## Standalone jobs and site surveys
+
+- Customer-owned one-time service jobs and estimating/site-survey visits,
+  optional same-customer property and optional planned day. No annual agreement
+  required or generated. Owner Jobs view has open/all filters; customer records
+  link directly to job creation.
+- Editable open jobs with revision protection. Explicit complete/cancel/reopen
+  actions retain authored snapshots of every change. Concurrent create retries
+  deduplicate even after later edits; changed submissions cannot replace jobs.
+- Jobs, history, outcomes and properties are tenant-scoped. Completed/cancelled
+  jobs must reopen before editing; deleting a customer cannot silently erase
+  their work history. Whole-shop/demo cleanup still cascades correctly.
+- New internal/jobs domain and migration 030. Existing recurring/seasonal
+  schedules and entitlements remain independent. Current planned days appear in
+  Jobs; appointment times, calendar integration and crew assignment remain next.
+- Screenshot-reported status badges now stay on one line; the mobile work-row
+  layout reserves enough space for the full status label.
+- Full Go/Postgres tests, static build, vet, backup/restore and pilot rehearsals
+  passed. Local phone/desktop job flow and badge checks from 320–1440 pixels
+  passed. See [job delivery](SIDEYARD-JOBS-DELIVERY.md) for review and evidence.
+- Local test server/database removed; QA scripts/screenshots remain under
+  `/tmp/sideyard-qa/` as `jobs.cjs` and `status-badges.cjs`.
+- Remaining E3 work: links to existing recurring visits, calendar/appointments,
+  treatment programs, crew/checklists and job asset/photo associations. E2
+  customer/property timeline finish and E4 flexible quote/billing work remain.
+
+## Current verified staging artifact
+
+- Source: `53b7878955e9eac7f3288e926218dfdbd612c427`.
+- Image: `ghcr.io/wmichelin/clubdue@sha256:61d6c07c1fc88becb1a69e09f170a9ec94eb4857509ec438a1eb5f37eb6b584a`.
+- CI `34356135588` and staging `34356135565` succeeded. Manual smoke, standalone
+  job browser acceptance and status-badge checks passed. Jobs tested at 390/1440
+  pixels; all 90 work statuses checked at six widths from 320 to 1440 pixels.
+- No browser errors, document overflow or unexpected staging log errors. Running
+  revision/digest verified. Production remains at the explicitly approved visit
+  history source `ae6f16ae9f9feaf52bf58093cf1f0c3b8c7a7c34`; gate false.
+- Try **Jobs → New job**, or **New job or site survey** from a customer record.
