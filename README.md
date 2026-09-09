@@ -61,7 +61,7 @@ Without `DATABASE_URL`, Sideyard runs an in-memory legacy sample screen instead 
   names, then customize or disable them. Setup preserves existing agreements and
   schedules; starter services are drafts for future workflows, not priced plans.
 - **Property records** — open a customer's property to save internal site details,
-  record area/length measurements with sources and history, and launch directions
+  add dated internal notes, record area/length measurements with sources and history, and launch directions
   in Google or Apple Maps. Property records are currently owner-only.
 - **Customer vehicles** — owners can keep multiple vehicle records per customer,
   with make/model/year, an optional identifier and internal notes, independent of

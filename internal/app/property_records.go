@@ -149,6 +149,13 @@ func (s *Server) handlePropertyRecord(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		switch r.PostForm.Get("action") {
+		case "note":
+			date, parseErr := time.Parse("2006-01-02", r.PostForm.Get("occurred_on"))
+			if parseErr != nil {
+				http.Error(w, "Choose a valid note date.", 422)
+				return
+			}
+			err = s.store.AddPropertyNote(r.Context(), u.ShopID, id, propertyNote{SubmissionKey: r.PostForm.Get("note_key"), Body: r.PostForm.Get("note_body"), OccurredOn: date, RecordedBy: u.Email})
 		case "details":
 			version, parseErr := strconv.Atoi(r.PostForm.Get("revision"))
 			if parseErr != nil || version < 0 {
@@ -184,5 +191,15 @@ func (s *Server) handlePropertyRecord(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	address := strings.Join([]string{p.AddressLine1, p.AddressLine2, p.City, p.State, p.PostalCode}, " ")
-	s.renderLayout(w, r, "Property record — Sideyard", "property_record_content", map[string]any{"Nav": NavData{Active: "customers", User: u}, "Property": p, "Notes": notes, "Revision": revision, "Measurements": measurements, "Kinds": propertyMeasurementKinds, "Today": s.store.nowUTC().Format("2006-01-02"), "GoogleMaps": "https://www.google.com/maps/dir/?api=1&destination=" + url.QueryEscape(address), "AppleMaps": "https://maps.apple.com/?daddr=" + url.QueryEscape(address), "Saved": r.URL.Query().Get("saved") == "1"})
+	journal, err := s.store.ListPropertyNotes(r.Context(), u.ShopID, id)
+	if err != nil {
+		http.Error(w, "Could not load site notes. Please retry.", 503)
+		return
+	}
+	noteKey, err := randomToken(16)
+	if err != nil {
+		http.Error(w, "Could not prepare the note form. Please retry.", 503)
+		return
+	}
+	s.renderLayout(w, r, "Property record — Sideyard", "property_record_content", map[string]any{"Nav": NavData{Active: "customers", User: u}, "Property": p, "Notes": notes, "Journal": journal, "NoteKey": noteKey, "Revision": revision, "Measurements": measurements, "Kinds": propertyMeasurementKinds, "Today": s.store.nowUTC().Format("2006-01-02"), "GoogleMaps": "https://www.google.com/maps/dir/?api=1&destination=" + url.QueryEscape(address), "AppleMaps": "https://maps.apple.com/?daddr=" + url.QueryEscape(address), "Saved": r.URL.Query().Get("saved") == "1"})
 }

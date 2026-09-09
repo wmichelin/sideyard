@@ -1,10 +1,10 @@
 # Sideyard delivery status
 
-Status: implementing — business setup and property records verified on staging; vehicles ready to stage.
-Last completed: customer-owned vehicle records independent of service locations.
-Now: publish the verified vehicle-record slice to staging.
-Next: verify vehicles; continue equipment editing and authored notes/photos.
-Staging: https://clubdue-staging.michelindigitalmedia.com (verified through property records; vehicles pending).
+Status: implementing — setup, property records and vehicles verified on staging; dated site notes ready to stage.
+Last completed: authored property notes with event dates and retry deduplication.
+Now: publish the verified site-note slice to staging.
+Next: verify notes; continue equipment editing and private photo storage.
+Staging: https://clubdue-staging.michelindigitalmedia.com (verified through vehicles; dated notes pending).
 Blocker: none for staging. Production requires review and approval.
 
 Implementation was started after the user's instruction to proceed on September
@@ -73,6 +73,9 @@ foundation of Release 1, not completion of the entire execution plan.
 - Property-record source: `f8362210702c578d4db7564940eae286ad46f8d3`.
 - CI `34297309111` and staging `34297309143` succeeded. Manual staging smoke
   and property-record browser checks at 390/1440 pixels passed.
+- Vehicle source: `4d6a850f07eec361ea4b35242c553a78093f1f14`; CI `34297686281`
+  and staging `34297686330` succeeded. Manual staging smoke and two-vehicle
+  browser walkthrough passed at 390/1440 pixels.
 
 ## Vehicle-record slice
 
@@ -87,10 +90,27 @@ foundation of Release 1, not completion of the entire execution plan.
   the other was unchanged and found no overflow or browser errors. Screenshot
   reviewed at 390 pixels.
 
+## Dated site-note slice
+
+- Property notes have separate event dates, recording timestamps and authors.
+  Standing site/access details remain separately editable. Corrections are new
+  entries, preserving earlier history. Notes are internal and owner-only.
+- Migration 024 adds tenant-safe property ownership and per-shop submission
+  identity. Concurrent retries acknowledge the same note; reusing a submission
+  identity with different content fails instead of overwriting it.
+- Validation and Postgres tests cover invalid content/dates, cross-tenant reads
+  and writes, concurrent deduplication, preserved authorship/timestamps and
+  correction history. Full fresh-Postgres tests, vet, static build, production
+  rehearsal and pilot rehearsal passed.
+- Local browser checks at 390/1440 pixels added two notes, preserved line breaks,
+  escaped script-like content, displayed history and found no browser errors or
+  document overflow. Screenshot inspected.
+
 ## Remaining work
 
 Use [execution plan](SIDEYARD-EXECUTION-PLAN.md) for the seven releases and billing
 patterns. Site details, manual measurement history and vehicle records are implemented;
-expanded equipment editing, authored visit notes and private photos remain.
+dated property notes are also implemented. Expanded equipment editing, notes
+linked directly to jobs/vehicles, staff permissions and private photos remain.
 Billing, scheduling extensions and provider integrations remain as planned. No
 paid integrations or live customer payment collection are configured by this change.
