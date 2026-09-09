@@ -187,7 +187,9 @@ func publicDemoMutationAllowed(r *http.Request) bool {
 	case "properties":
 		return len(segments) == 2 || (len(segments) == 3 && (segments[2] == "equipment" || segments[2] == "address"))
 	case "equipment":
-		return len(segments) == 2
+		return len(segments) == 2 || (len(segments) == 3 && segments[2] == "history")
+	case "vehicles":
+		return len(segments) == 3 && segments[2] == "history"
 	case "visits":
 		if len(segments) != 1 {
 			return false

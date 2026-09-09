@@ -235,6 +235,17 @@ curl -fsS -H "Cookie: clubdue_csrf=${csrf_cookie}; clubdue_session=${session_coo
 [ -s "$WORK_DIR/private-photo.png" ]
 photo_anonymous_status="$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:${PORT}/property-photos/${photo_id}")"
 [ "$photo_anonymous_status" = "303" ]
+# The scratch image must resolve named timezones without host zoneinfo files.
+history_equipment_id="$(docker exec "$SOURCE_DB" psql -U clubdue -d clubdue -qAt -v ON_ERROR_STOP=1 -c "INSERT INTO equipment(shop_id,property_id,kind) SELECT shop_id,id,'Rehearsal heat pump' FROM properties WHERE id='${photo_property_id}' RETURNING id")"
+history_status="$(curl -sS -o "$WORK_DIR/history-save.html" -w '%{http_code}' \
+  -H "Cookie: clubdue_csrf=${csrf_cookie}; clubdue_session=${session_cookie}" \
+  --data-urlencode "csrf_token=${csrf_token}" \
+  --data-urlencode 'note_key=33333333333333333333333333333333' \
+  --data-urlencode 'note_body=Rehearsal filter service' --data-urlencode 'occurred_on=2025-11-02' \
+  --data-urlencode 'event_time=01:30' --data-urlencode 'event_timezone=America/New_York' \
+  --data-urlencode 'event_offset=-04:00' \
+  "http://127.0.0.1:${PORT}/equipment/${history_equipment_id}/history")"
+[ "$history_status" = "303" ]
 export CLUBDUE_BACKUP_DIR="$WORK_DIR/backups"
 export CLUBDUE_BACKUP_PASSPHRASE="disposable-production-rehearsal-backup-passphrase"
 export CLUBDUE_BACKUP_HMAC_KEY="disposable-production-rehearsal-hmac-key"
@@ -277,6 +288,8 @@ restored_owner_count="$(docker exec "$RESTORE_DB" psql --username=clubdue --dbna
 [ "$restored_owner_count" = "1" ]
 restored_photo_fingerprint="$(docker exec "$RESTORE_DB" psql -U clubdue -d clubdue -qAt -c "SELECT md5(image_data)||':'||caption||':'||recorded_by FROM property_photos WHERE id='${photo_id}'")"
 [ "$restored_photo_fingerprint" = "$photo_fingerprint" ]
+restored_history_count="$(docker exec "$RESTORE_DB" psql -U clubdue -d clubdue -qAt -c "SELECT count(*) FROM asset_notes WHERE equipment_id='${history_equipment_id}' AND body='Rehearsal filter service' AND occurred_at='2025-11-02T05:30:00Z'::timestamptz AND event_timezone='America/New_York' AND recorded_by='owner@rehearsal.invalid'")"
+[ "$restored_history_count" = "1" ]
 
 expect_authenticated_restore_failure() {
   local candidate_backup="$1"

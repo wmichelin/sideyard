@@ -1,6 +1,7 @@
 {{ define "equipment_record_content" }}
 <header class="page-header"><div><h2 class="page-title">Equipment record</h2><p class="page-subtitle">{{ .Equipment.Address }}</p></div><a class="secondary-btn" href="/customers/{{ .Equipment.CustomerID }}">Back to customer</a></header>
 {{ if .Saved }}<p class="success-banner" role="status">Equipment saved.</p>{{ end }}
+<p><a class="secondary-btn" href="/equipment/{{ .Equipment.ID }}/history">Service history</a></p>
 {{ if .Error }}<p class="error-banner" role="alert">{{ .Error }} <a href="/equipment/{{ .Equipment.ID }}">Reload record</a></p>{{ end }}
 <section class="panel"><h3 class="section-title">Equipment details</h3><p>Keep a separate record for each unit, fixture or system. Leave unknown dates blank.</p>
 <form method="post" class="form-stack">

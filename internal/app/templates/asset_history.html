@@ -1,0 +1,19 @@
+{{ define "asset_history_content" }}
+<header class="page-header"><div><h2 class="page-title">Service history</h2><p class="page-subtitle">{{ .Target.Name }}</p></div><a class="secondary-btn" href="{{ .Target.BackURL }}">Back to asset</a></header>
+{{ if .Saved }}<p role="status" class="success-banner">Service note saved.</p>{{ end }}
+{{ if .Error }}<p role="alert" class="error-banner">{{ .Error }} Your note is kept below. <a href="{{ .HistoryURL }}">Start a new note</a></p>{{ end }}
+<section class="panel"><h3 class="section-title">Add an internal note</h3><p>Record inspections, service work and follow-ups for this asset. Add a new entry for corrections so the earlier record stays available.</p>
+<form method="post" class="form-stack" data-history-defaults="{{ .Initial }}">
+{{ template "csrf_field" . }}<input type="hidden" name="note_key" value="{{ .Input.Key }}">
+<div class="form-row"><label><span>Event date</span><input name="occurred_on" type="date" value="{{ .Input.Date }}" required></label><label><span>Time (optional)</span><input name="event_time" type="time" step="60" value="{{ .Input.Time }}"></label></div>
+<label><span>Timezone at the event</span><input name="event_timezone" value="{{ .Input.Zone }}" list="event-timezones" required maxlength="100"></label>
+<datalist id="event-timezones"><option value="UTC"><option value="America/New_York"><option value="America/Chicago"><option value="America/Denver"><option value="America/Los_Angeles"><option value="America/Phoenix"><option value="Pacific/Honolulu"><option value="Europe/London"><option value="Australia/Sydney"></datalist>
+<p class="muted">Check the timezone where the event happened. Leave time blank when only the date is known.</p>
+{{ if or .Choices .Input.Offset }}<label><span>Clock occurrence</span><select name="event_offset"><option value="">Automatic when the time is unambiguous</option>{{ if .Choices }}{{ range .Choices }}<option value="{{ .Offset }}" {{ if eq $.Input.Offset .Offset }}selected{{ end }}>{{ .Label }}</option>{{ end }}{{ else }}<option value="{{ .Input.Offset }}" selected>UTC{{ .Input.Offset }}</option>{{ end }}</select></label>{{ end }}
+<label><span>Service note</span><textarea name="note_body" rows="4" maxlength="2000" required>{{ .Input.Body }}</textarea></label>
+<button class="primary-btn">Add service note</button>
+</form></section>
+<section class="panel"><h3 class="section-title">Note history</h3><p class="muted">Latest 100 entries by event date, then recording order. Notes are internal and visible only to the owner.</p>
+{{ range .Notes }}<article class="measurement-entry property-note"><h4>{{ .EventLabel }}</h4><p class="property-note-body">{{ .Body }}</p><p class="muted">{{ .RecordedBy }} · Recorded {{ .RecordedAt.UTC.Format "Jan 2, 2006 15:04" }} UTC</p></article>{{ else }}<p class="empty-note">No service notes yet.</p>{{ end }}</section>
+<script src="/static/asset-history.js" defer></script>
+{{ end }}
