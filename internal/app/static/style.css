@@ -620,6 +620,8 @@ a.primary-btn {
 .business-setup input[type="checkbox"] { width: 20px; height: 20px; vertical-align: middle; accent-color: var(--accent); }
 .business-setup label { display: flex; flex-direction: column; gap: 0.35rem; }
 .business-setup .form-stack + .form-stack { margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border); }
+.measurement-entry + .measurement-entry { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.measurement-entry { overflow-wrap: anywhere; }
 
 .schedule-list {
   display: grid;

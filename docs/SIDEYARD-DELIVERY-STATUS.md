@@ -1,10 +1,10 @@
 # Sideyard delivery status
 
-Status: implementing — business setup foundation ready for staging.
-Last completed: six-trade selection, preview/apply and editable starter service names.
-Now: publish the verified first slice to staging.
-Next: verify staging; continue property/asset details in Release 2.
-Staging: https://clubdue-staging.michelindigitalmedia.com (pending).
+Status: implementing — business setup verified on staging; property records ready to stage.
+Last completed: internal site details, measurement history and navigation links.
+Now: publish the verified property-record slice to staging.
+Next: verify property records; continue vehicle/equipment records and authored notes/photos.
+Staging: https://clubdue-staging.michelindigitalmedia.com (verified for business setup; property records pending).
 Blocker: none for staging. Production requires review and approval.
 
 Implementation was started after the user's instruction to proceed on September
@@ -42,10 +42,39 @@ foundation of Release 1, not completion of the entire execution plan.
   integration-test tenants and bootstrap correctly skipped it. Provisioned a
   synthetic local owner with the existing operator command; browser rerun passed.
 
+## Property-record slice
+
+- Owner-only property page linked from each customer's service locations.
+- Editable internal site/access details with concurrent-edit protection.
+- Append-only measurement history: named zones, twelve area/length types, exact
+  decimal values, dimension-appropriate units, source, measured date, estimated
+  flag and recording author. Latest 100 entries displayed; all entries retained.
+- Separate turf, bed, driveway, walkway, patio, roof, building-footprint, floor,
+  exterior-wall and perimeter measurements. Unknown measurements remain absent.
+- Google/Apple Maps links contain only the service address, not internal details.
+- Migration 022 adds tenant-safe property references and measurement unit/value
+  constraints. New data does not enter legacy visit exports or public pages.
+- Focused property tests, full fresh-Postgres suite, vet, static build, production
+  rehearsal and pilot rehearsal passed. Browser checks passed at 390/1440 pixels
+  with saved notes, preserved decimal history, escaped text and navigation links.
+- The first full-suite retry against the reused database collided with the
+  pre-existing fixed renewal-token fixture in `clock_test.go`. Rerunning on a new
+  disposable database passed; no unrelated test behavior was changed.
+
+## Staging evidence
+
+- Business setup source: `a6beead76c1a28b4d85bd80a8931c99a278d0548`.
+- CI `34296690579` and staging `34296690593` succeeded.
+- Manual staging smoke and mixed-trade mobile/desktop browser walkthrough passed.
+- The first staging browser script used an ambiguous status selector because the
+  demo banner also has role=status. Narrowing to the save message fixed the QA
+  script; the app required no change.
+- Production remains on the prior approved release.
+
 ## Remaining work
 
 Use [execution plan](SIDEYARD-EXECUTION-PLAN.md) for the seven releases and billing
-patterns. Next property work should add editable site details and typed
-measurements, preserve existing equipment/customer identities and extend tests
-before staging. No paid integrations or live customer payment collection are
-configured by this change.
+patterns. Site details and manual measurement history are implemented; vehicle
+assets, expanded equipment editing, authored visit notes and private photos remain.
+Billing, scheduling extensions and provider integrations remain as planned. No
+paid integrations or live customer payment collection are configured by this change.

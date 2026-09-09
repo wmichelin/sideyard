@@ -60,6 +60,9 @@ Without `DATABASE_URL`, Sideyard runs an in-memory legacy sample screen instead 
 - **Business setup** — choose one or more of six trades, preview starter service
   names, then customize or disable them. Setup preserves existing agreements and
   schedules; starter services are drafts for future workflows, not priced plans.
+- **Property records** — open a customer's property to save internal site details,
+  record area/length measurements with sources and history, and launch directions
+  in Google or Apple Maps. Property records are currently owner-only.
 
 - **Dashboard** — active agreements, renewals due this month, lapsed month-to-date, and overdue service commitments, plus a month calendar of open recurring visits and a daily agenda with date-change links.
 - **Agreement book** — create customers and service templates, then create or edit a plan with renewal date, status, price, and optional included-service entitlement.

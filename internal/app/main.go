@@ -175,6 +175,8 @@ func (s *Server) handler(static fs.FS) http.Handler {
 	mux.HandleFunc("POST /customers/{id}/delete", auth(s.handleCustomerDelete))
 	mux.HandleFunc("POST /customers/{id}/properties", auth(s.handlePropertyCreate))
 	mux.HandleFunc("POST /properties/{id}/equipment", auth(s.handleEquipmentCreate))
+	mux.HandleFunc("GET /properties/{id}", auth(s.handlePropertyRecord))
+	mux.HandleFunc("POST /properties/{id}", auth(s.handlePropertyRecord))
 	mux.HandleFunc("GET /import", auth(s.handleImport))
 	mux.HandleFunc("POST /import", auth(s.handleImport))
 	mux.HandleFunc("GET /visits/export.csv", auth(s.handleVisitsExport))
