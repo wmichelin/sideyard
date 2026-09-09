@@ -640,3 +640,27 @@ paid integrations or live customer payment collection are configured by this cha
   rerun passed after the final transport correction. Product graph renders 36 nodes and
   64 edges; local links and catalog coverage pass. Availability changes are pending
   staging verification; the latest verified staging source is `341e647`.
+
+- Availability source `66b5298469fcd0e41b41d9d3ee4047afc62a79a8` passed all CI
+  [34418067325](https://github.com/wmichelin/clubdue/actions/runs/34418067325) and
+  staging [34418067362](https://github.com/wmichelin/clubdue/actions/runs/34418067362).
+  Verified running source/image:
+  `ghcr.io/wmichelin/clubdue@sha256:c6440e96f3f6b5775ee185d162c20f0b275dd9ff2c47689e47c9ebed372e76ec`.
+  Manual staging smoke passed. Browser checks at 390/1440px passed sign-in,
+  database-free login entry, owner-preserving demo entry, customer book and closed
+  enrollment with no browser errors. Outage simulation remains an isolated test,
+  not a disruption of staging's database. Production remains unchanged.
+
+### Native text capacity correction
+
+- Review extended the trailing-space constraint check to supplementary Unicode.
+  Native interest fields at their physical UTF-16 capacity could discard one
+  trailing space before validation. Append-only migration 003 preserves complete
+  nonindexed values with MAX storage and gives indexed email one extra code unit.
+  Product rune limits, BIN2 email identity, defaults and unique index remain.
+- SQL Server requires dropping/recreating dependent CHECK/default constraints and
+  the email index within the migration transaction before widening columns.
+  Fresh-schema and 001+002 upgrade tests pass: all exact-limit supplementary
+  values survive, every limit-plus-space value fails, defaults and uniqueness
+  remain intact. Existing SQL migrations/checksums are unchanged. The full native
+  SQL app/adapter suite passed; application SQL selection is still disabled.

@@ -110,6 +110,29 @@ func TestSQLServerInterestWakeObservesCommittedSignup(t *testing.T) {
 	}
 }
 
+func TestSQLServerInterestRuneLimitsRejectTrailingSpaceBeyondCapacity(t *testing.T) {
+	db := sqlServerTestDB(t)
+	store := databaseInterestRecorder{db: db}
+	for _, tc := range []struct {
+		name string
+		set  func(*interestSignup)
+	}{
+		{"name", func(s *interestSignup) { s.Name = strings.Repeat("🔧", 120) + " " }},
+		{"business", func(s *interestSignup) { s.Business = strings.Repeat("🔧", 160) + " " }},
+		{"trade", func(s *interestSignup) { s.Trade = strings.Repeat("🔧", 80) + " " }},
+		{"message", func(s *interestSignup) { s.Message = strings.Repeat("🔧", 2000) + " " }},
+		{"email", func(s *interestSignup) { s.Email = strings.Repeat("🔧", 254) + " " }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			in := interestSignup{Name: "Valid", Email: tc.name + "@example.test"}
+			tc.set(&in)
+			if err := store.SaveInterest(context.Background(), in); err == nil {
+				t.Fatal("over-limit trailing space was silently discarded")
+			}
+		})
+	}
+}
+
 func TestSQLServerInterestFinalHTTPCommitSurvivesShutdownAndMissedWake(t *testing.T) {
 	db := sqlServerTestDB(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
