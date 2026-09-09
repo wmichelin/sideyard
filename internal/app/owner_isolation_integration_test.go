@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/wmichelin/clubdue/internal/database"
 )
 
 func TestProvisionOwnerRejectsShopCollisionsAndPreservesRecovery(t *testing.T) {
@@ -17,11 +19,20 @@ func TestProvisionOwnerRejectsShopCollisionsAndPreservesRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	testProvisionOwnerRejectsShopCollisionsAndPreservesRecovery(t, db)
+}
+
+func testProvisionOwnerRejectsShopCollisionsAndPreservesRecovery(t *testing.T, db *DB) {
+	ctx := context.Background()
 	auth := newAuth(db, "owner-isolation-secret", false)
 	stamp := time.Now().UnixNano()
 	owner := OwnerCredentials{Email: fmt.Sprintf("owner-%d@example.test", stamp), Password: "original-password", ShopName: fmt.Sprintf("Shared Name %d", stamp)}
 	if action, err := auth.provisionOwner(ctx, owner); err != nil || action != "provisioned" {
 		t.Fatalf("provision = %q, %v", action, err)
+	}
+	if _, err := db.Pool.Exec(ctx, database.Statement(db.Pool.Dialect(),
+		`UPDATE users SET role='staff' WHERE email=$1`, `UPDATE dbo.users SET role='staff' WHERE email=@p1`), owner.Email); err != nil {
+		t.Fatal(err)
 	}
 	token, err := auth.login(ctx, owner.Email, owner.Password)
 	if err != nil {
@@ -33,6 +44,9 @@ func TestProvisionOwnerRejectsShopCollisionsAndPreservesRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if original.Role != "staff" {
+		t.Fatal("staff session gained owner access")
+	}
 	for i, name := range []string{owner.ShopName, strings.ReplaceAll(strings.ToUpper(owner.ShopName), " ", "-")} {
 		t.Run(fmt.Sprintf("collision-%d", i), func(t *testing.T) {
 			other := OwnerCredentials{Email: fmt.Sprintf("other-%d-%d@example.test", stamp, i), Password: "unrelated-password", ShopName: name}
@@ -40,7 +54,7 @@ func TestProvisionOwnerRejectsShopCollisionsAndPreservesRecovery(t *testing.T) {
 				t.Errorf("collision = %q, %v; want useful rejection", action, err)
 			}
 			var count int
-			if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM users WHERE email = $1`, other.Email).Scan(&count); err != nil {
+			if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `SELECT count(*) FROM users WHERE email = $1`, `SELECT count(*) FROM dbo.users WHERE email=@p1`), other.Email).Scan(&count); err != nil {
 				t.Fatal(err)
 			}
 			if count != 0 {
@@ -70,11 +84,11 @@ func TestProvisionOwnerRejectsShopCollisionsAndPreservesRecovery(t *testing.T) {
 	request = httptest.NewRequest(http.MethodGet, "/", nil)
 	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: newToken})
 	recovered, err := auth.userFromRequest(ctx, request)
-	if err != nil || recovered == nil || recovered.ShopID != original.ShopID {
+	if err != nil || recovered == nil || recovered.ShopID != original.ShopID || recovered.Role != "owner" {
 		t.Fatalf("recovery changed tenant: %v, %v", recovered, err)
 	}
 	var provisioned, recoveries int
-	if err := db.Pool.QueryRow(ctx, `SELECT count(*) FILTER (WHERE action = 'provisioned'), count(*) FILTER (WHERE action = 'recovered') FROM owner_provision_events WHERE user_id = $1`, original.ID).Scan(&provisioned, &recoveries); err != nil {
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `SELECT count(*) FILTER (WHERE action = 'provisioned'), count(*) FILTER (WHERE action = 'recovered') FROM owner_provision_events WHERE user_id = $1`, `SELECT SUM(CASE WHEN action='provisioned' THEN 1 ELSE 0 END),SUM(CASE WHEN action='recovered' THEN 1 ELSE 0 END) FROM dbo.owner_provision_events WHERE user_id=CONVERT(uniqueidentifier,@p1)`), original.ID).Scan(&provisioned, &recoveries); err != nil {
 		t.Fatal(err)
 	}
 	if provisioned != 1 || recoveries != 1 {
@@ -89,6 +103,11 @@ func TestProvisionOwnerConcurrentShopCollisionCreatesOneOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	testProvisionOwnerConcurrentShopCollisionCreatesOneOwner(t, db)
+}
+
+func testProvisionOwnerConcurrentShopCollisionCreatesOneOwner(t *testing.T, db *DB) {
+	ctx := context.Background()
 	auth := newAuth(db, "owner-concurrency-secret", false)
 	stamp := time.Now().UnixNano()
 	shopName := fmt.Sprintf("Concurrent Shop %d", stamp)
@@ -111,10 +130,10 @@ func TestProvisionOwnerConcurrentShopCollisionCreatesOneOwner(t *testing.T) {
 		}
 	}
 	var owners, audits int
-	if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM users u JOIN shops s ON s.id = u.shop_id WHERE s.slug = $1`, slugify(shopName)).Scan(&owners); err != nil {
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `SELECT count(*) FROM users u JOIN shops s ON s.id = u.shop_id WHERE s.slug = $1`, `SELECT count(*) FROM dbo.users u JOIN dbo.shops s ON s.id=u.shop_id WHERE s.slug=@p1`), slugify(shopName)).Scan(&owners); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM owner_provision_events e JOIN users u ON u.id = e.user_id JOIN shops s ON s.id = u.shop_id WHERE s.slug = $1`, slugify(shopName)).Scan(&audits); err != nil {
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `SELECT count(*) FROM owner_provision_events e JOIN users u ON u.id = e.user_id JOIN shops s ON s.id = u.shop_id WHERE s.slug = $1`, `SELECT count(*) FROM dbo.owner_provision_events e JOIN dbo.users u ON u.id=e.user_id JOIN dbo.shops s ON s.id=u.shop_id WHERE s.slug=@p1`), slugify(shopName)).Scan(&audits); err != nil {
 		t.Fatal(err)
 	}
 	if successes != 1 || owners != 1 || audits != 1 {

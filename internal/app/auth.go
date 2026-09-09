@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/wmichelin/clubdue/internal/database"
 	"golang.org/x/crypto/bcrypt"
@@ -83,6 +84,9 @@ func (a *Auth) bootstrapShop(ctx context.Context, credentials OwnerCredentials) 
 }
 
 func (a *Auth) provisionOwner(ctx context.Context, credentials OwnerCredentials) (string, error) {
+	if !validAccountText(credentials.Email, credentials.ShopName) {
+		return "", errors.New("email and shop name must be valid text without null characters")
+	}
 	credentials.Email = normalizeEmail(credentials.Email)
 	credentials.ShopName = strings.TrimSpace(credentials.ShopName)
 	if credentials.Email == "" || credentials.Password == "" || credentials.ShopName == "" {
@@ -102,35 +106,41 @@ func (a *Auth) provisionOwner(ctx context.Context, credentials OwnerCredentials)
 	}
 	defer tx.Rollback(ctx)
 
+	if tx.Dialect() == database.SQLServer {
+		if _, err := tx.Exec(ctx, sqlServerLockAuthEmail, credentials.Email); err != nil {
+			return "", err
+		}
+	}
 	var userID, shopID string
-	err = tx.QueryRow(ctx, `SELECT id, shop_id FROM users WHERE email = $1 FOR UPDATE`, credentials.Email).Scan(&userID, &shopID)
+	err = tx.QueryRow(ctx, database.Statement(tx.Dialect(),
+		`SELECT id, shop_id FROM users WHERE email = $1 FOR UPDATE`, sqlServerOwnerByEmail), credentials.Email).Scan(&userID, &shopID)
 	action := "recovered"
 	if errors.Is(err, database.ErrNoRows) {
 		slug := slugify(credentials.ShopName)
 		// A matching shop name is not an invitation into an existing tenant.
-		err = tx.QueryRow(ctx, `INSERT INTO shops (name, slug) VALUES ($1, $2)
-			ON CONFLICT (slug) DO NOTHING RETURNING id`, credentials.ShopName, slug).Scan(&shopID)
+		err = tx.QueryRow(ctx, database.Statement(tx.Dialect(), `INSERT INTO shops (name, slug) VALUES ($1, $2)
+			ON CONFLICT (slug) DO NOTHING RETURNING id`, sqlServerInsertUnclaimedShop), credentials.ShopName, slug).Scan(&shopID)
 		if errors.Is(err, database.ErrNoRows) {
 			return "", errors.New("shop name already taken; choose a different shop name")
 		} else if err != nil {
 			return "", err
 		}
-		if err := tx.QueryRow(ctx, `INSERT INTO users (shop_id, email, password_hash, role) VALUES ($1, $2, $3, 'owner') RETURNING id`, shopID, credentials.Email, hash).Scan(&userID); err != nil {
+		if err := tx.QueryRow(ctx, database.Statement(tx.Dialect(), `INSERT INTO users (shop_id, email, password_hash, role) VALUES ($1, $2, $3, 'owner') RETURNING id`, sqlServerInsertOwner), shopID, credentials.Email, hash).Scan(&userID); err != nil {
 			return "", err
 		}
 		action = "provisioned"
 	} else if err != nil {
 		return "", err
 	} else {
-		if _, err := tx.Exec(ctx, `UPDATE users SET password_hash = $2, role = 'owner' WHERE id = $1`, userID, hash); err != nil {
+		if _, err := tx.Exec(ctx, database.Statement(tx.Dialect(), `UPDATE users SET password_hash = $2, role = 'owner' WHERE id = $1`, `UPDATE dbo.users SET password_hash=@p2,role='owner' WHERE id=CONVERT(uniqueidentifier,@p1)`), userID, hash); err != nil {
 			return "", err
 		}
-		if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE user_id = $1`, userID); err != nil {
+		if _, err := tx.Exec(ctx, database.Statement(tx.Dialect(), `DELETE FROM sessions WHERE user_id = $1`, `DELETE FROM dbo.sessions WHERE user_id=CONVERT(uniqueidentifier,@p1)`), userID); err != nil {
 			return "", err
 		}
 	}
 
-	if _, err := tx.Exec(ctx, `INSERT INTO owner_provision_events (user_id, action) VALUES ($1, $2)`, userID, action); err != nil {
+	if _, err := tx.Exec(ctx, database.Statement(tx.Dialect(), `INSERT INTO owner_provision_events (user_id, action) VALUES ($1, $2)`, `INSERT INTO dbo.owner_provision_events (user_id,action) VALUES (CONVERT(uniqueidentifier,@p1),@p2)`), userID, action); err != nil {
 		return "", err
 	}
 	if action == "provisioned" {
@@ -148,6 +158,9 @@ func (a *Auth) provisionOwner(ctx context.Context, credentials OwnerCredentials)
 }
 
 func (a *Auth) signup(ctx context.Context, shopName, email, password string) (string, error) {
+	if !validAccountText(email, shopName) {
+		return "", errors.New("email and shop name must be valid text without null characters")
+	}
 	email = strings.ToLower(strings.TrimSpace(email))
 	shopName = strings.TrimSpace(shopName)
 	if shopName == "" || email == "" || password == "" {
@@ -168,11 +181,11 @@ func (a *Auth) signup(ctx context.Context, shopName, email, password string) (st
 		return "", err
 	}
 	defer tx.Rollback(ctx)
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('clubdue-signup-email:' || $1))`, email); err != nil {
+	if _, err := tx.Exec(ctx, database.Statement(tx.Dialect(), `SELECT pg_advisory_xact_lock(hashtext('clubdue-signup-email:' || $1))`, sqlServerLockAuthEmail), email); err != nil {
 		return "", err
 	}
 	var emailExists bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE lower(email) = $1)`, email).Scan(&emailExists); err != nil {
+	if err := tx.QueryRow(ctx, database.Statement(tx.Dialect(), `SELECT EXISTS(SELECT 1 FROM users WHERE lower(email) = $1)`, sqlServerNormalizedEmailExists), email).Scan(&emailExists); err != nil {
 		return "", err
 	}
 	if emailExists {
@@ -181,20 +194,20 @@ func (a *Auth) signup(ctx context.Context, shopName, email, password string) (st
 
 	var shopID string
 	if err := tx.QueryRow(ctx,
-		`INSERT INTO shops (name, slug) VALUES ($1, $2) RETURNING id`,
+		database.Statement(tx.Dialect(), `INSERT INTO shops (name, slug) VALUES ($1, $2) RETURNING id`, sqlServerInsertUnclaimedShop),
 		shopName, slug,
 	).Scan(&shopID); err != nil {
-		if strings.Contains(err.Error(), "duplicate") {
+		if errors.Is(err, database.ErrNoRows) || strings.Contains(err.Error(), "duplicate") {
 			return "", errors.New("shop name already taken")
 		}
 		return "", err
 	}
 
 	var userID string
-	if err := tx.QueryRow(ctx, `
+	if err := tx.QueryRow(ctx, database.Statement(tx.Dialect(), `
 		INSERT INTO users (shop_id, email, password_hash, role)
 		VALUES ($1, $2, $3, 'owner')
-		RETURNING id`, shopID, email, hash,
+		RETURNING id`, sqlServerInsertOwner), shopID, email, hash,
 	).Scan(&userID); err != nil {
 		if strings.Contains(err.Error(), "duplicate") {
 			return "", errors.New("email already registered")
@@ -215,11 +228,11 @@ func (a *Auth) signup(ctx context.Context, shopName, email, password string) (st
 func (a *Auth) login(ctx context.Context, email, password string) (string, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	var userID, hash string
-	err := a.db.Pool.QueryRow(ctx, `
+	err := a.db.Pool.QueryRow(ctx, database.Statement(a.db.Pool.Dialect(), `
 		SELECT u.id, u.password_hash
 		FROM users u
 		WHERE u.email = $1
-		LIMIT 1`, email).Scan(&userID, &hash)
+		LIMIT 1`, sqlServerLoginByEmail), email).Scan(&userID, &hash)
 	if err != nil {
 		return "", errors.New("invalid email or password")
 	}
@@ -247,11 +260,11 @@ func (a *Auth) createSessionUntil(ctx context.Context, userID string, expires ti
 		return "", fmt.Errorf("begin session: %w", err)
 	}
 	defer tx.Rollback(ctx)
-	if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE expires_at <= $1`, a.nowUTC()); err != nil {
+	if _, err := tx.Exec(ctx, database.Statement(tx.Dialect(), `DELETE FROM sessions WHERE expires_at <= $1`, `DELETE FROM dbo.sessions WHERE expires_at<=@p1`), a.nowUTC()); err != nil {
 		return "", fmt.Errorf("clean expired sessions: %w", err)
 	}
-	_, err = tx.Exec(ctx, `
-		INSERT INTO sessions (user_id, token_hash, expires_at) VALUES ($1, $2, $3)`,
+	_, err = tx.Exec(ctx, database.Statement(tx.Dialect(), `
+		INSERT INTO sessions (user_id, token_hash, expires_at) VALUES ($1, $2, $3)`, `INSERT INTO dbo.sessions (user_id,token_hash,expires_at) VALUES (CONVERT(uniqueidentifier,@p1),@p2,@p3)`),
 		userID, tokenHash, expires,
 	)
 	if err != nil {
@@ -268,7 +281,7 @@ func (a *Auth) logout(ctx context.Context, token string) error {
 		return nil
 	}
 	tokenHash := hashToken(token, a.sessionSecret)
-	if _, err := a.db.Pool.Exec(ctx, `DELETE FROM sessions WHERE token_hash = $1`, tokenHash); err != nil {
+	if _, err := a.db.Pool.Exec(ctx, database.Statement(a.db.Pool.Dialect(), `DELETE FROM sessions WHERE token_hash = $1`, `DELETE FROM dbo.sessions WHERE token_hash=@p1`), tokenHash); err != nil {
 		return fmt.Errorf("revoke session: %w", err)
 	}
 	return nil
@@ -282,14 +295,14 @@ func (a *Auth) userFromRequest(ctx context.Context, r *http.Request) (*User, err
 	tokenHash := hashToken(cookie.Value, a.sessionSecret)
 
 	var u User
-	err = a.db.Pool.QueryRow(ctx, `
+	err = a.db.Pool.QueryRow(ctx, database.Statement(a.db.Pool.Dialect(), `
 		SELECT u.id, u.shop_id, u.email, u.role, s.name, s.kind = 'demo_sandbox'
 		FROM sessions sess
 		JOIN users u ON u.id = sess.user_id
 		JOIN shops s ON s.id = u.shop_id
 		WHERE sess.token_hash = $1 AND sess.expires_at > $2
 		  AND (s.expires_at IS NULL OR s.expires_at > $2)
-		`, tokenHash, a.nowUTC()).Scan(&u.ID, &u.ShopID, &u.Email, &u.Role, &u.ShopName, &u.IsDemo)
+		`, sqlServerSessionUser), tokenHash, a.nowUTC()).Scan(&u.ID, &u.ShopID, &u.Email, &u.Role, &u.ShopName, &u.IsDemo)
 	if err != nil {
 		return nil, errors.New("unauthenticated")
 	}
@@ -355,4 +368,15 @@ func slugify(s string) string {
 		return "shop"
 	}
 	return out
+}
+
+// PostgreSQL text rejects NUL and invalid UTF-8. Preserve that input contract
+// before normalization so SQL Server cannot silently accept or repair it.
+func validAccountText(values ...string) bool {
+	for _, value := range values {
+		if !utf8.ValidString(value) || strings.ContainsRune(value, '\x00') {
+			return false
+		}
+	}
+	return true
 }

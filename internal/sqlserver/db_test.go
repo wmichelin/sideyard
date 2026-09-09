@@ -5,7 +5,9 @@ import (
 	"context"
 	"crypto/tls"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -60,7 +62,70 @@ func TestAzureConnectionConfigurationAndLazyConstruction(t *testing.T) {
 	}
 }
 
-func testPool(t *testing.T) *Pool { return Wrap(testdb.SQLServer(t)) }
+func testPool(t *testing.T) *Pool {
+	p := OpenConnector(testdb.SQLServer(t))
+	t.Cleanup(p.Close)
+	return p
+}
+
+func TestSQLServerComputedIdentityOptionsOnEveryConnection(t *testing.T) {
+	p := testPool(t)
+	ctx := context.Background()
+	if err := p.MigrateSchema(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		var options int
+		if err := p.QueryRow(ctx, `SELECT @@OPTIONS`).Scan(&options); err != nil {
+			t.Fatal(err)
+		}
+		// Required ANSI options, ARITHABORT and QUOTED_IDENTIFIER, with
+		// NUMERIC_ROUNDABORT off. Each query uses a fresh zero-idle session.
+		const on = 8 | 16 | 32 | 64 | 256 | 4096
+		if options&on != on || options&8192 != 0 {
+			t.Fatalf("computed-index session options = %d", options)
+		}
+		if _, err := p.Exec(ctx, `INSERT INTO dbo.shops(name,slug) VALUES (@p1,@p1)`, fmt.Sprint(i)); err != nil {
+			t.Fatal(err)
+		}
+		assertNoConnections(t, p)
+	}
+	// A reused driver session must reset changed options too. This test-only
+	// override does not change the application's zero-idle connection policy.
+	p.db.SetMaxIdleConns(1)
+	if _, err := p.Exec(ctx, `SET NUMERIC_ROUNDABORT ON; SET ARITHABORT OFF;`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Exec(ctx, `INSERT INTO dbo.shops(name,slug) VALUES ('reused','reused')`); err != nil {
+		t.Fatalf("session options not reset on reuse: %v", err)
+	}
+	p.db.SetMaxIdleConns(0)
+	assertNoConnections(t, p)
+}
+
+type failedInitConnection struct {
+	driver.Conn
+	closed bool
+}
+
+func (c *failedInitConnection) Close() error { c.closed = true; return nil }
+
+type failedInitConnector struct {
+	driver.Connector
+	conn driver.Conn
+	err  error
+}
+
+func (c failedInitConnector) Connect(context.Context) (driver.Conn, error) { return c.conn, c.err }
+
+func TestSQLServerFailedSessionInitializationClosesUnownedConnection(t *testing.T) {
+	c := &failedInitConnection{}
+	want := errors.New("synthetic initialization failure")
+	got, err := (cleanConnector{failedInitConnector{conn: c, err: want}}).Connect(context.Background())
+	if got != nil || !errors.Is(err, want) || !c.closed {
+		t.Fatal("failed initialization leaked a driver connection or its error")
+	}
+}
 
 func assertNoConnections(t *testing.T, p *Pool) {
 	t.Helper()

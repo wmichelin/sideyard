@@ -14,6 +14,8 @@ type failingEventPool struct {
 	err           error
 }
 
+func (*failingEventPool) Dialect() database.Dialect { return database.Postgres }
+
 func (p *failingEventPool) Exec(context.Context, string, ...any) (database.Result, error) {
 	p.calls++
 	return nil, p.err

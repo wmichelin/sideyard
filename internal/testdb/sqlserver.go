@@ -5,16 +5,17 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	mssql "github.com/microsoft/go-mssqldb"
-	"github.com/microsoft/go-mssqldb/msdsn"
 	"os"
 	"regexp"
 	"testing"
 	"time"
+
+	mssql "github.com/microsoft/go-mssqldb"
+	"github.com/microsoft/go-mssqldb/msdsn"
 )
 
 // The required flag prevents a CI job from going green by skipping the engine.
-func SQLServer(t *testing.T) *sql.DB {
+func SQLServer(t *testing.T) *mssql.Connector {
 	t.Helper()
 	dsn := os.Getenv("SQLSERVER_TEST_DSN")
 	if dsn == "" {
@@ -50,10 +51,8 @@ func SQLServer(t *testing.T) *sql.DB {
 	}
 	cfg.Database = name
 	// Build a native connector from the parsed test config; no query rewriting.
-	p := sql.OpenDB(mssql.NewConnectorConfig(cfg))
-	p.SetMaxIdleConns(0)
+	connector := mssql.NewConnectorConfig(cfg)
 	t.Cleanup(func() {
-		p.Close()
 		cleanup, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if _, err := admin.ExecContext(cleanup, "ALTER DATABASE ["+name+"] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE ["+name+"]"); err != nil {
@@ -61,5 +60,5 @@ func SQLServer(t *testing.T) *sql.DB {
 		}
 		admin.Close()
 	})
-	return p
+	return connector
 }

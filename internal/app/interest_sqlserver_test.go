@@ -15,9 +15,10 @@ import (
 	"github.com/wmichelin/clubdue/internal/testdb"
 )
 
-func sqlServerInterestDB(t *testing.T) *DB {
+func sqlServerTestDB(t *testing.T) *DB {
 	t.Helper()
-	p := sqlserver.Wrap(testdb.SQLServer(t))
+	p := sqlserver.OpenConnector(testdb.SQLServer(t))
+	t.Cleanup(p.Close)
 	if err := p.MigrateSchema(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -25,12 +26,12 @@ func sqlServerInterestDB(t *testing.T) *DB {
 }
 
 func TestSQLServerInterestNotificationRetriesAndConcurrency(t *testing.T) {
-	t.Run("durable retry and acknowledgement", func(t *testing.T) { testInterestDeliveryRetry(t, sqlServerInterestDB(t)) })
-	t.Run("concurrent workers skip claimed signup", func(t *testing.T) { testInterestConcurrentWorkers(t, sqlServerInterestDB(t)) })
+	t.Run("durable retry and acknowledgement", func(t *testing.T) { testInterestDeliveryRetry(t, sqlServerTestDB(t)) })
+	t.Run("concurrent workers skip claimed signup", func(t *testing.T) { testInterestConcurrentWorkers(t, sqlServerTestDB(t)) })
 }
 
 func TestSQLServerInterestSaveIsAtomicAndDeduplicatesConcurrentSubmissions(t *testing.T) {
-	db := sqlServerInterestDB(t)
+	db := sqlServerTestDB(t)
 	ctx := context.Background()
 	var wakes atomic.Int32
 	store := databaseInterestRecorder{db: db, wake: func() { wakes.Add(1) }}
@@ -89,7 +90,7 @@ func TestSQLServerInterestSaveIsAtomicAndDeduplicatesConcurrentSubmissions(t *te
 }
 
 func TestSQLServerInterestWakeObservesCommittedSignup(t *testing.T) {
-	db := sqlServerInterestDB(t)
+	db := sqlServerTestDB(t)
 	in := interestSignup{Name: "Synthetic wake test", Email: "wake@example.test"}
 	called := false
 	store := databaseInterestRecorder{db: db, wake: func() {
@@ -110,7 +111,7 @@ func TestSQLServerInterestWakeObservesCommittedSignup(t *testing.T) {
 }
 
 func TestSQLServerInterestFinalHTTPCommitSurvivesShutdownAndMissedWake(t *testing.T) {
-	db := sqlServerInterestDB(t)
+	db := sqlServerTestDB(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 	oldCtx, stopProcess := context.WithCancel(ctx)

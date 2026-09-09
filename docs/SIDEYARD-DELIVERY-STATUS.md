@@ -531,7 +531,7 @@ paid integrations or live customer payment collection are configured by this cha
   disabled. Next: remaining tenant/auth and operational domains, migration/export
   tooling, cold-start behavior and actual Azure idle/resume proof.
 - Staging: https://clubdue-staging.michelindigitalmedia.com (verified foundation;
-  native interest/worker changes pending deployment).
+  native interest/worker deployment verification recorded below).
 - A real two-instance SQL test now covers a last HTTP signup committing during
   shutdown after the surviving worker already observed an empty queue. The row
   remains durable and the reconciliation wake delivers/acknowledges it once.
@@ -544,3 +544,45 @@ paid integrations or live customer payment collection are configured by this cha
 - Before SQL activation, resolve repeated hourly mail failures and overlapping
   retained-container maintenance: these can prevent a 60-minute idle window and
   exhaust the free quota. Empty-queue sleep alone is not proof of quota fit.
+
+- Interest/worker source `b0ebaf228d5353f9b4a86633714fb7318347ffed` passed
+  all four CI jobs [34415123296](https://github.com/wmichelin/clubdue/actions/runs/34415123296)
+  and staging [34415123322](https://github.com/wmichelin/clubdue/actions/runs/34415123322).
+  Running source and immutable artifact were independently read back:
+  `ghcr.io/wmichelin/clubdue@sha256:407b4b8590eebd4fa8a47fd1c0c505ae69980e6b5d788ee2722d28f1c893aa00`.
+  Manual staging smoke passed all public/demo/import/work/renewal checks. Resend
+  is not configured on staging; native queue delivery/recovery is proven by
+  isolated real-engine tests, not a live staging email. Production is unchanged.
+
+### Native tenant/auth schema — implementation
+
+- Added separate SQL Server shops/users/sessions, owner recovery audit and pilot
+  activation tables plus explicit native authentication and milestone statements.
+  PostgreSQL queries and migrations retain their current behavior. Backend
+  selection remains disabled until all operational domains and migration pass.
+- Product/QA: preserve owner-only recovery, existing tenant, independent device
+  sessions, expiry and current text limits. Architect/staff: hash-indexed MAX
+  identities require full-value and byte-length comparisons, transaction-owned
+  locks, lowercase UUID projections and explicit derived canonical email.
+  DevOps/testing: initialize computed-index SET options on fresh and reused
+  driver sessions, and close an unowned connection if initialization fails.
+- Review and a real PostgreSQL/SQL Server comparison exposed incompatible Unicode
+  LOWER mappings. SQL Server stores Go-normalized email separately; historical
+  migration must preserve original text and validate canonical identity both
+  before and after transfer. This accepts one repository-owned derived invariant
+  to preserve the existing external identity contract. Digest collisions fail
+  writes instead of allowing cross-account recovery. No historical rows have
+  been transferred yet.
+- Focused SQL/PG owner isolation, same-name and same-email races, Unicode/long
+  identities, historical case/space distinctions, independent device sessions,
+  exact demo expiry, staff-to-owner recovery and tenant cascade isolation pass.
+  Failed provisioning/recovery audit writes roll back all preceding changes.
+  Closed-value columns reserve one extra byte so SQL cannot trim trailing spaces
+  before constraints; tests reject those padded values and invalid account text.
+- Full Go suite with both real engines, vet and static build passed. Review-driven
+  additions received targeted real-engine checks. The isolated SQL rehearsal
+  passed. An initial full run exposed a test double missing its new Dialect method;
+  the fixture was corrected and the full suite rerun successfully.
+- Production backup/restore and pilot-onboarding rehearsals also passed. These
+  use isolated local containers and do not promote the production application.
+  Staging remains verified at `b0ebaf2`; tenant/auth slice awaits staging delivery.

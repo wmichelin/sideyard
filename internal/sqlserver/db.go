@@ -5,6 +5,7 @@ package sqlserver
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"regexp"
@@ -44,7 +45,7 @@ func NewAzure(server, name string, credential azcore.TokenCredential) (*Pool, er
 	if err != nil {
 		return nil, fmt.Errorf("initialize Azure SQL connector")
 	}
-	return Wrap(sql.OpenDB(connector)), nil
+	return OpenConnector(connector), nil
 }
 
 func azureConfig(server, name string) (msdsn.Config, error) {
@@ -55,13 +56,34 @@ func azureConfig(server, name string) (msdsn.Config, error) {
 	return msdsn.Parse("server=" + server + ";database=" + name + ";encrypt=true;TrustServerCertificate=false;tlsmin=1.2;connection timeout=60;app name=Sideyard;disableretry=true")
 }
 
-// Wrap takes ownership of an injected native SQL Server database connection pool.
-// It applies the same connection limits used by NewAzure.
-func Wrap(db *sql.DB) *Pool {
+// Computed identity indexes require these options for migrations and writes on
+// every session, including a fresh connection after serverless resumes.
+const sessionInitSQL = `SET ANSI_NULLS ON; SET ANSI_PADDING ON;
+SET ANSI_WARNINGS ON; SET ARITHABORT ON; SET CONCAT_NULL_YIELDS_NULL ON;
+SET QUOTED_IDENTIFIER ON; SET NUMERIC_ROUNDABORT OFF;`
+
+// OpenConnector applies the same initialization and connection limits to an
+// injected native connector as NewAzure. Construction performs no network IO.
+func OpenConnector(connector *mssql.Connector) *Pool {
+	connector.SessionInitSQL = sessionInitSQL
+	db := sql.OpenDB(cleanConnector{connector})
 	db.SetMaxOpenConns(4)
 	db.SetMaxIdleConns(0)
 	db.SetConnMaxLifetime(30 * time.Minute)
 	return &Pool{db: db}
+}
+
+type cleanConnector struct{ driver.Connector }
+
+func (c cleanConnector) Connect(ctx context.Context) (driver.Conn, error) {
+	conn, err := c.Connector.Connect(ctx)
+	// The Microsoft driver can return a connection alongside an initialization
+	// error. database/sql will not own it in this path, so release it here.
+	if err != nil && conn != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	return conn, err
 }
 
 func (*Pool) Dialect() database.Dialect        { return database.SQLServer }

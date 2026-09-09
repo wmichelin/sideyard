@@ -249,13 +249,22 @@ Relevant current boundaries include [connection/migrations](../internal/postgres
   driver. Inject repositories and transaction boundaries where domain code
   consumes them. Keep PostgreSQL working during migration; avoid a generic SQL
   rewriting framework or unrelated domain refactors.
-- Add a separate checksummed T-SQL migration history. Preserve the existing 30
+- Add a separate checksummed T-SQL migration history. Preserve the existing 31
   PostgreSQL migration files/checksums. Port parameter syntax, upserts, returned
   rows, JSON, dates, UUIDs, locks and uniqueness deliberately. Handle SQL Server's
   multiple-cascade-path restrictions with explicit, atomic deletion ordering.
 - Prove tenant-scoped foreign keys, exact cents/measurements, UTC instants,
   date-only schedules, collation-sensitive identities, immutable histories,
   duplicate submissions and concurrent quota enforcement with real SQL Server.
+- Preserve raw historical account emails. SQL Server LOWER has different Unicode
+  mappings from Go/PostgreSQL (verified for capital sharp S, Kelvin, Deseret,
+  Georgian and Adlam characters). Store a separate Go-derived `email_normalized`
+  value without trimming historical data; hash that value for the bounded unique
+  index. Login/recovery compare the full original text and byte length, signup
+  compares the full canonical value. Repository/import code owns the derived
+  invariant. Validate source PostgreSQL lowercasing, Go normalization, duplicate
+  identities and imported/restored canonical values before opening writes.
+  A digest collision must fail a write, never merge or recover another identity.
 - Close idle database sessions. Replace the existing 15-second outbox polling
   with a post-commit wake signal and durable queue drain, startup recovery and
   bounded retry for known pending work. Keep idempotency and crash recovery;
