@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Pinned Azure CLI fallback; Terraform can use this on PATH without a host install.
+set -euo pipefail
+azure_cli_config="${AZURE_CONFIG_DIR:-${HOME}/.azure}"
+mkdir -p "$azure_cli_config"
+chmod 700 "$azure_cli_config"
+# Azure's Go credential runs the CLI from /bin. Mounting that host directory
+# would hide the CLI image's own executables. Only mount a user working folder.
+azure_cli_work_args=()
+case "$PWD" in
+  /|/bin|/usr|/usr/bin|/sbin|/usr/sbin|/etc|/lib|/lib64) ;;
+  *) azure_cli_work_args=(-v "$PWD:$PWD" -w "$PWD") ;;
+esac
+exec docker run --rm -i --user "$(id -u):$(id -g)" \
+  -e AZURE_CONFIG_DIR=/azure -v "$azure_cli_config:/azure" \
+  "${azure_cli_work_args[@]}" \
+  mcr.microsoft.com/azure-cli@sha256:e3768dde8142efa45d8f356a317aaac77abd7da15ba3719b0a150e9453f251db \
+  az "$@"

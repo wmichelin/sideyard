@@ -9,3 +9,14 @@ build/
 .env.*
 !.env.example
 .DS_Store
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.auto.tfvars
+*.auto.tfvars.json
+*.local.tfvars
+*.local.hcl
+*.local.tf
+__pycache__/
+crash.log

@@ -49,6 +49,7 @@ type Config struct {
 	ProvisionOwner        OwnerCredentials
 	RuntimeLimits         RuntimeLimits
 	InterestNotifications InterestNotificationConfig
+	AzurePhotos           AzurePhotoConfig
 }
 
 func LoadConfig(getenv func(string) string) (Config, error) {
@@ -102,6 +103,10 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 	}
 	config.PublicURL = publicURL
 	config.InterestNotifications, err = loadInterestNotificationConfig(getenv)
+	if err != nil {
+		return Config{}, err
+	}
+	config.AzurePhotos, err = loadAzurePhotoConfig(getenv)
 	if err != nil {
 		return Config{}, err
 	}

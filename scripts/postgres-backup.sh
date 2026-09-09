@@ -3,6 +3,7 @@
 # root-only production backup destination and is also exercised by the local
 # production rehearsal. It never creates a database or prints credentials.
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 : "${CLUBDUE_BACKUP_DB_CONTAINER:?CLUBDUE_BACKUP_DB_CONTAINER required}"
 : "${CLUBDUE_BACKUP_DIR:?CLUBDUE_BACKUP_DIR required}"
@@ -41,11 +42,9 @@ hmac_file() {
   local input_file="$1"
   local output_file="$2"
 
-  # OpenSSL on the supported Linux image does not accept keyenv for EVP_MAC.
-  # Pass the key through an inherited anonymous file descriptor instead, so it
-  # is neither written to disk nor present in the command-line arguments.
-  openssl dgst -sha256 -mac HMAC -macopt key:file:/dev/fd/3 -binary \
-    -out "$output_file" "$input_file" 3< <(printf '%s' "$CLUBDUE_BACKUP_HMAC_KEY")
+  # The helper reads the key from the environment and authenticates both the
+  # format marker and ciphertext. Never place a secret in process arguments.
+  python3 "$SCRIPT_DIR/backup-auth.py" sign "$input_file" > "$output_file"
 }
 
 docker exec "$CLUBDUE_BACKUP_DB_CONTAINER" \

@@ -98,31 +98,52 @@ used by staging.
 
 ### Encrypted Postgres backups and restore rehearsal
 
-Production backups use AES-256-CBC with PBKDF2 plus a distinct SHA-256 HMAC
-key, both supplied at runtime, and a root-only destination. Each encrypted
-`*.sql.enc` file has a required raw 32-byte `*.sql.enc.mac` sidecar. Restore
-verifies that sidecar before decrypting or opening a database connection.
+The current backup scripts use AES-256-CBC with PBKDF2 plus a distinct SHA-256
+HMAC key, both supplied at runtime, and a root-only destination. Each encrypted
+`*.sql.enc` file has a required 39-byte `*.sql.enc.mac` sidecar: `SYMAC2` plus a
+newline and a 32-byte HMAC authenticating the format marker and ciphertext.
+Restore verifies that sidecar before decrypting or opening a database connection.
+Deploy `backup-auth.py` beside both shell scripts; Python 3 is required on the
+backup operator host. See [delivery status](SIDEYARD-DELIVERY-STATUS.md) for the
+verified deployment state of this correction.
 
 Keep the encryption passphrase and HMAC key as separate secrets in the approved
 secret manager. Restrict their read access to the backup operator and designated
 recovery owner. Do not place either secret in the production environment file,
 shell history, CI variables, issue comments, or source control. The scripts
-give the HMAC key to OpenSSL through an inherited file descriptor rather than
-a command-line argument or temporary key file.
+read the HMAC key inside the Python helper from its inherited environment,
+without putting it in a command-line argument or temporary key file.
+
+**Historical backup recovery:** earlier scripts passed `key:file:/dev/fd/3`
+to OpenSSL, which used that literal string as the key. Those 32-byte sidecars
+do not establish authenticity. Prefer making a new, verified backup from the
+working database. New restore scripts reject old sidecars by default. If only
+an independently trusted historical copy remains, recover it into a disposable,
+network-isolated container named `sideyard-legacy-recovery-*` using
+`postgres-restore.sh --legacy-unauthenticated <file>`, inspect the recovered
+records and create a new authenticated export. Never use that flag for routine
+restores or trust it to detect malicious modifications. Retain old backup files
+for their established recovery window; do not silently relabel old sidecars.
+The script inspects the container and requires `--network none`, no privileged
+mode, extra capabilities, host PID/IPC, devices or bind mounts, and only tmpfs
+mounts. Override the Postgres data volume with a disposable tmpfs when creating
+that recovery container. Do not attach existing database volumes.
 
 ```bash
 # On the production droplet only after explicit production approval.
 umask 077
 export CLUBDUE_BACKUP_DB_CONTAINER=clubdue-production-db
-export CLUBDUE_BACKUP_DIR=/var/backups/clubdue
+export CLUBDUE_BACKUP_DIR=/var/backups/sideyard-azure/production
 export CLUBDUE_BACKUP_PASSPHRASE="$(approved-secret-manager-command)"
 export CLUBDUE_BACKUP_HMAC_KEY="$(approved-hmac-secret-manager-command)"
-export CLUBDUE_BACKUP_RETENTION_DAYS=30
+# Azure setup uses a seven-day recovery window. Existing historical copies
+# retain their original expiry; this setting affects the selected destination.
+export CLUBDUE_BACKUP_RETENTION_DAYS=7
 ./scripts/postgres-backup.sh
 
 # Restore only into a separately created disposable recovery container.
 export CLUBDUE_RESTORE_DB_CONTAINER=clubdue-production-restore-rehearsal-db
-./scripts/postgres-restore.sh /var/backups/clubdue/clubdue-postgres-<timestamp>.sql.enc
+./scripts/postgres-restore.sh /var/backups/sideyard-azure/production/clubdue-postgres-<timestamp>.sql.enc
 ```
 
 `postgres-backup.sh` writes both files with `0600` under the explicit backup
@@ -153,7 +174,7 @@ production-mode readiness, explicit public-demo opt-in, isolated demo writes,
 CSRF-aware owner login, and authenticated dashboard sessions remain active and
 separate from demo traffic after a second login for the same account,
 encrypted backup output, successful restore to a fresh Postgres container,
-rejection of tampered ciphertext and a tampered MAC, the reserved-port deploy
+rejection of wrong HMAC keys, tampered ciphertext and a tampered MAC, the reserved-port deploy
 guard, and Docker-isolated candidate/promotion/rollback mapping. It removes
 its containers, network, and temporary backup data on exit.
 

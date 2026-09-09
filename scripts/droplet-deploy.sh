@@ -270,6 +270,15 @@ else
   APP_ENV=( -e APP_ENV=production -e "ENABLE_PUBLIC_DEMO=${DEPLOY_PUBLIC_DEMO}" )
 fi
 
+azure_environment=production
+[ "$CONTAINER" = clubdue-staging ] && azure_environment=staging
+AZURE_ENV_FILE="/opt/clubdue/${azure_environment}-azure.env"
+if [ -f "$AZURE_ENV_FILE" ]; then
+  env_mode="$(stat -c '%a' "$AZURE_ENV_FILE")"
+  [ $((8#$env_mode & 077)) -eq 0 ] || fail "Azure environment file must not be group/world readable"
+  APP_ENV+=( --env-file "$AZURE_ENV_FILE" )
+fi
+
 if container_exists "$CURRENT_CONTAINER"; then
   active_port="$(container_port "$CURRENT_CONTAINER")"
 elif container_exists "$CONTAINER"; then

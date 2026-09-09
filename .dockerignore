@@ -3,3 +3,11 @@
 .env.*
 .sideyard-preview
 node_modules
+**/.terraform
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfplan
+**/*.local.tfvars
+**/*.local.hcl
+**/*.local.tf
+**/__pycache__

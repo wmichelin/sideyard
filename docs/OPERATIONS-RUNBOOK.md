@@ -100,6 +100,12 @@ automatically roll back after an external smoke failure.
 
 ## Backup, restore, and rollback
 
+The Azure rollout adds [CLI-managed infrastructure and seven-day encrypted
+exports](../infra/azure/README.md). Check [delivery status](SIDEYARD-DELIVERY-STATUS.md)
+for which environment is actually connected. Historical backup files keep their
+previous retention. New backups use the versioned 39-byte authentication sidecar;
+old public-checksum sidecars require explicit isolated legacy recovery.
+
 - Use the authenticated encrypted backup and isolated restore-rehearsal
   commands in [DEPLOY.md](DEPLOY.md#encrypted-postgres-backups-and-restore-rehearsal).
   Backups and restores need distinct approved secret-manager values for

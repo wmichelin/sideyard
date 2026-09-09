@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/wmichelin/clubdue/internal/photostore"
 )
 
 var errPhotoConflict = errors.New("This upload was already used or deleted. Reload the photo page before adding a different photo.")
@@ -37,6 +38,14 @@ func validPhotoFields(key, caption, category string) bool {
 }
 
 func (s *Store) AddPropertyPhoto(ctx context.Context, shopID, propertyID, key, caption, category, author string, photo normalizedPhoto) (string, error) {
+	id, err := s.addPropertyPhotoRecord(ctx, shopID, propertyID, key, caption, category, author, photo)
+	if err != nil {
+		return "", err
+	}
+	return id, s.syncPropertyPhotoObject(ctx, shopID, id)
+}
+
+func (s *Store) addPropertyPhotoRecord(ctx context.Context, shopID, propertyID, key, caption, category, author string, photo normalizedPhoto) (string, error) {
 	if !validPhotoFields(key, caption, category) {
 		return "", errPhotoInput
 	}
@@ -80,6 +89,15 @@ func (s *Store) AddPropertyPhoto(ctx context.Context, shopID, propertyID, key, c
 	if err != nil {
 		return "", err
 	}
+	if s.photoObjects != nil {
+		objectKey := fmt.Sprintf("%x", sha256.Sum256([]byte("sideyard-photo/"+shopID+"/"+id)))
+		if _, err := tx.Exec(ctx, `UPDATE property_photos SET object_key=$3,object_pending=true WHERE shop_id=$1 AND id=$2`, shopID, id, objectKey); err != nil {
+			return "", err
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO property_photo_objects(object_key,shop_id,photo_id,content_hash,content_type,byte_length) VALUES ($1,$2,$3,$4,$5,$6)`, objectKey, shopID, id, hash, photo.ContentType, len(photo.Data)); err != nil {
+			return "", err
+		}
+	}
 	return id, tx.Commit(ctx)
 }
 
@@ -88,7 +106,7 @@ func (s *Store) ListPropertyPhotos(ctx context.Context, shopID, propertyID strin
 	if err := s.db.Pool.QueryRow(ctx, `SELECT count(*),COALESCE(sum(octet_length(image_data)),0) FROM property_photos WHERE shop_id=$1 AND deleted_at IS NULL`, shopID).Scan(&count, &used); err != nil {
 		return nil, 0, 0, err
 	}
-	rows, err := s.db.Pool.Query(ctx, `SELECT id,property_id,caption,category,recorded_by,recorded_at FROM property_photos WHERE shop_id=$1 AND property_id=$2 AND deleted_at IS NULL ORDER BY recorded_at DESC,id LIMIT 100`, shopID, propertyID)
+	rows, err := s.db.Pool.Query(ctx, `SELECT id,property_id,caption,category,recorded_by,recorded_at FROM property_photos WHERE shop_id=$1 AND property_id=$2 AND deleted_at IS NULL AND (NOT object_pending OR $3) ORDER BY recorded_at DESC,id LIMIT 100`, shopID, propertyID, s.photoObjects == nil)
 	if err != nil {
 		return nil, 0, 0, err
 	}
@@ -106,7 +124,15 @@ func (s *Store) ListPropertyPhotos(ctx context.Context, shopID, propertyID strin
 
 func (s *Store) GetPropertyPhoto(ctx context.Context, shopID, id string) (normalizedPhoto, error) {
 	var photo normalizedPhoto
-	err := s.db.Pool.QueryRow(ctx, `SELECT content_type,image_data FROM property_photos WHERE shop_id=$1 AND id=$2 AND deleted_at IS NULL`, shopID, id).Scan(&photo.ContentType, &photo.Data)
+	var ref photostore.Reference
+	err := s.db.Pool.QueryRow(ctx, `SELECT content_type,image_data,COALESCE(object_key,''),COALESCE(object_version,''),content_hash FROM property_photos WHERE shop_id=$1 AND id=$2 AND deleted_at IS NULL AND (NOT object_pending OR $3)`, shopID, id, s.photoObjects == nil).Scan(&photo.ContentType, &photo.Data, &ref.Key, &ref.VersionID, &ref.SHA256)
+	if err != nil {
+		return normalizedPhoto{}, err
+	}
+	if ref.VersionID != "" && s.photoObjects != nil {
+		ref.ContentType, ref.Size = photo.ContentType, len(photo.Data)
+		photo.Data, err = s.photoObjects.Get(ctx, ref)
+	}
 	return photo, err
 }
 

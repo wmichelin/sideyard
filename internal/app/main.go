@@ -33,6 +33,9 @@ func Run(args []string) error {
 
 func run(config Config, args []string) error {
 	if len(args) > 0 {
+		if len(args) == 1 && args[0] == "sync-photos" {
+			return runSyncPhotos(config)
+		}
 		if len(args) == 1 && args[0] == "export-interest" {
 			return runExportInterest(config, os.Stdout)
 		}
@@ -65,6 +68,14 @@ func run(config Config, args []string) error {
 		closeResources = db.Close
 
 		srv.store = &Store{db: db}
+		if config.AzurePhotos.AccountURL != "" {
+			srv.store.photoObjects, err = newAzurePhotoStorage(config.AzurePhotos)
+			if err != nil {
+				closeResources()
+				return err
+			}
+			log.Print("Sideyard Azure private photo storage enabled; database recovery copies retained")
+		}
 		srv.interest = &postgresInterestRecorder{db: db}
 		if config.Environment == EnvironmentStaging {
 			retired, err := srv.store.RetireLegacySharedDemo(ctx)

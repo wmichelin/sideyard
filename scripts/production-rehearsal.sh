@@ -20,6 +20,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
+python3 "$ROOT/scripts/test-backup-auth.py"
+
 # These validation checks run inside a disposable Docker shell. The helper's
 # narrow plan seam exercises rollout state selection without a droplet, nginx,
 # registry access, or a way to mutate real deployment state.
@@ -295,7 +297,7 @@ backup_mac_file="${backup_file}.mac"
 [ ! -e "$expired_backup_mac" ]
 [ "$(stat -c '%a' "$backup_file")" = "600" ]
 [ "$(stat -c '%a' "$backup_mac_file")" = "600" ]
-[ "$(stat -c '%s' "$backup_mac_file")" = "32" ]
+[ "$(stat -c '%s' "$backup_mac_file")" = "39" ]
 # Drain the plaintext: grep -q closes early and can make OpenSSL fail with a
 # broken pipe even after a valid owner match. pipefail still checks decryption.
 if openssl enc -d -aes-256-cbc -pbkdf2 -pass env:CLUBDUE_BACKUP_PASSPHRASE -in "$backup_file" | grep -a 'owner@rehearsal.invalid' >/dev/null; then
@@ -360,6 +362,9 @@ fi
 printf "\\$(printf '%03o' "$replacement_mac_byte")" \
   | dd of="${tampered_mac}.mac" bs=1 count=1 conv=notrunc status=none
 expect_authenticated_restore_failure "$tampered_mac"
+
+CLUBDUE_BACKUP_HMAC_KEY="different-disposable-rehearsal-key" \
+  expect_authenticated_restore_failure "$backup_file"
 
 restored_owner_count_after_tamper_tests="$(docker exec "$RESTORE_DB" psql --username=clubdue --dbname=clubdue --tuples-only --no-align \
   --command "SELECT count(*) FROM users WHERE email = 'owner@rehearsal.invalid'")"

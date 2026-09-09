@@ -5,6 +5,10 @@ how they move between them, what each page does, and how to configure a client.
 Read this before onboarding a business or planning a product change. The
 [execution plan](SIDEYARD-EXECUTION-PLAN.md) describes future work;
 [delivery status](SIDEYARD-DELIVERY-STATUS.md) holds deployment evidence.
+The [Azure execution plan](SIDEYARD-AZURE-PLAN.md) tracks the infrastructure
+migration. Cloud resources exist; product integration is still being verified.
+See [delivery status](SIDEYARD-DELIVERY-STATUS.md#azure-migration--implementation-started-september-9-2026)
+for the distinction between provisioned resources and deployed app behavior.
 
 ## Availability snapshot
 
@@ -74,7 +78,7 @@ flowchart TB
     CUSTOMER["CUSTOMER · Contact, properties, vehicles"]
     PROPERTY["PROPERTY · Site notes / measurements"]
     ADDRESS["ADDRESS · Correct property address"]
-    PHOTOS["PHOTOS · Private property photos"]
+    PHOTOS["PHOTOS · Private property photos<br/>Azure option pending deployment"]
     IMAGE["IMAGE · Private image viewer"]
     EQUIPMENT["EQUIPMENT · Equipment record"]
     EHISTORY["EHISTORY · Equipment service history"]
@@ -274,6 +278,16 @@ and 50 MiB per shop. Deletion removes live image content; older encrypted backup
 may retain it for up to 30 days. Photos belong to properties, not individual jobs
 or visits. Open IMAGE for a full image or return to PROPERTY.
 
+**Azure integration — local implementation, deployment pending:** configuration
+can store normalized images in private, versioned Blob storage. New uploads count
+toward quota while awaiting confirmation and appear only after it succeeds.
+Retries reuse the same object; failed migration of an existing photo preserves
+its database copy and visibility. Operators use `sync-photos` to resume/backfill.
+Database recovery copies are retained during rollout. Azure object version
+cleanup is not enabled; seven-day recovery is not a promise of physical deletion
+at seven days. [Storage implementation](../internal/app/azure_photos.go) ·
+[Operator setup](../infra/azure/README.md).
+
 ### IMAGE — Private image viewer
 
 **Route:** `GET /property-photos/{id}`. **Access:** Owner of the image’s shop.
@@ -281,6 +295,11 @@ or visits. Open IMAGE for a full image or return to PROPERTY.
 
 Authenticated image response opened from PHOTOS. It has no management form and
 is not a public sharing URL. Browser back returns to the photo collection.
+With the pending Azure configuration enabled, authorization happens before the
+exact saved Blob version is fetched and its hash, size and MIME type verified.
+Azure outages return a retryable error; disabling Azure explicitly enables the
+retained database recovery copies. Storage keys and direct Blob URLs are never
+sent to the browser. [Version client](../internal/photostore/azure.go).
 
 ### EQUIPMENT — Equipment record
 

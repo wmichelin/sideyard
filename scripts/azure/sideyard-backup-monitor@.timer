@@ -1,0 +1,11 @@
+[Unit]
+Description=Hourly Sideyard %i backup verification monitor
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=5m
+Persistent=true
+Unit=sideyard-backup-monitor@%i.service
+
+[Install]
+WantedBy=timers.target

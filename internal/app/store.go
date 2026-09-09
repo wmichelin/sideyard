@@ -103,6 +103,7 @@ type Store struct {
 	db               *DB
 	clock            Clock
 	publicDemoSeedMu sync.Mutex
+	photoObjects     photoObjectStorage
 }
 
 func (s *Store) nowUTC() time.Time {

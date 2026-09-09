@@ -355,3 +355,65 @@ paid integrations or live customer payment collection are configured by this cha
   revision/digest verified. Production remains at the explicitly approved visit
   history source `ae6f16ae9f9feaf52bf58093cf1f0c3b8c7a7c34`; gate false.
 - Try **Jobs → New job**, or **New job or site survey** from a customer record.
+## Azure migration — implementation started September 9, 2026
+
+- User approved the [Azure plan](SIDEYARD-AZURE-PLAN.md): SQL serverless
+  0.5–1 vCore with free-limit pause, private versioned Hot LRS Blob storage and
+  **seven-day backups**. This replaces the proposal's 30-day recovery target.
+- Status: implementing. Azure CLI authenticated to enabled `Azure subscription 1`
+  (`ddd8d30e-b827-461d-bf25-09f77337cbdd`), actual `FreeTrial_2014-09-01` offer
+  with spending limit On. No billing upgrade or paid SQL overage was enabled.
+- Terraform state account `sideyardstateddd8d30e` is private/versioned in East US;
+  bootstrap applied and its second plan was empty. Staging environment state is
+  remote under its own key. Bootstrap state was also migrated to its own remote
+  key and its five resources are accessible from remote state.
+- Central US supports the requested SQL SKU in this subscription; East US was
+  restricted. Staging private versioned Hot LRS account `sideyardstgddd8d30e`,
+  `photos`/`backups` containers, SQL logical server and owner action group exist.
+  The first SQL database create rejected the proposed 15-minute idle delay:
+  free-limit AutoPause requires its **60-minute default**. User informed; plan
+  corrected without enabling paid overages. Live readback confirms min 0.5/max 1,
+  free-limit AutoPause, 32 GB maximum, Local redundancy and seven-day native
+  retention. Two enabled compute quota alerts exist. The native earliest restore
+  date is still initializing; no native restore is claimed.
+- Local Blob integration retains full PostgreSQL recovery bytes. Focused real-PG
+  tests passed for concurrent retry, hidden/quota-counted pending uploads, existing
+  photo visibility during failed backfill, cross-tenant rejection, exact-version
+  read, deletion during upload and customer-cascade retirement. CLI `sync-photos`
+  provides bounded backfill/resume. No version garbage collection is enabled.
+- Real staging Azure photo handoff passed locally with a synthetic fixture:
+  exact-version read, second batch with no work, and deletion without resurrection.
+- Staging seven-day encrypted export service completed at `2026-09-09T21:57:58Z`.
+  Its authenticated manifest and exact versions were downloaded from Azure and
+  restored into `sideyard-azure-restore-check` with no network or durable mounts:
+  2 shops, 31 customers, 0 photos and 30 migrations. Separate production-mode
+  rehearsal covers photo recovery; no actual staging-photo restore is claimed yet.
+  Daily backup/hourly freshness timers are enabled; separate backup identity has
+  no photo/delete access. Staging's final Terraform plan was empty.
+- Full real-Postgres Go suite, vet and static build passed; latest production
+  backup/restore rehearsal passed. Six backup-auth tests, seven Azure export
+  tests and two backup-monitor tests passed. Read-only follow-up reviews found
+  no remaining Blob staging blockers; their operator-doc correction was included.
+- Azure Monitor's synthetic test endpoint returned `Conflict: Free subscription
+  not supported`. Quota rules are configured but synthetic Azure email delivery
+  is unverified. Backup failure/staleness notifications use the existing Resend
+  integration; independent monitoring for complete droplet loss remains pending.
+- Staging: https://clubdue-staging.michelindigitalmedia.com (pending for Azure).
+- Three read-only specialist agents reviewed all six delivery perspectives.
+  Product/QA: retain tenant/owner photo access, reservations and tombstones;
+  prove oldest retained backup with an old photo deleted recently. Architect/
+  staff: 253 SQL call sites and 31 tables require an explicit SQL Server port;
+  preserve filtered uniqueness, triggers, relationships and PostgreSQL recovery.
+  DevOps/testing: own free flags and seven-day backup policy explicitly in
+  Terraform; prove pause/resume, exact object-version recovery and real alerts.
+- Backup review found that the existing OpenSSL `key:file:/dev/fd/3` argument
+  uses a literal HMAC key instead of reading the intended secret. New versioned
+  helper authenticates ciphertext with the real secret; six security tests and
+  a complete production backup/restore rehearsal passed locally.
+  Historical sidecars require deliberate legacy recovery; no automatic downgrade.
+- Blob versions must be retained from retirement/reference expiry, not original
+  creation time. Seven-day application recovery plus soft-delete retention can
+  keep billable bytes longer. Customer/shop cascades must not erase cleanup data.
+- Execution order: infrastructure and authenticated recovery, Blob integration,
+  explicit SQL Server domain port, isolated migration/restore and staging soak,
+  then reviewed production cutover under the existing release workflow.

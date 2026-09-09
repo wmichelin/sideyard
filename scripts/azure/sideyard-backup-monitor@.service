@@ -1,0 +1,10 @@
+[Unit]
+Description=Sideyard %i backup freshness and failure alert
+
+[Service]
+Type=oneshot
+User=root
+UMask=0077
+EnvironmentFile=/opt/clubdue/production.env
+ExecStart=/usr/bin/python3 /opt/clubdue/azure-tools/azure/check-backups.py %i
+TimeoutStartSec=45
