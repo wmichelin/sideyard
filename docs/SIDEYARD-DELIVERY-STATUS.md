@@ -1,11 +1,11 @@
 # Sideyard delivery status
 
-Status: implementing — setup, property records and vehicles verified on staging; dated site notes ready to stage.
-Last completed: authored property notes with event dates and retry deduplication.
-Now: publish the verified site-note slice to staging.
-Next: verify notes; continue equipment editing and private photo storage.
-Staging: https://clubdue-staging.michelindigitalmedia.com (verified through vehicles; dated notes pending).
-Blocker: none for staging. Production requires review and approval.
+Status: verified — four foundational slices on staging; overall execution plan remains in progress.
+Last completed: authored property notes verified through the real staging browser flow.
+Now: durable handoff and staging review.
+Next: equipment editing and private photo storage; production promotion after approval.
+Staging: https://clubdue-staging.michelindigitalmedia.com (verified through dated site notes).
+Blocker: none for continued development. Production requires review and approval.
 
 Implementation was started after the user's instruction to proceed on September
 8, 2026. The earlier planning-only status in the execution/requirements documents
@@ -76,6 +76,12 @@ foundation of Release 1, not completion of the entire execution plan.
 - Vehicle source: `4d6a850f07eec361ea4b35242c553a78093f1f14`; CI `34297686281`
   and staging `34297686330` succeeded. Manual staging smoke and two-vehicle
   browser walkthrough passed at 390/1440 pixels.
+- Latest source: `84b7340ab623375c6589770f9905b40e1bf20eb1`; CI `34298057779`
+  and staging `34298057687` succeeded. Manual staging smoke and dated-note browser
+  walkthrough at 390/1440 pixels passed.
+- Running staging container's revision label and immutable image were read back:
+  `ghcr.io/wmichelin/clubdue@sha256:003f145d3695bbbbd1ed056e2824865e08abdc527be2acfb02541343440ce9f6`.
+- Production deployment gate remains false; no production promotion occurred.
 
 ## Vehicle-record slice
 
@@ -114,3 +120,23 @@ dated property notes are also implemented. Expanded equipment editing, notes
 linked directly to jobs/vehicles, staff permissions and private photos remain.
 Billing, scheduling extensions and provider integrations remain as planned. No
 paid integrations or live customer payment collection are configured by this change.
+
+## Continuation details
+
+- Migrations 021–024 are committed and applied on staging. Do not edit their
+  checksummed contents; future changes require a new migration.
+- Dates currently default to UTC, consistent with existing app behavior. Shop
+  timezone and actual appointment/application times remain part of later work.
+- Property measurement and note histories display the latest 100 records while
+  retaining older rows. Pagination/export improvements remain future work.
+- Presets currently prepare service names/descriptions; new billing, checklist,
+  field-selection and job capabilities are not yet connected to them.
+- Private photo implementation must include storage access, quotas, image
+  validation, tenant isolation and coordinated backup/restore before activation.
+  No storage account was purchased or configured during these slices.
+- QA scripts and screenshots remain under `/tmp/sideyard-qa/` (`business.cjs`,
+  `property.cjs`, `vehicles.cjs`, `notes.cjs`). They use synthetic local owners or
+  isolated staging demos, never real customer records.
+- Owned local QA servers and disposable Postgres container were stopped and
+  removed after verification. Build caches remain reusable. Start each full
+  integration-suite run with a fresh database to avoid legacy fixture collisions.
