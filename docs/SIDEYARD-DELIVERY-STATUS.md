@@ -1,10 +1,10 @@
 # Sideyard delivery status
 
-Status: verified — six foundational slices on staging. Overall execution plan remains in progress.
-Last completed: equipment and address correction verified through the real staging browser flows.
+Status: verified — seven foundational slices on staging. Overall execution plan remains in progress.
+Last completed: private property photos verified on staging, including large uploads and deletion.
 Now: durable handoff and staging review.
-Next: private photo storage and expanded internal timelines; production promotion only after approval.
-Staging: https://clubdue-staging.michelindigitalmedia.com (verified through address correction).
+Next: expanded internal timelines and scheduling; production promotion only after approval.
+Staging: https://clubdue-staging.michelindigitalmedia.com (verified through private property photos).
 Blocker: none for continued development. Production requires review and approval.
 
 The user explicitly authorized continued building on September 8, 2026. The
@@ -118,14 +118,14 @@ foundation of Release 1, not completion of the entire execution plan.
 Use [execution plan](SIDEYARD-EXECUTION-PLAN.md) for the seven releases and billing
 patterns. Site details, manual measurement history and vehicle records are implemented;
 dated property notes are also implemented. Equipment editing and address correction are now implemented. Authored notes
-linked directly to jobs/vehicles/equipment, staff permissions and private photos
-remain.
+linked directly to jobs/vehicles/equipment and staff permissions remain. Private
+property photos are verified on staging.
 Billing, scheduling extensions and provider integrations remain as planned. No
 paid integrations or live customer payment collection are configured by this change.
 
 ## Continuation details
 
-- Migrations 021–026 are committed and applied on staging. Do not edit their
+- Migrations 021–027 are committed and applied on staging. Do not edit their
   checksummed contents; future changes require a new migration.
 - Dates currently default to UTC, consistent with existing app behavior. Shop
   timezone and actual appointment/application times remain part of later work.
@@ -133,9 +133,9 @@ paid integrations or live customer payment collection are configured by this cha
   retaining older rows. Pagination/export improvements remain future work.
 - Presets currently prepare service names/descriptions; new billing, checklist,
   field-selection and job capabilities are not yet connected to them.
-- Private photo implementation must include storage access, quotas, image
-  validation, tenant isolation and coordinated backup/restore before activation.
-  No storage account was purchased or configured during these slices.
+- Private property photos use bounded Postgres storage with private access,
+  quotas, validated/normalized images and coordinated backup/restore. No separate
+  storage account was purchased. Object storage remains the media scaling path.
 - QA scripts and screenshots remain under `/tmp/sideyard-qa/` (`business.cjs`,
   `property.cjs`, `vehicles.cjs`, `notes.cjs`). They use synthetic local owners or
   isolated staging demos, never real customer records.
@@ -169,7 +169,7 @@ paid integrations or live customer payment collection are configured by this cha
 - QA scripts: `/tmp/sideyard-qa/equipment.cjs` and `address.cjs`. Equipment uses
   argument `staging` for its synthetic public-demo flow; address uses `demo`.
 
-## Current reviewed staging artifact
+## Address correction staging artifact
 
 - Source: `89643542259fc6947e9e385bcf49cb8a3df47303`.
 - Image: `ghcr.io/wmichelin/clubdue@sha256:a9efde717b2114e8a1477ab77e451e04b6b529f01e62d57101f51f40948c4db9`.
@@ -179,3 +179,50 @@ paid integrations or live customer payment collection are configured by this cha
 - Two local QA servers (`/tmp/sideyard-equipment-qa`, `/tmp/sideyard-address-qa`)
   and the disposable `sideyard-equipment-test-db` container are cleaned up after
   this checkpoint. QA scripts/screenshots and build caches remain available.
+
+## Private photo slice
+
+- Owner-only property photo upload/view/delete; before, after, damage, access and
+  general categories, captions and upload authorship. No public image URLs.
+- Normalized JPEG/PNG with metadata removal and JPEG orientation handling; HEIC
+  has an explicit conversion fallback. Input dimensions/bytes, stored bytes and
+  per-shop storage are bounded. Decode admission limits simultaneous processing.
+- 100 active photos / 50 MiB per shop; 5 MiB upload / 4 MiB normalized image.
+  Captions remain on ordinary validation failures, retries deduplicate, and
+  deletion tombstones prevent old forms from resurrecting deleted photos.
+- Postgres-backed bytes and metadata are an explicit bounded-pilot storage choice;
+  see [photo review and evidence](SIDEYARD-PHOTOS-DELIVERY.md). Photos share the
+  encrypted database backup/restore. Separate object storage is a scaling step.
+- Live image data/caption/author are removed on deletion. Encrypted backups can
+  retain previous content until retention expires; historical recovery restores
+  the state at its recovery point.
+- Migration 027, full Go tests/vet/static build, both rehearsals and local browser
+  checks passed. The production rehearsal now checks actual image byte/caption/
+  author restoration and upload retry. Public demo uploads remain disabled.
+- Deployment helper adds an 8 MiB request envelope only beside its unique managed
+  Sideyard upstream; larger phone uploads must pass the real staging proxy test.
+- Initial source `0d2eabec2c941eb9ba8bf660255ee64c322eb50b`; CI `34307036176`
+  and staging `34307036167` passed, but the larger staging browser upload failed
+  because the scratch image lacked `/tmp`. Follow-up `1df43d3` adds it; the
+  expanded >2 MiB container/backup rehearsal passed. Final staging recheck also
+  passed; see the verified artifact below. No production promotion.
+
+## Current verified staging artifact
+
+- Source: `1df43d3dd4140141ad3f05e8fd6e93876c8627a5`.
+- Image: `ghcr.io/wmichelin/clubdue@sha256:b178cdb5312fc5e20d1cdb10fa4af9853d77e3648373d0dde02bec871bed79aa`.
+- CI `34307354003` and staging `34307353974` succeeded. Manual smoke passed;
+  390/1440-pixel owner browser flow passed large upload, unsupported-file feedback,
+  private access, other-tenant denial and delete/re-upload. Demo uploads remain
+  disabled. No browser errors, overflow or unexpected staging log errors.
+- Both artifact values were read from the running staging container. Production
+  remains on `7d33ab7` and its deployment gate is false.
+- The temporary staging QA tenant and credentials were removed. Local photo QA
+  server and disposable database were removed; screenshots/scripts remain.
+- Next: finish authored timelines across assets/visits with actual event times,
+  then the E3 job/program/crew model and E4 flexible contract billing. Trade
+  presets remain defaults; billing is not restricted to lawn treatments.
+- Photos currently attach to properties. Vehicle/equipment/job associations and
+  crew access remain; separate object storage is the scaling path beyond the
+  bounded database-backed pilot. Owners can try photos from their own staging
+  customer/property record, not through public-demo uploads.

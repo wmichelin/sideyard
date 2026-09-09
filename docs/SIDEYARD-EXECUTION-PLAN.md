@@ -407,9 +407,13 @@ and retention; application product/state details; Deep Lawn access/budget; crew
 permissions and customer-sharing policy. Use synthetic examples and owner-only
 access to make early work reviewable without waiting for all those decisions.
 
-## Completion note
+## Original planning handoff
 
-Result: execution planning complete; application work not started.
+This was the planning-only checkpoint. Implementation has since been authorized;
+see [delivery status](SIDEYARD-DELIVERY-STATUS.md) for current completed work,
+staging evidence and remaining scope.
+
+Result at that checkpoint: execution planning complete; application work not started.
 Commit: none; planning files remain local.
 Tests: document coverage, sequence and whitespace checked; application tests not
 run because no application code changed.

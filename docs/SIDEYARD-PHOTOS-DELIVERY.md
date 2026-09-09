@@ -1,10 +1,10 @@
 # Private property photos delivery
 
-Status: testing
-Last completed: implementation, full checks and local phone/desktop browser flow passed.
-Now: staging publication and real proxy upload verification.
-Next: owner and isolated-demo staging browser checks, then exact revision verification.
-Staging: https://clubdue-staging.michelindigitalmedia.com (pending for this slice)
+Status: verified
+Last completed: corrected staging image passed large-upload/private-access/delete browser checks.
+Now: private property photos available to staging owners.
+Next: expanded asset/visit histories and scheduling.
+Staging: https://clubdue-staging.michelindigitalmedia.com (verified)
 Blocker: none. Production requires separate approval.
 
 ## Delivery brief and six-perspective review
@@ -38,7 +38,9 @@ pilot. This is a deliberate change from the execution plan's separate object
 storage starting point: no object store is currently configured, while encrypted
 database backup/restore is already exercised. One transaction covers both bytes
 and metadata, avoiding partial object writes and orphan cleanup in this slice.
-The accepted tradeoff is increased database/backup size, bounded per shop. Do
+The accepted tradeoff is increased database/backup size. Active image bytes are
+bounded per shop; database overhead and retained submission tombstones add
+metadata beyond that byte allowance. Do
 not describe this as an unlimited media store or increase quotas without a
 storage/backup review. The existing Store is the injected persistence boundary.
 
@@ -83,3 +85,27 @@ an input larger than 2 MiB, exercises the real scratch container upload/retry pa
 then verifies normalized bytes and metadata after encrypted restore. That expanded
 rehearsal passed locally. This corrects the release fixture gap; final staging
 browser verification must pass again before this slice is marked verified.
+
+## Verified staging result
+
+- Corrected source: `1df43d3dd4140141ad3f05e8fd6e93876c8627a5`.
+- CI `34307354003` and Deploy Staging `34307353974` succeeded.
+- Image read from running container:
+  `ghcr.io/wmichelin/clubdue@sha256:b178cdb5312fc5e20d1cdb10fa4af9853d77e3648373d0dde02bec871bed79aa`.
+- Manual `./scripts/smoke-test.sh staging` passed. Playwright at 390/1440 pixels
+  passed upload (>2 MiB request through nginx), unsupported-HEIC feedback,
+  caption retention, private image headers, anonymous and other-tenant denial,
+  delete/re-upload and public-demo upload suppression. Screenshot inspected;
+  no document overflow or browser errors. Recent staging logs had no 5xx,
+  image-store, deletion or rendering errors.
+- Temporary staging owner/tenant and credentials were removed after verification.
+  Local QA server and disposable Postgres container were stopped/removed. Scripts
+  and screenshots remain in `/tmp/sideyard-qa/photos.cjs` and `photos-*.png`.
+- Production remains `7d33ab7ff1c05a796bd351b647f81eea58729726`, image
+  `ghcr.io/wmichelin/clubdue@sha256:f54daa3e44102219717683ee877f71117d7555361e3829495ffedcfcecdb1cd2`.
+  The production gate remains false; no promotion or production proxy change.
+
+Result: private property photo slice verified on staging. This is not completion
+of all E2.4 media associations: vehicle/equipment/job attachments and crew access
+remain. HEIC requires conversion; active storage limits remain in force. Owners
+reach the feature through Customer → Property details → Private photos.
