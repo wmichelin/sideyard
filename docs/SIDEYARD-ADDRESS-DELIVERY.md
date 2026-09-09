@@ -1,10 +1,10 @@
 # Property address correction delivery
 
-Status: testing
-Last completed: full checks and local phone/desktop walkthrough passed.
-Now: pushing verified address correction to staging.
-Next: staging smoke and browser verification.
-Staging: https://clubdue-staging.michelindigitalmedia.com (pending for this slice)
+Status: verified
+Last completed: staging smoke, phone/desktop browser flow and deployed revision verified.
+Now: address correction available for staging review.
+Next: private photos and expanded internal event timelines.
+Staging: https://clubdue-staging.michelindigitalmedia.com (verified)
 Blocker: none; production requires separate approval.
 
 ## Delivery brief and team review
@@ -49,3 +49,17 @@ its service history to a different site.
 - Initial browser script used Playwright's single-page convenience context;
   changed the QA script to an explicit context for its stale-tab check. The app
   required no change and the rerun passed.
+
+## Staging verification
+
+- Source: `89643542259fc6947e9e385bcf49cb8a3df47303`.
+- CI `34303519623` and Deploy Staging `34303519617` succeeded.
+- `./scripts/smoke-test.sh staging` passed.
+- `node /tmp/sideyard-qa/address.cjs https://clubdue-staging.michelindigitalmedia.com demo`
+  passed at 390/1440 pixels, with retained notes/measurements/equipment, updated
+  maps and customer summary, stale-tab rejection and no browser errors/overflow.
+- Running revision verified; immutable image:
+  `ghcr.io/wmichelin/clubdue@sha256:a9efde717b2114e8a1477ab77e451e04b6b529f01e62d57101f51f40948c4db9`.
+- Production still runs `7d33ab7ff1c05a796bd351b647f81eea58729726`, image
+  `ghcr.io/wmichelin/clubdue@sha256:f54daa3e44102219717683ee877f71117d7555361e3829495ffedcfcecdb1cd2`.
+  Production deployment gate read back as false.

@@ -1,15 +1,16 @@
 # Sideyard delivery status
 
-Status: verified — four foundational slices on staging; overall execution plan remains in progress.
-Last completed: authored property notes verified through the real staging browser flow.
+Status: verified — six foundational slices on staging. Overall execution plan remains in progress.
+Last completed: equipment and address correction verified through the real staging browser flows.
 Now: durable handoff and staging review.
-Next: equipment editing and private photo storage; production promotion after approval.
-Staging: https://clubdue-staging.michelindigitalmedia.com (verified through dated site notes).
+Next: private photo storage and expanded internal timelines; production promotion only after approval.
+Staging: https://clubdue-staging.michelindigitalmedia.com (verified through address correction).
 Blocker: none for continued development. Production requires review and approval.
 
-Implementation was started after the user's instruction to proceed on September
-8, 2026. The earlier planning-only status in the execution/requirements documents
-describes their original handoff; this file tracks subsequent implementation.
+The user explicitly authorized continued building on September 8, 2026. The
+earlier planning-only status in the execution/requirements documents describes
+their original handoff; this file tracks subsequent implementation. Production
+promotion has not been authorized for these new features.
 
 ## Completed locally
 
@@ -76,7 +77,7 @@ foundation of Release 1, not completion of the entire execution plan.
 - Vehicle source: `4d6a850f07eec361ea4b35242c553a78093f1f14`; CI `34297686281`
   and staging `34297686330` succeeded. Manual staging smoke and two-vehicle
   browser walkthrough passed at 390/1440 pixels.
-- Latest source: `84b7340ab623375c6589770f9905b40e1bf20eb1`; CI `34298057779`
+- Dated-note source: `84b7340ab623375c6589770f9905b40e1bf20eb1`; CI `34298057779`
   and staging `34298057687` succeeded. Manual staging smoke and dated-note browser
   walkthrough at 390/1440 pixels passed.
 - Running staging container's revision label and immutable image were read back:
@@ -116,14 +117,15 @@ foundation of Release 1, not completion of the entire execution plan.
 
 Use [execution plan](SIDEYARD-EXECUTION-PLAN.md) for the seven releases and billing
 patterns. Site details, manual measurement history and vehicle records are implemented;
-dated property notes are also implemented. Expanded equipment editing, notes
-linked directly to jobs/vehicles, staff permissions and private photos remain.
+dated property notes are also implemented. Equipment editing and address correction are now implemented. Authored notes
+linked directly to jobs/vehicles/equipment, staff permissions and private photos
+remain.
 Billing, scheduling extensions and provider integrations remain as planned. No
 paid integrations or live customer payment collection are configured by this change.
 
 ## Continuation details
 
-- Migrations 021–024 are committed and applied on staging. Do not edit their
+- Migrations 021–026 are committed and applied on staging. Do not edit their
   checksummed contents; future changes require a new migration.
 - Dates currently default to UTC, consistent with existing app behavior. Shop
   timezone and actual appointment/application times remain part of later work.
@@ -140,3 +142,40 @@ paid integrations or live customer payment collection are configured by this cha
 - Owned local QA servers and disposable Postgres container were stopped and
   removed after verification. Build caches remain reusable. Start each full
   integration-suite run with a fresh database to avoid legacy fixture collisions.
+
+## Equipment and address continuation
+
+- Equipment records: installation/warranty dates, serial/reference, property
+  location and private service details, with owner-only editing and stale-save
+  protection. Existing equipment IDs and installation dates remain intact.
+  See [equipment delivery](SIDEYARD-EQUIPMENT-DELIVERY.md) for full review/evidence.
+- Equipment source `33af03206bb5b1759aa46b97293a77f5c2e4b98d`; CI
+  `34303050158` and staging `34303050208` succeeded. Manual smoke, phone/desktop
+  browser flow and running revision verification passed.
+- Address correction preserves property identity and attached history. Database
+  revision tracking also covers the existing CSV import path. Unit/suite now
+  appears in customer property summaries. See
+  [address delivery](SIDEYARD-ADDRESS-DELIVERY.md) for review and local evidence.
+- Address source `89643542259fc6947e9e385bcf49cb8a3df47303`; CI
+  `34303519623` and staging `34303519617` succeeded. Manual smoke and staging
+  phone/desktop walkthrough passed. Both new slices passed full fresh-Postgres tests, vet, static build,
+  production backup/restore and pilot rehearsals, and local phone/desktop checks.
+- Equipment/date/address forms retain entered values on validation errors or
+  conflicts. Unknown dates and optional unit remain blank when cleared.
+- Equipment private details are current editable information; they are not yet
+  an authored equipment service-event timeline. Address correction changes the
+  current address displayed by existing work/export views. Historical quote and
+  contract address snapshots remain part of E4.
+- QA scripts: `/tmp/sideyard-qa/equipment.cjs` and `address.cjs`. Equipment uses
+  argument `staging` for its synthetic public-demo flow; address uses `demo`.
+
+## Current reviewed staging artifact
+
+- Source: `89643542259fc6947e9e385bcf49cb8a3df47303`.
+- Image: `ghcr.io/wmichelin/clubdue@sha256:a9efde717b2114e8a1477ab77e451e04b6b529f01e62d57101f51f40948c4db9`.
+- Both values read directly from the running staging container after verification.
+- Production remains on the approved signup-notification source `7d33ab7`; the
+  production gate is false. Do not promote without explicit approval in chat.
+- Two local QA servers (`/tmp/sideyard-equipment-qa`, `/tmp/sideyard-address-qa`)
+  and the disposable `sideyard-equipment-test-db` container are cleaned up after
+  this checkpoint. QA scripts/screenshots and build caches remain available.
