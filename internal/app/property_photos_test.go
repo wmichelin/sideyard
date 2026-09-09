@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/wmichelin/clubdue/internal/database"
 )
 
 func TestPropertyPhotosIsolationRetriesQuotasAndDeletion(t *testing.T) {
@@ -34,7 +34,7 @@ func TestPropertyPhotosIsolationRetriesQuotasAndDeletion(t *testing.T) {
 		t.Fatal(err)
 	}
 	key := strings.Repeat("a", 32)
-	if _, err := s.AddPropertyPhoto(ctx, other, property, key, "", "before", "owner", photo); !errors.Is(err, pgx.ErrNoRows) {
+	if _, err := s.AddPropertyPhoto(ctx, other, property, key, "", "before", "owner", photo); !errors.Is(err, database.ErrNoRows) {
 		t.Fatalf("foreign insert: %v", err)
 	}
 	type result struct {
@@ -56,10 +56,10 @@ func TestPropertyPhotosIsolationRetriesQuotasAndDeletion(t *testing.T) {
 	if _, err := s.AddPropertyPhoto(ctx, shop, property, key, "Different caption", "before", "owner", photo); !errors.Is(err, errPhotoConflict) {
 		t.Fatalf("reused key: %v", err)
 	}
-	if _, err := s.GetPropertyPhoto(ctx, other, id); !errors.Is(err, pgx.ErrNoRows) {
+	if _, err := s.GetPropertyPhoto(ctx, other, id); !errors.Is(err, database.ErrNoRows) {
 		t.Fatalf("foreign read: %v", err)
 	}
-	if _, err := s.DeletePropertyPhoto(ctx, other, id); !errors.Is(err, pgx.ErrNoRows) {
+	if _, err := s.DeletePropertyPhoto(ctx, other, id); !errors.Is(err, database.ErrNoRows) {
 		t.Fatalf("foreign deletion: %v", err)
 	}
 	got, err := s.GetPropertyPhoto(ctx, shop, id)
@@ -103,7 +103,7 @@ func TestPropertyPhotosIsolationRetriesQuotasAndDeletion(t *testing.T) {
 	if deletedProperty, err := s.DeletePropertyPhoto(ctx, shop, id); err != nil || deletedProperty != property {
 		t.Fatalf("delete: %s %v", deletedProperty, err)
 	}
-	if _, err := s.GetPropertyPhoto(ctx, shop, id); !errors.Is(err, pgx.ErrNoRows) {
+	if _, err := s.GetPropertyPhoto(ctx, shop, id); !errors.Is(err, database.ErrNoRows) {
 		t.Fatal("deleted photo still readable")
 	}
 	if _, err := s.AddPropertyPhoto(ctx, shop, property, key, "Gate <script>private</script>", "before", "owner", photo); !errors.Is(err, errPhotoConflict) {

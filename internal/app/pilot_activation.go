@@ -3,8 +3,8 @@ package app
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/wmichelin/clubdue/internal/activation"
+	"github.com/wmichelin/clubdue/internal/database"
 )
 
 type pilotActivationEvent = activation.Event
@@ -19,7 +19,7 @@ const (
 	pilotEventReturningUse       = activation.EventReturningUse
 )
 
-func recordPilotActivationTx(ctx context.Context, tx pgx.Tx, shopID string, event pilotActivationEvent) error {
+func recordPilotActivationTx(ctx context.Context, tx database.Tx, shopID string, event pilotActivationEvent) error {
 	return activation.RecordTx(ctx, tx, shopID, event)
 }
 

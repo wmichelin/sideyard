@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/wmichelin/clubdue/internal/database"
 	"github.com/wmichelin/clubdue/internal/jobs"
 )
 
@@ -66,7 +66,7 @@ func TestStandaloneJobsPreserveIdentityHistoryAndIsolation(t *testing.T) {
 	if _, err := service.Create(ctx, shop, key, "first-owner", changed); !errors.Is(err, jobs.ErrSubmission) {
 		t.Fatal("changed create retry", err)
 	}
-	if _, err := service.Get(ctx, other, id); !errors.Is(err, pgx.ErrNoRows) {
+	if _, err := service.Get(ctx, other, id); !errors.Is(err, database.ErrNoRows) {
 		t.Fatal("foreign read", err)
 	}
 	if err := service.Edit(ctx, other, id, "foreign", 1, in); !errors.Is(err, jobs.ErrConflict) {

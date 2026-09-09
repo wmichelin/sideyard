@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/wmichelin/clubdue/internal/database"
 	"github.com/wmichelin/clubdue/internal/servicework"
 )
 
@@ -30,7 +30,7 @@ func (s *Server) handleVisitDate(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	visit, err := s.store.GetServiceVisitDate(r.Context(), user.ShopID, id)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, database.ErrNoRows) {
 			http.NotFound(w, r)
 		} else {
 			log.Printf("visit date load request_id=%s error=%v", requestIDFromContext(r.Context()), err)

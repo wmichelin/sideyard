@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/wmichelin/clubdue/internal/database"
 )
 
 // ScheduleSummary keeps each service independent, even on the same agreement.
@@ -127,7 +127,7 @@ func (s *Service) MoveVisit(ctx context.Context, shopID, occurrenceID string, ne
 	 WHERE sc.shop_id=$1 AND sc.active AND a.status='active'
 	 AND EXISTS (SELECT 1 FROM service_occurrences o WHERE o.shop_id=sc.shop_id AND o.schedule_id=sc.id AND o.id=$2)
 	 FOR UPDATE OF sc`, shopID, occurrenceID).Scan(&schedule.ID, &schedule.CadenceUnit, &schedule.CadenceInterval, &schedule.StartsOn, &schedule.EndsOn)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, database.ErrNoRows) {
 		return ErrVisitUnavailable
 	}
 	if err != nil {
@@ -138,7 +138,7 @@ func (s *Service) MoveVisit(ctx context.Context, shopID, occurrenceID string, ne
 	var status string
 	err = tx.QueryRow(ctx, `SELECT due_on,COALESCE(scheduled_on,due_on),schedule_revision,status
 	 FROM service_occurrences WHERE shop_id=$1 AND id=$2 FOR UPDATE`, shopID, occurrenceID).Scan(&original, &current, &revision, &status)
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && status != "due") {
+	if errors.Is(err, database.ErrNoRows) || (err == nil && status != "due") {
 		return ErrVisitUnavailable
 	}
 	if err != nil {

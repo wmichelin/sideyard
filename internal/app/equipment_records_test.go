@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/wmichelin/clubdue/internal/database"
 )
 
 func TestEquipmentRecordValidation(t *testing.T) {
@@ -73,7 +73,7 @@ func TestEquipmentRecordsPreserveIdentityAndRejectConflictingEdits(t *testing.T)
 		t.Fatalf("legacy record: %+v %v", e, err)
 	}
 	e.Location, e.WarrantyUntil, e.Notes = "Attic", "2030-02-28", "Private filter size <script>unsafe</script>"
-	if _, err := s.GetEquipmentRecord(ctx, other, e.ID); !errors.Is(err, pgx.ErrNoRows) {
+	if _, err := s.GetEquipmentRecord(ctx, other, e.ID); !errors.Is(err, database.ErrNoRows) {
 		t.Fatalf("foreign read: %v", err)
 	}
 	if err := s.SaveEquipmentRecord(ctx, other, e); !errors.Is(err, errEquipmentConflict) {

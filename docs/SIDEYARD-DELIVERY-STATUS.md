@@ -462,3 +462,39 @@ paid integrations or live customer payment collection are configured by this cha
   Current production app and database backend remain unchanged. Promoting this
   staging artifact also includes the previously staged jobs and status-badge fix;
   user review must cover that complete artifact before production deployment.
+
+### SQL Server connection foundation
+
+- Replaced the app/domain dependency on the concrete pgx pool with the small
+  `internal/database` connection/transaction interfaces. PostgreSQL's native
+  migration engine and all 31 migration files remain unchanged. The wrapper
+  normalizes missing-row errors consistently, including direct import comparisons.
+- Added a lazy SQL Server adapter using Microsoft's Go driver 1.9.3 (compatible
+  with the existing Go 1.23 toolchain). Azure construction uses an injected,
+  persistent Entra credential and verified TLS 1.2+, retains no idle sessions,
+  and performs no startup query, migration or automatic statement retries.
+- Separate checksummed T-SQL migrator reserves one session for its lock and all
+  transactions. It checks negative lock status codes, rolls back failed DDL and
+  force-discards the session during cleanup so an unlock failure cannot pass a
+  held lock to a queued pool caller.
+- Product/QA review: keep SQL selection disabled and preserve user workflows;
+  test row/value fidelity, cancellation and no false success. Architect/staff:
+  preserve native PostgreSQL migrations and native statements, use explicit UUID
+  projection casts, and port the calendar to SQL snapshot isolation before use.
+  DevOps/testing: long-lived token credential, real-engine CI with required flag,
+  isolated fixtures, single-session migration ownership and forced cleanup.
+  All concrete review corrections were included.
+- Focused PostgreSQL/SQL Server tests passed: missing rows and driver errors,
+  affected rows, exact decimal/date/Unicode/16-byte image round trips, snapshot
+  consistency, cancellation/rollback, zero retained SQL connections, concurrent
+  migrations, checksums, failed DDL and canceled lock recovery. The complete
+  Go/PostgreSQL suite, vet, static build, production backup/restore rehearsal,
+  pilot-onboarding rehearsal and standalone SQL Server rehearsal passed locally.
+  One initial full run reused a database containing a fixed-token fixture from
+  an earlier test; a fresh disposable database resolved that fixture collision.
+- The new CI job runs `scripts/sqlserver-rehearsal.sh` against a pinned local
+  SQL Server 2022 Developer image. Public dependencies are built before the
+  isolated engine network is created, so tests need no external network access.
+- Runtime SQL Server selection, native application schema/queries, data transfer,
+  SQL export/recovery and actual Azure pause/resume remain unfinished. Both app
+  environments still use PostgreSQL. No new production release is claimed.

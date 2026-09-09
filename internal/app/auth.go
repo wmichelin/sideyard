@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/wmichelin/clubdue/internal/database"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -105,12 +105,12 @@ func (a *Auth) provisionOwner(ctx context.Context, credentials OwnerCredentials)
 	var userID, shopID string
 	err = tx.QueryRow(ctx, `SELECT id, shop_id FROM users WHERE email = $1 FOR UPDATE`, credentials.Email).Scan(&userID, &shopID)
 	action := "recovered"
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, database.ErrNoRows) {
 		slug := slugify(credentials.ShopName)
 		// A matching shop name is not an invitation into an existing tenant.
 		err = tx.QueryRow(ctx, `INSERT INTO shops (name, slug) VALUES ($1, $2)
 			ON CONFLICT (slug) DO NOTHING RETURNING id`, credentials.ShopName, slug).Scan(&shopID)
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, database.ErrNoRows) {
 			return "", errors.New("shop name already taken; choose a different shop name")
 		} else if err != nil {
 			return "", err

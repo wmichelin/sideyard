@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/wmichelin/clubdue/internal/activation"
+	"github.com/wmichelin/clubdue/internal/database"
 )
 
 const (
@@ -21,11 +21,11 @@ const (
 )
 
 type Service struct {
-	pool *pgxpool.Pool
+	pool database.Pool
 	now  func() time.Time
 }
 
-func New(pool *pgxpool.Pool, now func() time.Time) *Service {
+func New(pool database.Pool, now func() time.Time) *Service {
 	return &Service{pool: pool, now: now}
 }
 

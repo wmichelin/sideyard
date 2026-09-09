@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/wmichelin/clubdue/internal/database"
 	"github.com/wmichelin/clubdue/internal/photostore"
 )
 
@@ -75,7 +75,7 @@ func (s *Store) addPropertyPhotoRecord(ctx context.Context, shopID, propertyID, 
 		}
 		return id, nil
 	}
-	if !errors.Is(err, pgx.ErrNoRows) {
+	if !errors.Is(err, database.ErrNoRows) {
 		return "", err
 	}
 	var count, used int

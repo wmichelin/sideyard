@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/wmichelin/clubdue/internal/database"
 )
 
 type propertyAddress struct {
@@ -61,7 +61,7 @@ func (s *Server) handlePropertyAddress(w http.ResponseWriter, r *http.Request) {
 	}
 	p, err := s.store.GetPropertyAddress(r.Context(), u.ShopID, r.PathValue("id"))
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, database.ErrNoRows) {
 			http.NotFound(w, r)
 		} else {
 			log.Printf("load property address: %v", err)

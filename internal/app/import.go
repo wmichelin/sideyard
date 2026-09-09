@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/wmichelin/clubdue/internal/database"
 )
 
 const (
@@ -633,7 +633,7 @@ func (s *Store) findImportCustomer(ctx context.Context, shopID string, row Impor
 	if err == nil {
 		return id, true, nil
 	}
-	if err != pgx.ErrNoRows {
+	if err != database.ErrNoRows {
 		return "", false, err
 	}
 
@@ -651,7 +651,7 @@ func (s *Store) findImportCustomer(ctx context.Context, shopID string, row Impor
 		LIMIT 1`,
 		shopID, row.CustomerName, row.AddressLine1, row.City, row.State, row.PostalCode,
 	).Scan(&id)
-	if err == pgx.ErrNoRows {
+	if err == database.ErrNoRows {
 		return "", false, nil
 	}
 	if err != nil {
@@ -666,7 +666,7 @@ func (s *Store) findPropertyByExternalID(ctx context.Context, shopID, externalID
 		SELECT id FROM properties
 		WHERE shop_id = $1 AND external_id = $2`, shopID, externalID,
 	).Scan(&id)
-	if err == pgx.ErrNoRows {
+	if err == database.ErrNoRows {
 		return "", false, nil
 	}
 	if err != nil {
@@ -681,7 +681,7 @@ func (s *Store) findAgreementByExternalID(ctx context.Context, shopID, externalI
 		SELECT id FROM agreements
 		WHERE shop_id = $1 AND external_id = $2`, shopID, externalID,
 	).Scan(&id)
-	if err == pgx.ErrNoRows {
+	if err == database.ErrNoRows {
 		return "", false, nil
 	}
 	if err != nil {
@@ -699,7 +699,7 @@ func (s *Store) findServiceScheduleByExternalID(ctx context.Context, shopID, ext
 	if err == nil {
 		return id, true, nil
 	}
-	if err != pgx.ErrNoRows {
+	if err != database.ErrNoRows {
 		return "", false, err
 	}
 	return "", false, nil
@@ -714,7 +714,7 @@ func (s *Store) findServiceScheduleOwnerByExternalID(ctx context.Context, shopID
 	if err == nil {
 		return agreementID, true, nil
 	}
-	if err != pgx.ErrNoRows {
+	if err != database.ErrNoRows {
 		return "", false, err
 	}
 	return "", false, nil
@@ -749,7 +749,7 @@ func (s *Store) findAgreementExternalServiceIDs(ctx context.Context, shopID, agr
 	return externalIDs, rows.Err()
 }
 
-func (s *Store) upsertImportCustomer(ctx context.Context, tx pgx.Tx, shopID string, row ImportRow) (string, error) {
+func (s *Store) upsertImportCustomer(ctx context.Context, tx database.Tx, shopID string, row ImportRow) (string, error) {
 	var existingID string
 	err := tx.QueryRow(ctx, `
 		SELECT c.id
@@ -769,7 +769,7 @@ func (s *Store) upsertImportCustomer(ctx context.Context, tx pgx.Tx, shopID stri
 			row.CustomerName, row.Email, row.Phone)
 		return existingID, err
 	}
-	if err != pgx.ErrNoRows {
+	if err != database.ErrNoRows {
 		return "", err
 	}
 
@@ -791,7 +791,7 @@ func (s *Store) upsertImportCustomer(ctx context.Context, tx pgx.Tx, shopID stri
 	return id, nil
 }
 
-func (s *Store) upsertImportProperty(ctx context.Context, tx pgx.Tx, shopID, customerID string, row ImportRow) (string, error) {
+func (s *Store) upsertImportProperty(ctx context.Context, tx database.Tx, shopID, customerID string, row ImportRow) (string, error) {
 	var id string
 	err := tx.QueryRow(ctx, `
 		INSERT INTO properties (shop_id, customer_id, external_id, address_line1, city, state, postal_code)
@@ -811,7 +811,7 @@ func (s *Store) upsertImportProperty(ctx context.Context, tx pgx.Tx, shopID, cus
 
 func (s *Store) upsertImportAgreement(
 	ctx context.Context,
-	tx pgx.Tx,
+	tx database.Tx,
 	shopID, customerID, propertyID, planID string,
 	row ImportRow,
 	visitsEntitled int,
@@ -851,7 +851,7 @@ func (s *Store) upsertImportAgreement(
 
 func (s *Store) upsertImportServiceSchedule(
 	ctx context.Context,
-	tx pgx.Tx,
+	tx database.Tx,
 	shopID, agreementID string,
 	row ImportRow,
 ) (string, error) {
@@ -866,7 +866,7 @@ func (s *Store) upsertImportServiceSchedule(
 		WHERE shop_id = $1 AND external_id = $2
 		FOR UPDATE`, shopID, row.ServiceExternalID,
 	).Scan(&id, &existingAgreementID, &serviceName, &cadenceUnit, &cadenceInterval, &startsOn, &endsOn, &generatedThrough)
-	if err == pgx.ErrNoRows {
+	if err == database.ErrNoRows {
 		err = tx.QueryRow(ctx, `
 			INSERT INTO service_schedules (
 				shop_id, agreement_id, external_id, service_name, cadence_unit,
@@ -924,7 +924,7 @@ func optionalDateEqual(left, right *time.Time) bool {
 	return dateEqual(*left, *right)
 }
 
-func (s *Store) recordImportRow(ctx context.Context, tx pgx.Tx, shopID, source, externalID, entityType, entityID, contentHash string) error {
+func (s *Store) recordImportRow(ctx context.Context, tx database.Tx, shopID, source, externalID, entityType, entityID, contentHash string) error {
 	_, err := tx.Exec(ctx, `
 		INSERT INTO import_rows (shop_id, source, external_id, entity_type, entity_id, content_hash)
 		VALUES ($1, $2, $3, $4, $5, $6)

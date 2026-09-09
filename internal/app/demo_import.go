@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/wmichelin/clubdue/internal/database"
 )
 
 const (
@@ -66,7 +66,7 @@ func (s *Store) CreatePublicDemoImportPreview(
 		FROM shops
 		WHERE id = $1 AND kind = 'demo_sandbox' AND expires_at > $2
 		FOR UPDATE`, shopID, now).Scan(&sandboxExpiry, &rowsUsed, &occurrencesUsed); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, database.ErrNoRows) {
 			return errPublicDemoImportPreviewInvalid
 		}
 		return fmt.Errorf("lock public demo for import preview: %w", err)
@@ -121,7 +121,7 @@ func (s *Store) ConsumePublicDemoImportPreview(ctx context.Context, shopID, toke
 		FROM shops
 		WHERE id = $1 AND kind = 'demo_sandbox' AND expires_at > $2
 		FOR UPDATE`, shopID, now).Scan(&activeShopID, &rowsUsed, &occurrencesUsed); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, database.ErrNoRows) {
 			return PublicDemoImportPayload{}, errPublicDemoImportPreviewInvalid
 		}
 		return PublicDemoImportPayload{}, fmt.Errorf("lock public demo for import commit: %w", err)
@@ -136,7 +136,7 @@ func (s *Store) ConsumePublicDemoImportPreview(ctx context.Context, shopID, toke
 		RETURNING csv_data, row_count, projected_occurrences, projection_date`, tokenHash, shopID, now).Scan(
 		&payload.CSV, &payload.RowCount, &payload.ProjectedOccurrences, &payload.ProjectionDate,
 	); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, database.ErrNoRows) {
 			return PublicDemoImportPayload{}, errPublicDemoImportPreviewInvalid
 		}
 		return PublicDemoImportPayload{}, fmt.Errorf("consume public demo import preview: %w", err)

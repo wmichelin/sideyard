@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/wmichelin/clubdue/internal/database"
 )
 
 func TestPropertyAddressValidation(t *testing.T) {
@@ -73,7 +73,7 @@ func TestPropertyAddressCorrectionsRetainRecordsAndRejectStaleImports(t *testing
 		t.Fatalf("initial address: %+v %v", p, err)
 	}
 	p.AddressLine1, p.AddressLine2 = "12 First St", "Unit 2"
-	if _, err := s.GetPropertyAddress(ctx, other, id); !errors.Is(err, pgx.ErrNoRows) {
+	if _, err := s.GetPropertyAddress(ctx, other, id); !errors.Is(err, database.ErrNoRows) {
 		t.Fatalf("foreign read: %v", err)
 	}
 	if err := s.SavePropertyAddress(ctx, other, p); !errors.Is(err, errPropertyAddressConflict) {

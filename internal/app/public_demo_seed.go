@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/wmichelin/clubdue/internal/database"
 )
 
-func insertPublicDemoFixtureTx(ctx context.Context, tx pgx.Tx, shopID string, now time.Time) error {
+func insertPublicDemoFixtureTx(ctx context.Context, tx database.Tx, shopID string, now time.Time) error {
 	planIDs := make(map[string]string, len(publicDemoFixture.Plans))
 	for _, plan := range publicDemoFixture.Plans {
 		var id string

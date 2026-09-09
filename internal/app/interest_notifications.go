@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/wmichelin/clubdue/internal/database"
 )
 
 type InterestNotificationConfig struct {
@@ -120,7 +120,7 @@ func deliverInterestNotification(ctx context.Context, db *DB, sender interestNot
 		WHERE n.sent_at IS NULL AND n.next_attempt_at <= $1
 		ORDER BY n.next_attempt_at, n.signup_id FOR UPDATE OF n SKIP LOCKED LIMIT 1`, now).
 		Scan(&n.ID, &n.Name, &n.Email, &n.Business, &n.Trade, &n.Message, &attempts)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, database.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {

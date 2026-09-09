@@ -65,6 +65,14 @@ jobs:
           python3 scripts/azure/test-backup-store.py
           python3 scripts/azure/test-backup-monitor.py
 
+  sqlserver-rehearsal:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: SQL Server connection and migration rehearsal
+        run: ./scripts/sqlserver-rehearsal.sh
+
   pilot-onboarding-rehearsal:
     runs-on: ubuntu-latest
     steps:

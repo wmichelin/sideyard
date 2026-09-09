@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/wmichelin/clubdue/internal/database"
 	"github.com/wmichelin/clubdue/internal/photostore"
 )
 
@@ -85,7 +85,7 @@ func TestAzurePhotoHandoffRetriesAndPrivateReads(t *testing.T) {
 	if err != nil || len(listed) != 0 || count != 1 || used != len(photo.Data) {
 		t.Fatalf("pending upload visibility/quota: %d %d %d %v", len(listed), count, used, err)
 	}
-	if _, err := s.GetPropertyPhoto(ctx, shop, id); !errors.Is(err, pgx.ErrNoRows) {
+	if _, err := s.GetPropertyPhoto(ctx, shop, id); !errors.Is(err, database.ErrNoRows) {
 		t.Fatalf("pending upload exposed: %v", err)
 	}
 	objects.putErr = nil
@@ -116,10 +116,10 @@ func TestAzurePhotoHandoffRetriesAndPrivateReads(t *testing.T) {
 	if err != nil || !bytes.Equal(got.Data, photo.Data) || objects.gets != 1 {
 		t.Fatalf("Azure read: %v", err)
 	}
-	if _, err := s.GetPropertyPhoto(ctx, other, id); !errors.Is(err, pgx.ErrNoRows) {
+	if _, err := s.GetPropertyPhoto(ctx, other, id); !errors.Is(err, database.ErrNoRows) {
 		t.Fatalf("foreign read: %v", err)
 	}
-	if _, err := s.DeletePropertyPhoto(ctx, other, id); !errors.Is(err, pgx.ErrNoRows) {
+	if _, err := s.DeletePropertyPhoto(ctx, other, id); !errors.Is(err, database.ErrNoRows) {
 		t.Fatalf("foreign delete: %v", err)
 	}
 	if objects.gets != 1 {
@@ -222,7 +222,7 @@ func TestAzurePhotoDeleteDuringUploadRetainsVersionInventory(t *testing.T) {
 			if err := <-finished; !errors.Is(err, errPhotoConflict) {
 				t.Fatalf("late completion: %v", err)
 			}
-			if _, err := s.GetPropertyPhoto(ctx, shop, id); !errors.Is(err, pgx.ErrNoRows) {
+			if _, err := s.GetPropertyPhoto(ctx, shop, id); !errors.Is(err, database.ErrNoRows) {
 				t.Fatal("late upload resurrected photo")
 			}
 			var retired bool
@@ -304,7 +304,7 @@ func TestAzurePhotoLiveHandoff(t *testing.T) {
 	if _, err := s.DeletePropertyPhoto(ctx, shop, id); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.GetPropertyPhoto(ctx, shop, id); !errors.Is(err, pgx.ErrNoRows) {
+	if _, err := s.GetPropertyPhoto(ctx, shop, id); !errors.Is(err, database.ErrNoRows) {
 		t.Fatal("deleted live test image is readable")
 	}
 	t.Log("Azure staging handoff, exact version, idempotent CLI batch and deletion verified; synthetic retired object retained for recovery")

@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/wmichelin/clubdue/internal/database"
 	"reflect"
 )
 
@@ -77,7 +77,7 @@ func TestVisitNotesPreserveWorkStateAndPrivacy(t *testing.T) {
 	for i, target := range targets {
 		t.Run(target.kind, func(t *testing.T) {
 			input := internalNoteInput{Key: fmt.Sprintf("%032x", i+1), Body: "Private inspection " + target.kind, Date: "2034-02-04", Time: "09:15", Zone: "America/New_York"}
-			if _, err := s.GetVisitHistoryTarget(ctx, other, target.kind, target.id); !errors.Is(err, pgx.ErrNoRows) {
+			if _, err := s.GetVisitHistoryTarget(ctx, other, target.kind, target.id); !errors.Is(err, database.ErrNoRows) {
 				t.Fatal("foreign lookup", err)
 			}
 			if err := s.AddVisitNote(ctx, other, target.kind, target.id, "foreign", input); !errors.Is(err, errVisitNoteConflict) {

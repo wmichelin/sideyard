@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/wmichelin/clubdue/internal/database"
 )
 
 type equipmentRecord struct {
@@ -78,7 +78,7 @@ func (s *Server) handleEquipmentRecord(w http.ResponseWriter, r *http.Request) {
 	}
 	e, err := s.store.GetEquipmentRecord(r.Context(), u.ShopID, r.PathValue("id"))
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, database.ErrNoRows) {
 			http.NotFound(w, r)
 		} else {
 			log.Printf("load equipment record: %v", err)

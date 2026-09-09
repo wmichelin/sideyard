@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/wmichelin/clubdue/internal/database"
 )
 
 func (s *Server) handleVehicleHistory(w http.ResponseWriter, r *http.Request) {
@@ -45,7 +45,7 @@ func (s *Server) handleInternalHistory(w http.ResponseWriter, r *http.Request, k
 	}
 	target, err := getTarget(r.Context(), u.ShopID, kind, r.PathValue("id"))
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, database.ErrNoRows) {
 			http.NotFound(w, r)
 		} else {
 			log.Printf("load internal history kind=%s: %v", kind, err)

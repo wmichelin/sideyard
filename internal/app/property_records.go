@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/wmichelin/clubdue/internal/database"
 )
 
 var errPropertyConflict = errors.New("These site details changed in another tab. Reload and review your changes.")
@@ -110,7 +110,7 @@ func (s *Store) SavePropertyDetails(ctx context.Context, shopID, id, notes strin
 	} else {
 		err = s.db.Pool.QueryRow(ctx, `UPDATE property_details SET access_notes=$3,revision=revision+1 WHERE shop_id=$1 AND property_id=$2 AND revision=$4 RETURNING revision`, shopID, id, notes, revision).Scan(&saved)
 	}
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, database.ErrNoRows) {
 		return errPropertyConflict
 	}
 	return err

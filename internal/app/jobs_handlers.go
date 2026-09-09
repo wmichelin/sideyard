@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/wmichelin/clubdue/internal/database"
 	"github.com/wmichelin/clubdue/internal/jobs"
 )
 
@@ -117,7 +117,7 @@ func (s *Server) handleJob(w http.ResponseWriter, r *http.Request) {
 	service := s.store.jobsService()
 	record, err := service.Get(r.Context(), u.ShopID, r.PathValue("id"))
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, database.ErrNoRows) {
 			http.NotFound(w, r)
 		} else {
 			log.Printf("load job: %v", err)

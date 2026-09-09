@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/wmichelin/clubdue/internal/database"
 )
 
 // Presets supply starter names, never prices, customer terms or scheduled work.
@@ -82,7 +82,7 @@ var errBusinessConflict = errors.New("These settings changed in another tab. Rel
 func (s *Store) GetBusinessSettings(ctx context.Context, shopID string) (businessSettings, []businessService, error) {
 	b := businessSettings{Primary: "general", Trades: []string{"general"}}
 	err := s.db.Pool.QueryRow(ctx, `SELECT primary_trade, trades, revision FROM business_settings WHERE shop_id=$1`, shopID).Scan(&b.Primary, &b.Trades, &b.Revision)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	if err != nil && !errors.Is(err, database.ErrNoRows) {
 		return b, nil, err
 	}
 	rows, err := s.db.Pool.Query(ctx, `SELECT id, preset_key, name, description, enabled, revision FROM business_services WHERE shop_id=$1 ORDER BY name, id`, shopID)
@@ -131,7 +131,7 @@ func (s *Store) ApplyBusinessSettings(ctx context.Context, shopID string, b busi
 	} else {
 		err = tx.QueryRow(ctx, `UPDATE business_settings SET primary_trade=$2,trades=$3,revision=revision+1 WHERE shop_id=$1 AND revision=$4 RETURNING revision`, shopID, selection.Primary, selection.Trades, b.Revision).Scan(&revision)
 	}
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, database.ErrNoRows) {
 		return errBusinessConflict
 	}
 	if err != nil {

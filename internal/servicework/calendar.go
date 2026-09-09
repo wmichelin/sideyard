@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	"database/sql"
 )
 
 const CalendarPageSize = 50
@@ -29,7 +29,7 @@ func (s *Service) CalendarWork(ctx context.Context, shopID string, start, end, d
 	if !end.After(start) || end.Sub(start) > 31*24*time.Hour || day.Before(start) || !day.Before(end) {
 		return result, fmt.Errorf("invalid calendar month or selected date")
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.pool.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
 	if err != nil {
 		return result, err
 	}

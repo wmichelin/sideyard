@@ -12,16 +12,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/wmichelin/clubdue/internal/database"
 )
 
 type Service struct {
-	pool *pgxpool.Pool
+	pool database.Pool
 	now  func() time.Time
 }
 
-func New(pool *pgxpool.Pool, now func() time.Time) *Service { return &Service{pool: pool, now: now} }
+func New(pool database.Pool, now func() time.Time) *Service { return &Service{pool: pool, now: now} }
 
 type Input struct{ CustomerID, PropertyID, Kind, Title, Details, Date string }
 type Record struct {
@@ -105,10 +104,10 @@ func (s *Service) Create(ctx context.Context, shopID, key, author string, in Inp
   SELECT $1,c.id,NULLIF($3,'')::uuid,$4,$5,$6,$7,$8,NULLIF($9,'')::date FROM customers c
   WHERE c.shop_id=$1 AND c.id=$2 AND ($3='' OR EXISTS(SELECT 1 FROM properties p WHERE p.shop_id=$1 AND p.customer_id=c.id AND p.id=NULLIF($3,'')::uuid))
   ON CONFLICT(shop_id,submission_key) DO NOTHING RETURNING id`, shopID, in.CustomerID, in.PropertyID, key, fingerprint, in.Kind, in.Title, in.Details, in.Date).Scan(&id)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, database.ErrNoRows) {
 		var prior string
 		err = tx.QueryRow(ctx, `SELECT id,creation_fingerprint FROM jobs WHERE shop_id=$1 AND submission_key=$2`, shopID, key).Scan(&id, &prior)
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, database.ErrNoRows) {
 			return "", ErrInput
 		}
 		if err != nil {
@@ -188,7 +187,7 @@ func (s *Service) SetOutcome(ctx context.Context, shopID, id, author, action str
 	return tx.Commit(ctx)
 }
 
-func (s *Service) recordEvent(ctx context.Context, tx pgx.Tx, shopID, id, action, author string) error {
+func (s *Service) recordEvent(ctx context.Context, tx database.Tx, shopID, id, action, author string) error {
 	_, err := tx.Exec(ctx, `INSERT INTO job_events(shop_id,job_id,revision,action,snapshot,recorded_by,recorded_at)
  SELECT shop_id,id,revision,$3,jsonb_build_object('Title',title,'Kind',kind,'Details',details,'Date',COALESCE(to_char(scheduled_on,'YYYY-MM-DD'),''),'Status',status,'PropertyID',COALESCE(property_id::text,'')),$4,$5 FROM jobs WHERE shop_id=$1 AND id=$2`, shopID, id, action, author, s.now().UTC())
 	return err
@@ -197,14 +196,14 @@ func (s *Service) recordEvent(ctx context.Context, tx pgx.Tx, shopID, id, action
 const recordSelect = `SELECT j.id,j.customer_id,c.name,COALESCE(j.property_id::text,''),COALESCE(concat_ws(', ',p.address_line1,NULLIF(p.address_line2,''),p.city,p.state,p.postal_code),''),j.kind,j.title,j.details,COALESCE(to_char(j.scheduled_on,'YYYY-MM-DD'),''),j.status,j.revision,j.completed_at
  FROM jobs j JOIN customers c ON c.id=j.customer_id AND c.shop_id=j.shop_id LEFT JOIN properties p ON p.id=j.property_id AND p.shop_id=j.shop_id`
 
-func scanRecord(row pgx.Row) (Record, error) {
+func scanRecord(row database.Row) (Record, error) {
 	var r Record
 	err := row.Scan(&r.ID, &r.CustomerID, &r.CustomerName, &r.PropertyID, &r.Address, &r.Kind, &r.Title, &r.Details, &r.Date, &r.Status, &r.Revision, &r.CompletedAt)
 	return r, err
 }
 func (s *Service) Get(ctx context.Context, shopID, id string) (Record, error) {
 	if !ValidID(id) {
-		return Record{}, pgx.ErrNoRows
+		return Record{}, database.ErrNoRows
 	}
 	return scanRecord(s.pool.QueryRow(ctx, recordSelect+` WHERE j.shop_id=$1 AND j.id=$2`, shopID, id))
 }
@@ -229,7 +228,7 @@ func (s *Service) List(ctx context.Context, shopID, filter string) ([]Record, er
 }
 func (s *Service) History(ctx context.Context, shopID, id string) ([]Event, error) {
 	if !ValidID(id) {
-		return nil, pgx.ErrNoRows
+		return nil, database.ErrNoRows
 	}
 	rows, err := s.pool.Query(ctx, `SELECT revision,action,snapshot,recorded_by,recorded_at FROM job_events WHERE shop_id=$1 AND job_id=$2 ORDER BY revision DESC LIMIT 100`, shopID, id)
 	if err != nil {

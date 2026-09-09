@@ -90,6 +90,13 @@ Creating a SQL resource does not port the existing PostgreSQL application.
 Application migration, photo-version recovery, alerts and the production cutover
 must pass the execution plan's independent gates.
 
+The SQL Server connection/migration boundary can be tested from a checkout with
+`./scripts/sqlserver-rehearsal.sh`. It builds the tests, creates an isolated local
+SQL Server Developer container, runs required real-engine tests, and removes its
+database, network and synthetic credentials. It uses no Azure resources. The
+application still opens PostgreSQL; the new adapter is an inactive foundation
+until the native schema, domain queries and migration/cold-start gates pass.
+
 ## Current deployment and remote recovery
 
 Subscription `ddd8d30e-b827-461d-bf25-09f77337cbdd` uses tenant

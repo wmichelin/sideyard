@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/wmichelin/clubdue/internal/database"
 )
 
 func TestAssetNotesKeepIndependentAuthoredHistory(t *testing.T) {
@@ -43,7 +43,7 @@ func TestAssetNotesKeepIndependentAuthoredHistory(t *testing.T) {
 		t.Fatal("equipment fixture")
 	}
 	input := internalNoteInput{Key: strings.Repeat("a", 32), Body: "Inspected seats\nNo damage", Date: "2025-11-02", Time: "01:30", Zone: "America/New_York", Offset: "-04:00"}
-	if _, err := s.GetAssetHistoryTarget(ctx, other, "vehicle", vehicles[0].ID); !errors.Is(err, pgx.ErrNoRows) {
+	if _, err := s.GetAssetHistoryTarget(ctx, other, "vehicle", vehicles[0].ID); !errors.Is(err, database.ErrNoRows) {
 		t.Fatalf("foreign asset lookup: %v", err)
 	}
 	if err := s.AddAssetNote(ctx, other, "vehicle", vehicles[0].ID, "foreign", input); !errors.Is(err, errAssetNoteConflict) {
