@@ -13,13 +13,13 @@ for the distinction between provisioned resources and deployed app behavior.
 
 ## Availability snapshot
 
-Reviewed September 9, 2026 against staging release `35e0760` and the recorded
+Reviewed September 9, 2026 against staging release `0b38de5` and the recorded
 release verification. These are verified release states, not a live deployment monitor.
 
 | Label | Meaning |
 | --- | --- |
 | **Live** | Available in production at [getsideyard.com](https://getsideyard.com), source `ae6f16a`, and on staging. The legacy ClubDue hostname remains supported. |
-| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), release `35e0760`: standalone jobs/site surveys, the single-line work-status badge fix, and configured private Azure photo storage. |
+| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), release `0b38de5`: standalone jobs/site surveys, the single-line work-status badge fix, and configured private Azure photo storage. |
 | **Conditional** | Implemented but requires explicit deployment configuration; not a promise of availability to clients. |
 
 Unless marked otherwise, catalog nodes are **Live**. “Signed in” means a user
@@ -60,9 +60,9 @@ flowchart TB
   subgraph WORKSPACE["Workspace and setup"]
     NAV{{"NAV · Shared navigation"}}
     DASH["DASH · Dashboard + calendar"]
-    BUSINESS["BUSINESS · Trade / service setup<br/>Save feedback pending staging"]
-    PLANS["PLANS · Plan templates"]
-    PLAN["PLAN · Edit template"]
+    BUSINESS["BUSINESS · Trade / service setup<br/>Save feedback on staging"]
+    PLANS["PLANS · Plan templates<br/>Save / number feedback pending staging"]
+    PLAN["PLAN · Edit template<br/>Save / number feedback pending staging"]
     IMPORT["IMPORT · CSV upload"]
     PREVIEW["PREVIEW · Import dry-run"]
     IMPORTED["IMPORTED · Import result"]
@@ -92,9 +92,9 @@ flowchart TB
   end
 
   subgraph RECURRING["Agreements and recurring / seasonal work"]
-    AGREEMENTS["AGREEMENTS · Agreement book"]
-    NEWAGREEMENT["NEWAGREEMENT · Create agreement"]
-    AGREEMENT["AGREEMENT · Terms / recurring services"]
+    AGREEMENTS["AGREEMENTS · Agreement book<br/>Availability feedback pending staging"]
+    NEWAGREEMENT["NEWAGREEMENT · Create agreement<br/>Save / number feedback pending staging"]
+    AGREEMENT["AGREEMENT · Terms / recurring services<br/>Save / number feedback pending staging"]
     RENEWALS["RENEWALS · Renewal follow-up queue"]
     WORK["WORK · Service work"]
     SCHEDULE["SCHEDULE · Last / next service"]
@@ -242,7 +242,7 @@ custom edits; conflicting saves are rejected. Links to plan templates.
 Starter services are unpriced preparation records. They do not automatically
 create plans, jobs, schedules, pricing, checklists or configurable fields.
 
-**Pending staging verification:** failed saves distinguish unavailable storage
+**Staging:** failed saves distinguish unavailable storage
 (503) from invalid input (422) and stale edits (409). Unconfirmed saves ask the
 owner to reload and check their changes before retrying.
 
@@ -374,6 +374,12 @@ and included services per year (new-form default zero). Open PLAN to edit. These
 are maintenance-plan terms, not the unpriced BUSINESS starter services or a quote/
 invoice builder. Create matching templates before an import uses `plan_name`.
 
+**Pending staging verification:** failed creation is not redirected as saved;
+unconfirmed saves ask the user to check the list before retrying. Form prices and
+counts must be nonnegative whole numbers, with a positive term, all at most
+2,147,483,647. Blank new-plan values keep the zero price/service and 12-month defaults.
+Unavailable reads/saves return 503; invalid form values return 422.
+
 ### PLAN — Edit plan template
 
 **Route:** `GET/POST /plan-templates/{id}`. **Access:** Signed in.
@@ -381,7 +387,11 @@ invoice builder. Create matching templates before an import uses `plan_name`.
 
 Edit name, description, price, term and included-service count with validation.
 Changes affect the reusable template going forward; existing agreements retain
-captured terms. Return to PLANS.
+captured terms. Return to PLANS. There is no revision conflict check on template edits.
+
+**Pending staging verification:** missing/malformed IDs return 404; unavailable
+reads and unconfirmed saves return 503. Invalid or overflowing numeric input
+returns 422 without changing stored values.
 
 ### AGREEMENTS — Agreement book
 
@@ -391,6 +401,8 @@ captured terms. Return to PLANS.
 List agreements with active/all and renewal-window filters, customer/property,
 plan, anniversary, included services, price and status. Open the customer or an
 agreement; create a new agreement. This tracks commitments, not invoices or payments.
+
+**Pending staging verification:** unavailable agreement reads return 503.
 
 ### NEWAGREEMENT — Create agreement
 
@@ -402,6 +414,12 @@ anniversary, included-service entitlement/usage, price and notes. Saves an
 agreement and opens AGREEMENT. Customers and any desired reusable template must
 already exist. No customer quote acceptance or payment collection occurs here.
 
+**Pending staging verification:** malformed/overflowing numeric inputs cannot
+become zero values. Prices/counters retain their stored signed whole-number range
+(-2,147,483,648 to 2,147,483,647); general billing constraints are future work.
+Unconfirmed creation returns 503 and asks the user to check the agreement list
+before retrying. Creation has no general duplicate-submission key.
+
 ### AGREEMENT — Agreement terms and recurring services
 
 **Route:** `GET/POST /agreements/{id}`. **Access:** Signed in.
@@ -412,6 +430,7 @@ already exist. No customer quote acceptance or payment collection occurs here.
 - Review last/next service; pause/resume via `POST /service-schedules/{id}`, move the next occurrence or open SCHEDULE. Pausing or importing changed service terms resets pending future visits, including manual moves.
 - Generate a 30-day customer renewal link via `POST /agreements/{id}/renewal-link`, then copy/share it manually. No automatic email/SMS is sent by this action.
 - Agreement pricing does not implement deposits, installments, per-treatment invoices or live payment collection.
+- **Pending staging verification:** reads distinguish missing/malformed records (404) from unavailable storage (503). Failed saves cannot redirect as successful; malformed/overflowing numbers are rejected. Stale deleted-template references conflict. Ordinary edits still have no revision check. The recurring-service creation action also distinguishes unavailable agreement lookup from a missing record.
 
 ### RENEWALS — Renewal follow-up queue
 

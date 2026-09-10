@@ -1,8 +1,10 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 
@@ -340,11 +342,14 @@ SELECT CONVERT(uniqueidentifier,@p1),id,@p3,CASE WHEN DATALENGTH(@p4)=0 THEN NUL
 }
 
 func (s *Store) ListPlanTemplates(ctx context.Context, shopID string) ([]PlanTemplate, error) {
-	rows, err := s.db.Pool.Query(ctx, `
+	if err := validateRecordIDs(shopID); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.Pool.Query(ctx, database.Statement(s.db.Pool.Dialect(), `
 		SELECT id, name, COALESCE(description, ''), price_cents, billing_interval, term_months, visits_per_year
 		FROM plan_templates
 		WHERE shop_id = $1
-		ORDER BY name`, shopID)
+		ORDER BY name`, `SELECT LOWER(CONVERT(char(36),id)),name,COALESCE(description,N''),price_cents,billing_interval,term_months,visits_per_year FROM dbo.plan_templates WHERE shop_id=CONVERT(uniqueidentifier,@p1)`), shopID)
 	if err != nil {
 		return nil, err
 	}
@@ -358,48 +363,72 @@ func (s *Store) ListPlanTemplates(ctx context.Context, shopID string) ([]PlanTem
 		}
 		out = append(out, p)
 	}
+	if s.db.Pool.Dialect() == database.SQLServer {
+		slices.SortFunc(out, func(a, b PlanTemplate) int { return cmp.Compare(a.Name, b.Name) })
+	}
 	return out, rows.Err()
 }
 
 func (s *Store) CreatePlanTemplate(ctx context.Context, shopID, name, description string, priceCents, termMonths, visitsPerYear int) (string, error) {
+	if err := validateRecordIDs(shopID); err != nil {
+		return "", err
+	}
+	if !validStoredText(name, description) || !validSQLInt(priceCents, termMonths, visitsPerYear) || termMonths <= 0 {
+		return "", errPlanInput
+	}
 	var id string
-	err := s.db.Pool.QueryRow(ctx, `
+	err := s.db.Pool.QueryRow(ctx, database.Statement(s.db.Pool.Dialect(), `
 		INSERT INTO plan_templates (shop_id, name, description, price_cents, term_months, visits_per_year)
 		VALUES ($1, $2, NULLIF($3, ''), $4, $5, $6)
-		RETURNING id`, shopID, name, description, priceCents, termMonths, visitsPerYear).Scan(&id)
+		RETURNING id`, `DECLARE @created TABLE(id uniqueidentifier);
+INSERT INTO dbo.plan_templates(shop_id,name,description,price_cents,term_months,visits_per_year) OUTPUT inserted.id INTO @created
+VALUES(CONVERT(uniqueidentifier,@p1),@p2,CASE WHEN DATALENGTH(@p3)=0 THEN NULL ELSE @p3 END,@p4,@p5,@p6);
+SELECT LOWER(CONVERT(char(36),id)) FROM @created;`), shopID, name, description, priceCents, termMonths, visitsPerYear).Scan(&id)
 	return id, err
 }
 
 func (s *Store) GetPlanTemplate(ctx context.Context, shopID, planID string) (*PlanTemplate, error) {
+	if err := validateRecordIDs(shopID, planID); err != nil {
+		return nil, err
+	}
 	var p PlanTemplate
-	err := s.db.Pool.QueryRow(ctx, `
+	err := s.db.Pool.QueryRow(ctx, database.Statement(s.db.Pool.Dialect(), `
 		SELECT id, name, COALESCE(description, ''), price_cents, billing_interval, term_months, visits_per_year
-		FROM plan_templates WHERE shop_id = $1 AND id = $2`, shopID, planID,
+		FROM plan_templates WHERE shop_id = $1 AND id = $2`, `SELECT LOWER(CONVERT(char(36),id)),name,COALESCE(description,N''),price_cents,billing_interval,term_months,visits_per_year FROM dbo.plan_templates WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND id=CONVERT(uniqueidentifier,@p2)`), shopID, planID,
 	).Scan(&p.ID, &p.Name, &p.Description, &p.PriceCents, &p.BillingInterval, &p.TermMonths, &p.VisitsPerYear)
 	if err != nil {
-		return nil, fmt.Errorf("plan template not found")
+		return nil, fmt.Errorf("get plan template: %w", err)
 	}
 	return &p, nil
 }
 
 func (s *Store) UpdatePlanTemplate(ctx context.Context, shopID, planID, name, description string, priceCents, termMonths, visitsPerYear int) error {
-	tag, err := s.db.Pool.Exec(ctx, `
+	if err := validateRecordIDs(shopID, planID); err != nil {
+		return err
+	}
+	if !validStoredText(name, description) || !validSQLInt(priceCents, termMonths, visitsPerYear) || termMonths <= 0 {
+		return errPlanInput
+	}
+	tag, err := s.db.Pool.Exec(ctx, database.Statement(s.db.Pool.Dialect(), `
 		UPDATE plan_templates
 		SET name = $3, description = NULLIF($4, ''), price_cents = $5, term_months = $6, visits_per_year = $7
-		WHERE shop_id = $1 AND id = $2`,
+		WHERE shop_id = $1 AND id = $2`, `UPDATE dbo.plan_templates SET name=@p3,description=CASE WHEN DATALENGTH(@p4)=0 THEN NULL ELSE @p4 END,price_cents=@p5,term_months=@p6,visits_per_year=@p7 WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND id=CONVERT(uniqueidentifier,@p2)`),
 		shopID, planID, name, description, priceCents, termMonths, visitsPerYear,
 	)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("plan template not found")
+		return database.ErrNoRows
 	}
 	return nil
 }
 
 func (s *Store) ListAgreements(ctx context.Context, shopID string) ([]Agreement, error) {
-	rows, err := s.db.Pool.Query(ctx, `
+	if err := validateRecordIDs(shopID); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.Pool.Query(ctx, database.Statement(s.db.Pool.Dialect(), `
 		SELECT
 			a.id,
 			a.customer_id,
@@ -419,7 +448,7 @@ func (s *Store) ListAgreements(ctx context.Context, shopID string) ([]Agreement,
 		JOIN customers c ON c.id = a.customer_id
 		LEFT JOIN properties p ON p.id = a.property_id
 		WHERE a.shop_id = $1
-		ORDER BY a.anniversary_date`, shopID)
+		ORDER BY a.anniversary_date`, `SELECT `+sqlServerAgreementColumns+sqlServerAgreementFrom+`WHERE a.shop_id=CONVERT(uniqueidentifier,@p1) ORDER BY a.anniversary_date`), shopID)
 	if err != nil {
 		return nil, err
 	}
@@ -429,9 +458,12 @@ func (s *Store) ListAgreements(ctx context.Context, shopID string) ([]Agreement,
 }
 
 func (s *Store) GetAgreement(ctx context.Context, shopID, agreementID string) (*Agreement, error) {
+	if err := validateRecordIDs(shopID, agreementID); err != nil {
+		return nil, err
+	}
 	var a Agreement
 	var status string
-	err := s.db.Pool.QueryRow(ctx, `
+	err := s.db.Pool.QueryRow(ctx, database.Statement(s.db.Pool.Dialect(), `
 		SELECT
 			a.id,
 			a.customer_id,
@@ -450,7 +482,7 @@ func (s *Store) GetAgreement(ctx context.Context, shopID, agreementID string) (*
 		FROM agreements a
 		JOIN customers c ON c.id = a.customer_id
 		LEFT JOIN properties p ON p.id = a.property_id
-		WHERE a.shop_id = $1 AND a.id = $2`, shopID, agreementID).Scan(
+		WHERE a.shop_id = $1 AND a.id = $2`, `SELECT `+sqlServerAgreementColumns+sqlServerAgreementFrom+`WHERE a.shop_id=CONVERT(uniqueidentifier,@p1) AND a.id=CONVERT(uniqueidentifier,@p2)`), shopID, agreementID).Scan(
 		&a.ID, &a.CustomerID, &a.CustomerName,
 		&a.PropertyID, &a.PropertyAddress,
 		&a.PlanTemplateID, &a.PlanName,
@@ -459,7 +491,7 @@ func (s *Store) GetAgreement(ctx context.Context, shopID, agreementID string) (*
 		&a.PriceCents, &a.Notes,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("agreement not found")
+		return nil, fmt.Errorf("get agreement: %w", err)
 	}
 	a.Status = AgreementStatus(status)
 	return &a, nil
@@ -506,7 +538,22 @@ type CreateAgreementInput struct {
 }
 
 func (s *Store) CreateAgreement(ctx context.Context, shopID string, in CreateAgreementInput) (string, error) {
+	if err := validateAgreementInput(shopID, in); err != nil {
+		return "", err
+	}
+	tx, err := s.db.Pool.Begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback(ctx)
+	if err := lockSQLServerAgreementParents(ctx, tx, shopID, in, false); err != nil {
+		return "", err
+	}
 	var id string
+	var anniversaryValue any = in.AnniversaryDate
+	if s.db.Pool.Dialect() == database.SQLServer {
+		anniversaryValue = in.AnniversaryDate.Format("2006-01-02")
+	}
 	var planID *string
 	if in.PlanTemplateID != "" {
 		planID = &in.PlanTemplateID
@@ -515,7 +562,7 @@ func (s *Store) CreateAgreement(ctx context.Context, shopID string, in CreateAgr
 	if in.PropertyID != "" {
 		propertyID = &in.PropertyID
 	}
-	err := s.db.Pool.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, database.Statement(s.db.Pool.Dialect(), `
 		INSERT INTO agreements (
 			shop_id, customer_id, property_id, plan_template_id, external_id, status,
 			anniversary_date, visits_entitled, visits_used, price_cents, notes,
@@ -528,14 +575,35 @@ func (s *Store) CreateAgreement(ctx context.Context, shopID string, in CreateAgr
 			COALESCE(pt.visits_per_year, $8), COALESCE(pt.visit_windows, '{spring,fall}')
 		FROM (SELECT $4::uuid AS plan_id) selected
 		LEFT JOIN plan_templates pt ON pt.id = selected.plan_id AND pt.shop_id = $1
-		RETURNING id`,
+		RETURNING id`, sqlServerCreateAgreement),
 		shopID, in.CustomerID, propertyID, planID, in.ExternalID, string(in.Status),
-		in.AnniversaryDate, in.VisitsEntitled, in.VisitsUsed, in.PriceCents, in.Notes,
+		anniversaryValue, in.VisitsEntitled, in.VisitsUsed, in.PriceCents, in.Notes,
 	).Scan(&id)
-	return id, err
+	if err != nil {
+		return "", err
+	}
+	return id, tx.Commit(ctx)
 }
 
 func (s *Store) UpdateAgreement(ctx context.Context, shopID, agreementID string, in CreateAgreementInput) error {
+	if err := validateRecordIDs(agreementID); err != nil {
+		return err
+	}
+	if err := validateAgreementInput(shopID, in); err != nil {
+		return err
+	}
+	tx, err := s.db.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if err := lockSQLServerAgreementParents(ctx, tx, shopID, in, true); err != nil {
+		return err
+	}
+	var anniversaryValue any = in.AnniversaryDate
+	if s.db.Pool.Dialect() == database.SQLServer {
+		anniversaryValue = in.AnniversaryDate.Format("2006-01-02")
+	}
 	var planID *string
 	if in.PlanTemplateID != "" {
 		planID = &in.PlanTemplateID
@@ -544,7 +612,7 @@ func (s *Store) UpdateAgreement(ctx context.Context, shopID, agreementID string,
 	if in.PropertyID != "" {
 		propertyID = &in.PropertyID
 	}
-	tag, err := s.db.Pool.Exec(ctx, `
+	tag, err := tx.Exec(ctx, database.Statement(s.db.Pool.Dialect(), `
 		UPDATE agreements SET
 			customer_id = $3,
 			property_id = $4,
@@ -556,17 +624,17 @@ func (s *Store) UpdateAgreement(ctx context.Context, shopID, agreementID string,
 			notes = NULLIF($11, ''),
 			updated_at = now()
 		WHERE shop_id = $1 AND id = $2
-		  AND plan_template_id IS NOT DISTINCT FROM $5`,
+		  AND plan_template_id IS NOT DISTINCT FROM $5`, sqlServerUpdateAgreement),
 		shopID, agreementID, in.CustomerID, propertyID, planID, string(in.Status),
-		in.AnniversaryDate, in.VisitsEntitled, in.VisitsUsed, in.PriceCents, in.Notes,
+		anniversaryValue, in.VisitsEntitled, in.VisitsUsed, in.PriceCents, in.Notes,
 	)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("agreement not found")
+		return database.ErrNoRows
 	}
-	return nil
+	return tx.Commit(ctx)
 }
 
 func (s *Store) DashboardStats(ctx context.Context, shopID string) (DashboardStats, error) {

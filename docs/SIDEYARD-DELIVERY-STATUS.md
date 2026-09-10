@@ -912,3 +912,79 @@ paid integrations or live customer payment collection are configured by this cha
   native SQL rehearsal passed. Architect/staff and product/unit/QA actual-code
   reviews found no blockers. Graph syntax/catalog remains 36 nodes and 64 edges.
   Actual source ordering and PG array preflight remain required before SQL cutover.
+
+### Native templates and agreements — review and plan
+
+- Product: preserve template CRUD, signed stored prices/counters, optional property
+  and template links, captured agreement terms and current last-write-wins edits.
+  This adds no billing or payment features. Template changes cannot rewrite prior
+  agreement snapshots; missing creation acknowledgement requires checking the list
+  before retrying, because agreement creation has no submission key.
+- Architect/staff: one shop cascade per table, composite customer restriction and
+  trigger-backed nullable property/template relationships. Retain parent locks in
+  shop/customer/property/template order before agreement writes; snapshot all terms
+  in one statement. Nulling one reference must not lock the unchanged other parent.
+- Unit-testing/QA: share tenant/snapshot tests; cover deleted parent pointers,
+  snapshot survival, concurrent parent deletion and snapshot capture, multirow
+  rollback, historical text/JSON arrays, cents/counters and date boundaries.
+  Failed reads must not masquerade as 404; failed writes cannot redirect as saved.
+  Reject malformed/overflowing numeric form input before it becomes a zero value.
+- DevOps: keep SQL runtime disabled. Stronger parent-update guards close a raw-PG
+  gap and affect import: property customer moves precede agreement repair today.
+  The native importer must handle authorized reference changes atomically and be
+  tested before activation; do not silently detach unrelated jobs. Parent-first
+  import, trigger enablement/orphan audits, JSON array preflight and text ordering
+  remain mandatory. Agreement forms still depend on unported recurring schedules.
+- Staging: https://clubdue-staging.michelindigitalmedia.com (business slice deploying;
+  templates/agreements not yet implemented). Production remains unchanged.
+
+
+- Business setup source `0b38de54bb5f71ba7b28ff43b79285d99e432da0` passed all CI jobs
+  [34424095589](https://github.com/wmichelin/clubdue/actions/runs/34424095589) and
+  staging [34424095467](https://github.com/wmichelin/clubdue/actions/runs/34424095467).
+  Running revision/image readback and manual staging smoke passed:
+  `ghcr.io/wmichelin/clubdue@sha256:54c6cf0b4e4f5c4bcb5c19f75d6d5e5d258dedd97e3eaa6cd9d5806a68d8eb43`.
+  Browser mixed trades, preview, customization/disable, reapply, General trade
+  change and stale second-tab rejection passed at 390/1440px without errors.
+  The first browser run used a single-page context; opening an explicit browser
+  context repaired the second-tab test, with no app change. Production is unchanged.
+
+### Native templates and agreements — implementation
+
+- Migrations 016–019 preserve template and agreement identity, signed stored cents
+  and counters, optional links and all captured terms. Ordered window arrays use
+  validated JSON without truncating historical strings. Template names/external
+  IDs remain exact, unbounded hash-indexed identities. Parent delete cleanup leaves
+  snapshot fields and agreement timestamps unchanged.
+- Architect/staff review found two response mismatches; both fixed and tested:
+  deleted-plan stale updates retain their NULL-safe comparison/conflict outcome,
+  and recurring-service creation no longer masks agreement read outages as 404.
+  Ordinary agreement validation retains the submitted form. Explicit trigger column
+  gates skip parent lookups on status/counter-only writes and unrelated link cleanup.
+- Native tests pass shared tenant/snapshot behavior, monthly/nonstandard snapshot
+  capture, template edit/delete survival, independent prices/counters, editable
+  same-shop customer/property, protected customer/property deletion, fully linked
+  shop cascade, direct parent guards, multirow invalid insert rollback, long Unicode
+  names/identities/JSON, years 0001/9999 and signed integer boundaries. Concurrent
+  property/template deletion succeeds with both parent locks held first; agreement
+  creation waits for a complete locked template edit and captures its entire result.
+- Product/unit/QA: numeric form parsing rejects malformed/overflowing values before
+  they become zero; optional new-template blanks retain existing defaults. Plan
+  prices/service counts are nonnegative and terms positive in forms; historical
+  stored schema breadth remains. Failed saves do not redirect or leak dependencies.
+  Unconfirmed creates tell users to check the list before retrying. Both engines
+  pass focused form availability and invalid-number tests.
+- Transfer must insert original snapshot columns directly, including rows with
+  already-null optional links; CreateAgreement would recapture current template
+  terms and must not be used for transfer. Stronger parent guards require the
+  reviewed import sequence before SQL activation. Recurring schedules, dashboard,
+  renewal/visit processing and runtime selection remain unfinished.
+- Staging: https://clubdue-staging.michelindigitalmedia.com (verified `0b38de5`;
+  template/agreement changes pending). Full regression and isolated rehearsal running.
+
+- Final checks passed: full Go suite with both real engines, vet, static build and
+  isolated native SQL rehearsal. Product/QA's two final HTTP corrections also pass
+  focused checks on both engines: missing customer/invalid date return 422 with
+  notes retained, and plan-edit 422 responses declare HTML before sending headers.
+  All six review perspectives are recorded above; graph renders 36 nodes/64 edges.
+  CI and staging verification are the remaining gates for this slice.

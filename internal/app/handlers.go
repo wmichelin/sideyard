@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/wmichelin/clubdue/internal/database"
 )
 
 type Server struct {
@@ -557,7 +559,7 @@ func (s *Server) handleAgreementsList(w http.ResponseWriter, r *http.Request) {
 	agreements, err := s.store.ListAgreements(r.Context(), user.ShopID)
 	if err != nil {
 		log.Printf("list agreements: %v", err)
-		http.Error(w, "server error", http.StatusInternalServerError)
+		http.Error(w, "Agreements are temporarily unavailable. Please retry.", http.StatusServiceUnavailable)
 		return
 	}
 
@@ -611,7 +613,11 @@ func (s *Server) handleAgreementEdit(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	a, err := s.store.GetAgreement(r.Context(), user.ShopID, id)
 	if err != nil {
-		http.NotFound(w, r)
+		if errors.Is(err, database.ErrNoRows) || errors.Is(err, errInvalidRecordID) {
+			http.NotFound(w, r)
+		} else {
+			http.Error(w, "Agreement details are temporarily unavailable. Please retry.", http.StatusServiceUnavailable)
+		}
 		return
 	}
 	s.renderAgreementForm(w, r, user, agreementFormData{
@@ -647,21 +653,25 @@ type agreementFormData struct {
 }
 
 func (s *Server) renderAgreementForm(w http.ResponseWriter, r *http.Request, user *User, form agreementFormData) {
+	s.renderAgreementFormStatus(w, r, user, form, http.StatusOK)
+}
+
+func (s *Server) renderAgreementFormStatus(w http.ResponseWriter, r *http.Request, user *User, form agreementFormData, status int) {
 	customers, err := s.store.ListCustomers(r.Context(), user.ShopID)
 	if err != nil {
 		log.Printf("list customers: %v", err)
-		http.Error(w, "server error", http.StatusInternalServerError)
+		http.Error(w, "Agreement details are temporarily unavailable. Please retry.", http.StatusServiceUnavailable)
 		return
 	}
 	plans, err := s.store.ListPlanTemplates(r.Context(), user.ShopID)
 	if err != nil {
 		log.Printf("list plans: %v", err)
-		http.Error(w, "server error", http.StatusInternalServerError)
+		http.Error(w, "Agreement details are temporarily unavailable. Please retry.", http.StatusServiceUnavailable)
 		return
 	}
 	properties, err := s.store.ListAllProperties(r.Context(), user.ShopID)
 	if err != nil {
-		http.Error(w, "server error", http.StatusInternalServerError)
+		http.Error(w, "Agreement details are temporarily unavailable. Please retry.", http.StatusServiceUnavailable)
 		return
 	}
 	var schedules []ServiceSchedule
@@ -669,7 +679,7 @@ func (s *Server) renderAgreementForm(w http.ResponseWriter, r *http.Request, use
 		schedules, err = s.store.ListServiceSchedules(r.Context(), user.ShopID, form.ID)
 		if err != nil {
 			log.Printf("list service schedules: %v", err)
-			http.Error(w, "server error", http.StatusInternalServerError)
+			http.Error(w, "Agreement details are temporarily unavailable. Please retry.", http.StatusServiceUnavailable)
 			return
 		}
 	}
@@ -677,6 +687,10 @@ func (s *Server) renderAgreementForm(w http.ResponseWriter, r *http.Request, use
 	title := "New agreement — Sideyard"
 	if form.ID != "" {
 		title = "Edit agreement — Sideyard"
+	}
+	if status != http.StatusOK {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(status)
 	}
 	s.renderLayout(w, r, title, "agreement_form_content", map[string]any{
 		"Nav":              NavData{Active: "agreements", User: user},
@@ -705,8 +719,12 @@ func (s *Server) handleAgreementCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := s.store.CreateAgreement(r.Context(), user.ShopID, input)
 	if err != nil {
-		form.Error = "Could not create agreement."
-		s.renderAgreementForm(w, r, user, form)
+		if errors.Is(err, errAgreementInput) || errors.Is(err, errInvalidRecordID) {
+			form.Error = "Check the selected customer, property, plan and agreement values."
+			s.renderAgreementFormStatus(w, r, user, form, http.StatusUnprocessableEntity)
+		} else {
+			http.Error(w, "Could not confirm the save. Check the agreement list before trying again.", http.StatusServiceUnavailable)
+		}
 		return
 	}
 	http.Redirect(w, r, "/agreements/"+id, http.StatusSeeOther)
@@ -720,8 +738,14 @@ func (s *Server) handleAgreementUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.store.UpdateAgreement(r.Context(), user.ShopID, id, input); err != nil {
-		form.Error = "Could not update agreement."
-		s.renderAgreementForm(w, r, user, form)
+		if errors.Is(err, database.ErrNoRows) {
+			http.Error(w, "This agreement is no longer available with those plan terms. Reload and review it.", http.StatusConflict)
+		} else if errors.Is(err, errAgreementInput) || errors.Is(err, errInvalidRecordID) {
+			form.Error = "Check the selected customer, property, plan and agreement values."
+			s.renderAgreementFormStatus(w, r, user, form, http.StatusUnprocessableEntity)
+		} else {
+			http.Error(w, "Could not confirm the save. Reload the agreement to check your changes before trying again.", http.StatusServiceUnavailable)
+		}
 		return
 	}
 	http.Redirect(w, r, "/agreements/"+id, http.StatusSeeOther)
@@ -742,20 +766,25 @@ func (s *Server) parseAgreementForm(w http.ResponseWriter, r *http.Request, user
 		AnniversaryDate: r.FormValue("anniversary_date"),
 		Notes:           r.FormValue("notes"),
 	}
-	form.VisitsEntitled, _ = strconv.Atoi(r.FormValue("visits_entitled"))
-	form.VisitsUsed, _ = strconv.Atoi(r.FormValue("visits_used"))
-	form.PriceCents, _ = strconv.Atoi(r.FormValue("price_cents"))
+	var entitledOK, usedOK, priceOK bool
+	form.VisitsEntitled, entitledOK = parseContractInteger(r.FormValue("visits_entitled"), 0)
+	form.VisitsUsed, usedOK = parseContractInteger(r.FormValue("visits_used"), 0)
+	form.PriceCents, priceOK = parseContractInteger(r.FormValue("price_cents"), 0)
+	if !entitledOK || !usedOK || !priceOK {
+		http.Error(w, "Enter whole-number prices and service counts within the supported range.", http.StatusUnprocessableEntity)
+		return form, CreateAgreementInput{}, false
+	}
 
 	if form.CustomerID == "" {
 		form.Error = "Customer is required."
-		s.renderAgreementForm(w, r, user, form)
+		s.renderAgreementFormStatus(w, r, user, form, http.StatusUnprocessableEntity)
 		return form, CreateAgreementInput{}, false
 	}
 
 	anniversary, err := time.Parse("2006-01-02", form.AnniversaryDate)
 	if err != nil {
 		form.Error = "Invalid anniversary date."
-		s.renderAgreementForm(w, r, user, form)
+		s.renderAgreementFormStatus(w, r, user, form, http.StatusUnprocessableEntity)
 		return form, CreateAgreementInput{}, false
 	}
 
@@ -843,6 +872,16 @@ func (s *Server) handleCustomers(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// Empty optional values keep the existing form defaults. Malformed or out-of-range
+// values must not silently turn into a zero price or service entitlement.
+func parseContractInteger(value string, fallback int) (int, bool) {
+	if value == "" {
+		return fallback, true
+	}
+	n, err := strconv.ParseInt(value, 10, 32)
+	return int(n), err == nil
+}
+
 func (s *Server) handlePlanTemplates(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r.Context())
 	if r.Method == http.MethodPost {
@@ -851,21 +890,17 @@ func (s *Server) handlePlanTemplates(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		name := strings.TrimSpace(r.FormValue("name"))
-		if name != "" {
-			price, _ := strconv.Atoi(r.FormValue("price_cents"))
-			visits, _ := strconv.Atoi(r.FormValue("visits_per_year"))
-			if visits < 0 {
-				visits = 0
-			}
-			termMonths, _ := strconv.Atoi(r.FormValue("term_months"))
-			if termMonths <= 0 {
-				termMonths = 12
-			}
-			_, err := s.store.CreatePlanTemplate(r.Context(), user.ShopID, name,
-				r.FormValue("description"), price, termMonths, visits)
-			if err != nil {
-				log.Printf("create plan: %v", err)
-			}
+		price, priceOK := parseContractInteger(r.FormValue("price_cents"), 0)
+		visits, visitsOK := parseContractInteger(r.FormValue("visits_per_year"), 0)
+		termMonths, termOK := parseContractInteger(r.FormValue("term_months"), 12)
+		if name == "" || !priceOK || !visitsOK || !termOK || price < 0 || visits < 0 || termMonths <= 0 || !validStoredText(name, r.FormValue("description")) {
+			http.Error(w, "Enter a name, whole-number non-negative price and service count, and a positive term.", http.StatusUnprocessableEntity)
+			return
+		}
+		if _, err := s.store.CreatePlanTemplate(r.Context(), user.ShopID, name,
+			r.FormValue("description"), price, termMonths, visits); err != nil {
+			http.Error(w, "Could not confirm the save. Check the plan list before trying again.", http.StatusServiceUnavailable)
+			return
 		}
 		http.Redirect(w, r, "/plan-templates", http.StatusSeeOther)
 		return
@@ -874,7 +909,7 @@ func (s *Server) handlePlanTemplates(w http.ResponseWriter, r *http.Request) {
 	plans, err := s.store.ListPlanTemplates(r.Context(), user.ShopID)
 	if err != nil {
 		log.Printf("list plans: %v", err)
-		http.Error(w, "server error", http.StatusInternalServerError)
+		http.Error(w, "Plan templates are temporarily unavailable. Please retry.", http.StatusServiceUnavailable)
 		return
 	}
 
@@ -898,7 +933,11 @@ func (s *Server) handlePlanTemplateEdit(w http.ResponseWriter, r *http.Request) 
 	id := r.PathValue("id")
 	plan, err := s.store.GetPlanTemplate(r.Context(), user.ShopID, id)
 	if err != nil {
-		http.NotFound(w, r)
+		if errors.Is(err, database.ErrNoRows) || errors.Is(err, errInvalidRecordID) {
+			http.NotFound(w, r)
+		} else {
+			http.Error(w, "Plan details are temporarily unavailable. Please retry.", http.StatusServiceUnavailable)
+		}
 		return
 	}
 
@@ -908,18 +947,26 @@ func (s *Server) handlePlanTemplateEdit(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		name := strings.TrimSpace(r.FormValue("name"))
-		price, _ := strconv.Atoi(r.FormValue("price_cents"))
-		termMonths, _ := strconv.Atoi(r.FormValue("term_months"))
-		visits, _ := strconv.Atoi(r.FormValue("visits_per_year"))
-		if name != "" && price >= 0 && termMonths > 0 && visits >= 0 {
+		price, priceOK := parseContractInteger(r.FormValue("price_cents"), 0)
+		termMonths, termOK := parseContractInteger(r.FormValue("term_months"), 0)
+		visits, visitsOK := parseContractInteger(r.FormValue("visits_per_year"), 0)
+		if name != "" && priceOK && termOK && visitsOK && price >= 0 && termMonths > 0 && visits >= 0 && validStoredText(name, r.FormValue("description")) {
 			err = s.store.UpdatePlanTemplate(r.Context(), user.ShopID, id, name,
 				r.FormValue("description"), price, termMonths, visits)
 			if err == nil {
 				http.Redirect(w, r, "/plan-templates", http.StatusSeeOther)
 				return
 			}
+			if errors.Is(err, database.ErrNoRows) {
+				http.NotFound(w, r)
+			} else {
+				http.Error(w, "Could not confirm the save. Reload the plan to check your changes before trying again.", http.StatusServiceUnavailable)
+			}
+			return
 		}
 		plan = &PlanTemplate{ID: id, Name: name, Description: r.FormValue("description"), PriceCents: price, TermMonths: termMonths, VisitsPerYear: visits}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusUnprocessableEntity)
 	}
 
 	s.renderLayout(w, r, "Edit plan template — Sideyard", "plan_template_form_content", map[string]any{

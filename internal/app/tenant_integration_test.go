@@ -25,6 +25,12 @@ func TestAgreementReferencesStayWithinShopAndCustomer(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	testAgreementReferencesStayWithinShopAndCustomer(t, db)
+}
+
+func testAgreementReferencesStayWithinShopAndCustomer(t *testing.T, db *DB) {
+	t.Helper()
+	ctx := context.Background()
 	store := &Store{db: db}
 
 	stamp := time.Now().UTC().Format("20060102150405.000000000")
@@ -83,6 +89,12 @@ func TestAgreementKeepsPlanTermsSnapshotAfterTemplateEdit(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	testAgreementKeepsPlanTermsSnapshotAfterTemplateEdit(t, db)
+}
+
+func testAgreementKeepsPlanTermsSnapshotAfterTemplateEdit(t *testing.T, db *DB) {
+	t.Helper()
+	ctx := context.Background()
 	store := &Store{db: db}
 	stamp := time.Now().UTC().Format("20060102150405.000000000")
 	shopID := createTestShop(t, ctx, db, "snapshot-"+stamp)
@@ -104,10 +116,10 @@ func TestAgreementKeepsPlanTermsSnapshotAfterTemplateEdit(t *testing.T) {
 
 	var name, description, billingInterval string
 	var termMonths, visitsPerYear int
-	if err := db.Pool.QueryRow(ctx, `
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `
 		SELECT plan_snapshot_name, plan_snapshot_description, plan_snapshot_billing_interval,
 			plan_snapshot_term_months, plan_snapshot_visits_per_year
-		FROM agreements WHERE id = $1`, agreementID,
+		FROM agreements WHERE id = $1`, `SELECT plan_snapshot_name,plan_snapshot_description,plan_snapshot_billing_interval,plan_snapshot_term_months,plan_snapshot_visits_per_year FROM dbo.agreements WHERE id=CONVERT(uniqueidentifier,@p1)`), agreementID,
 	).Scan(&name, &description, &billingInterval, &termMonths, &visitsPerYear); err != nil {
 		t.Fatal(err)
 	}
@@ -913,7 +925,7 @@ func createTestProperty(t *testing.T, ctx context.Context, db *DB, shopID, custo
 func createTestPlan(t *testing.T, ctx context.Context, db *DB, shopID, name string) string {
 	t.Helper()
 	var id string
-	if err := db.Pool.QueryRow(ctx, `INSERT INTO plan_templates (shop_id, name) VALUES ($1, $2) RETURNING id`, shopID, name).Scan(&id); err != nil {
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `INSERT INTO plan_templates (shop_id, name) VALUES ($1, $2) RETURNING id`, `DECLARE @created TABLE(id uniqueidentifier); INSERT INTO dbo.plan_templates(shop_id,name) OUTPUT inserted.id INTO @created VALUES(CONVERT(uniqueidentifier,@p1),@p2); SELECT LOWER(CONVERT(char(36),id)) FROM @created;`), shopID, name).Scan(&id); err != nil {
 		t.Fatal(err)
 	}
 	return id
@@ -927,7 +939,12 @@ func createTestUser(t *testing.T, ctx context.Context, db *DB, shopID, email str
 }
 
 func insertTestUser(ctx context.Context, db *DB, shopID, email string) error {
-	_, err := db.Pool.Exec(ctx, `INSERT INTO users (shop_id, email, password_hash) VALUES ($1, $2, 'test')`, shopID, email)
+	var err error
+	if db.Pool.Dialect() == database.SQLServer {
+		_, err = db.Pool.Exec(ctx, `INSERT INTO dbo.users(shop_id,email,email_normalized,password_hash) VALUES(CONVERT(uniqueidentifier,@p1),@p2,@p3,N'test')`, shopID, email, strings.ToLower(email))
+	} else {
+		_, err = db.Pool.Exec(ctx, `INSERT INTO users (shop_id, email, password_hash) VALUES ($1, $2, 'test')`, shopID, email)
+	}
 	return err
 }
 

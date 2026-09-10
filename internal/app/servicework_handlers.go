@@ -1,11 +1,14 @@
 package app
 
 import (
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/wmichelin/clubdue/internal/database"
 )
 
 func (s *Server) handleServiceScheduleCreate(w http.ResponseWriter, r *http.Request) {
@@ -13,7 +16,11 @@ func (s *Server) handleServiceScheduleCreate(w http.ResponseWriter, r *http.Requ
 	agreementID := r.PathValue("id")
 	agreement, err := s.store.GetAgreement(r.Context(), user.ShopID, agreementID)
 	if err != nil {
-		http.NotFound(w, r)
+		if errors.Is(err, database.ErrNoRows) || errors.Is(err, errInvalidRecordID) {
+			http.NotFound(w, r)
+		} else {
+			http.Error(w, "Agreement details are temporarily unavailable. Please retry.", http.StatusServiceUnavailable)
+		}
 		return
 	}
 	if err := r.ParseForm(); err != nil {
