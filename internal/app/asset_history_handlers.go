@@ -88,13 +88,17 @@ func (s *Server) handleInternalHistory(w http.ResponseWriter, r *http.Request, k
 		}
 	}
 	notes, err := listNotes(r.Context(), u.ShopID, kind, target.ID)
-	if err != nil {
-		http.Error(w, "Could not load notes. Reload and retry.", 503)
-		return
+	notesUnavailable := err != nil
+	if notesUnavailable {
+		log.Printf("list internal notes kind=%s: %v", kind, err)
+		status = http.StatusServiceUnavailable
+		if message == "" {
+			message = "Note history is temporarily unavailable."
+		}
 	}
 	if status != 200 {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(status)
 	}
-	s.renderLayout(w, r, "Service history — Sideyard", "asset_history_content", map[string]any{"Nav": NavData{Active: nav, User: u}, "Target": target, "BackLabel": backLabel, "Description": description, "Input": input, "Notes": notes, "Choices": choices, "Error": message, "Saved": r.Method == http.MethodGet && r.URL.Query().Get("saved") == "1", "Initial": r.Method == http.MethodGet, "HistoryURL": r.URL.Path})
+	s.renderLayout(w, r, "Service history — Sideyard", "asset_history_content", map[string]any{"Nav": NavData{Active: nav, User: u}, "Target": target, "BackLabel": backLabel, "Description": description, "Input": input, "Notes": notes, "NotesUnavailable": notesUnavailable, "Choices": choices, "Error": message, "Saved": r.Method == http.MethodGet && r.URL.Query().Get("saved") == "1", "Initial": r.Method == http.MethodGet, "HistoryURL": r.URL.Path})
 }

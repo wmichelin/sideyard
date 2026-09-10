@@ -16,12 +16,15 @@ import (
 )
 
 func TestVisitNotesPreserveWorkStateAndPrivacy(t *testing.T) {
-	ctx := context.Background()
-	db, err := openDB(ctx, integrationDatabaseURL(t))
+	db, err := openDB(context.Background(), integrationDatabaseURL(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(db.Close)
+	testVisitNotesPreserveWorkStateAndPrivacy(t, db)
+}
+func testVisitNotesPreserveWorkStateAndPrivacy(t *testing.T, db *DB) {
+	ctx := context.Background()
 	now := time.Date(2034, 2, 5, 12, 0, 0, 0, time.UTC)
 	s := &Store{db: db, clock: fixedClock{now: now}}
 	shop := createTestShop(t, ctx, db, fmt.Sprintf("visit-history-%d", time.Now().UnixNano()))
@@ -58,12 +61,17 @@ func TestVisitNotesPreserveWorkStateAndPrivacy(t *testing.T) {
 	state := func() workState {
 		t.Helper()
 		var v workState
-		err := db.Pool.QueryRow(ctx, `SELECT visits_used,
+		err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `SELECT visits_used,
    (SELECT count(*) FROM service_occurrences WHERE shop_id=$1),
    (SELECT count(*) FROM visit_dues WHERE shop_id=$1),
    (SELECT string_agg(id::text||':'||status,',' ORDER BY id) FROM (
     SELECT id,status FROM service_occurrences WHERE shop_id=$1 UNION ALL SELECT id,status FROM visit_dues WHERE shop_id=$1) work)
-   FROM agreements WHERE shop_id=$1 AND id=$2`, shop, agreement).Scan(&v.Used, &v.Recurring, &v.Seasonal, &v.Statuses)
+   FROM agreements WHERE shop_id=$1 AND id=$2`, `SELECT visits_used,
+ (SELECT COUNT(*) FROM dbo.service_occurrences WHERE shop_id=CONVERT(uniqueidentifier,@p1)),
+ (SELECT COUNT(*) FROM dbo.visit_dues WHERE shop_id=CONVERT(uniqueidentifier,@p1)),
+ (SELECT STRING_AGG(CONVERT(nvarchar(max),LOWER(CONVERT(char(36),id)))+N':'+status,N',') WITHIN GROUP(ORDER BY CONVERT(char(36),id) COLLATE Latin1_General_100_BIN2) FROM (
+ SELECT id,status FROM dbo.service_occurrences WHERE shop_id=CONVERT(uniqueidentifier,@p1) UNION ALL SELECT id,status FROM dbo.visit_dues WHERE shop_id=CONVERT(uniqueidentifier,@p1)) work)
+ FROM dbo.agreements WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND id=CONVERT(uniqueidentifier,@p2)`), shop, agreement).Scan(&v.Used, &v.Recurring, &v.Seasonal, &v.Statuses)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -178,7 +186,7 @@ func TestVisitNotesPreserveWorkStateAndPrivacy(t *testing.T) {
 		t.Fatal("unexpected entitlement count", completed.Used)
 	}
 	for _, args := range [][]any{{other, recurring[0].ID, nil}, {shop, recurring[0].ID, seasonal[0].ID}} {
-		if _, err := db.Pool.Exec(ctx, `INSERT INTO visit_notes(shop_id,occurrence_id,seasonal_visit_id,submission_key,body,occurred_on,event_timezone,recorded_by) VALUES ($1,$2,$3,repeat('f',32),'Invalid','2034-02-04','UTC','owner')`, args...); err == nil {
+		if _, err := db.Pool.Exec(ctx, database.Statement(db.Pool.Dialect(), `INSERT INTO visit_notes(shop_id,occurrence_id,seasonal_visit_id,submission_key,body,occurred_on,event_timezone,recorded_by) VALUES ($1,$2,$3,repeat('f',32),'Invalid','2034-02-04','UTC','owner')`, `INSERT INTO dbo.visit_notes(shop_id,occurrence_id,seasonal_visit_id,submission_key,body,occurred_on,event_timezone,recorded_by) VALUES(CONVERT(uniqueidentifier,@p1),CONVERT(uniqueidentifier,@p2),CONVERT(uniqueidentifier,@p3),REPLICATE(N'f',32),N'Invalid','2034-02-04',N'UTC',N'owner')`), args...); err == nil {
 			t.Fatal("database accepted foreign or multiple parents")
 		}
 	}

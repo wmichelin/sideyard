@@ -1142,3 +1142,74 @@ paid integrations or live customer payment collection are configured by this cha
   The directed product map renders 36 nodes/64 edges. Architect/staff final review
   found no remaining blocker; QA's final fallback correction is covered explicitly.
   CI and staging/browser checks are the remaining recurring-slice gates.
+
+
+### Native visit history — review and plan
+
+- Product: notes remain private owner-only append-only entries, separate from visit
+  status/usage and exported legacy outcome notes. Completed, skipped, paused and
+  inactive visits still accept notes while the visit exists. Moves preserve them;
+  pause/import cleanup deletes notes with removed pending occurrences. Recreated
+  occurrences must not inherit the old history.
+- Architect/staff: use the existing asset-note schema pattern: one shop cascade,
+  exactly one visit reference, ownership validation and parent deletion/identity
+  triggers. Immediate-parent locks suffice: shop/shared → visit/update → submission
+  key. Do not reuse active-only recurring outcome preparation or acquire ancestor
+  locks after the visit lock. Parent triggers skip non-identity updates.
+- Unit testing: share the existing privacy/idempotency/DST tests on both engines;
+  test exact author/body/zone comparisons, changed retries, trigger failures,
+  100-entry ordering, signed seasonal years and direct ownership/parent mutations.
+- DevOps: restore must fire validation triggers and audit both optional parents;
+  DBCC alone cannot prove these references. Preserve original note IDs, submission
+  keys, authored event precision, recording times and nullable timestamps. No timer.
+- QA: check before/after move/completion, pending reset versus final-history retention,
+  all tenant/owner boundaries and preserved drafts on failed writes AND failed list
+  reloads. An unavailable history must not be rendered as an empty history. Keep
+  the idempotency key and unconfirmed-save guidance when the list cannot load.
+- Staging: https://clubdue-staging.michelindigitalmedia.com (recurring source9531079
+  deployed and browser/manual smoke passed; CI still finishing). Visit history pending.
+
+
+- Recurring source `95310790dfa6e19605564ca78b5cc322885423e5` passed CI
+  [34428438308](https://github.com/wmichelin/clubdue/actions/runs/34428438308) and
+  staging [34428438289](https://github.com/wmichelin/clubdue/actions/runs/34428438289).
+  Manual smoke and running revision/image readback passed:
+  `ghcr.io/wmichelin/clubdue@sha256:b4e17b1cbcc6418febf468c2e66981b11d4fffc9e403374581f4295f1a726110`.
+  Browser checks passed: two independent services, invalid draft retention, moved
+  date and calendar return, stale second-tab 409, pause/resume, complete/skip,
+  exactly one configured entitlement increment and other-group selection retained.
+  390/1440px screenshots and overflow checks passed without browser errors.
+
+### Native visit history — implementation and focused verification
+
+- Migrations 022–025 preserve the visit-note table through one shop cascade,
+  optional-parent ownership triggers and set-based identity/deletion guards.
+  Application writes retain shop/shared → selected visit/update → submission-key
+  locks. Exact retries compare every field in Go; notes do not require active work
+  or acquire an ancestor lock after the visit. All prior migrations stay immutable.
+- Shared tests pass privacy, unchanged work/usage/CSV, concurrent identical retries,
+  different-target/content conflicts, local-time/date-only notes, completed-work
+  history, owner-only routes, escaped form data and DST-fold choices on both engines.
+  Native tests add exact long author/Unicode, alternate timezone/fold/author retries,
+  failed insert rollback and same-key recovery, cross-kind concurrent key contention,
+  and 102 stored notes with an exact 100-entry display. Inverse UUID suffixes make
+  the fixture distinguish native GUID ordering from the intended textual order.
+- Native deletion tests pass recurring pause's two moved-date directions, failed
+  cleanup rollback, completed/skipped/past-pending history retention, notes on
+  surviving paused/inactive work and replacement visits without inherited history.
+  Engine-observed note-first/deletion-first races cover both kinds and direct visit,
+  agreement and shop deletion plus identity changes. Mixed invalid direct inserts
+  roll back; tenant identity moves fail; same-shop reparenting preserves history.
+- Shared asset/visit history fallback retains the loaded target, submitted draft,
+  key and unconfirmed-save guidance if history loading fails. Unavailable history
+  is displayed explicitly. Focused HTML checks pass on both database engines.
+- Architect/staff, DevOps and product/unit/QA actual-code reviews found no blocker.
+  Transfer must restore original parent/note IDs and trigger-backed ownership;
+  runtime selection and remaining domains remain gated. Full checks next.
+- Staging: https://clubdue-staging.michelindigitalmedia.com (verified9531079;
+  visit-history slice pending). Production remains unchanged.
+
+- Visit-history full checks passed: both-engine Go regression (app suite160.122s),
+  vet, static build and isolated SQL rehearsal. The inverse-UUID ordering fixture
+  passes and graph validation renders36 nodes/64 edges. All reviewed deletion,
+  identity, pause and fallback cases passed. CI/staging/browser gates remain.

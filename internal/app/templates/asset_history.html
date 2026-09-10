@@ -14,6 +14,6 @@
 <button class="primary-btn">Add service note</button>
 </form></section>
 <section class="panel"><h3 class="section-title">Note history</h3><p class="muted">Latest 100 entries by event date, then recording order. Notes are internal and visible only to the owner.</p>
-{{ range .Notes }}<article class="measurement-entry property-note"><h4>{{ .EventLabel }}</h4><p class="property-note-body">{{ .Body }}</p><p class="muted">{{ .RecordedBy }} · Recorded {{ .RecordedAt.UTC.Format "Jan 2, 2006 15:04" }} UTC</p></article>{{ else }}<p class="empty-note">No service notes yet.</p>{{ end }}</section>
+{{ if .NotesUnavailable }}<p class="empty-note">Note history is temporarily unavailable. Reload to check earlier entries.</p>{{ else }}{{ range .Notes }}<article class="measurement-entry property-note"><h4>{{ .EventLabel }}</h4><p class="property-note-body">{{ .Body }}</p><p class="muted">{{ .RecordedBy }} · Recorded {{ .RecordedAt.UTC.Format "Jan 2, 2006 15:04" }} UTC</p></article>{{ else }}<p class="empty-note">No service notes yet.</p>{{ end }}{{ end }}</section>
 <script src="/static/asset-history.js" defer></script>
 {{ end }}

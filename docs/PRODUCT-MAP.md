@@ -13,13 +13,13 @@ for the distinction between provisioned resources and deployed app behavior.
 
 ## Availability snapshot
 
-Reviewed September 9, 2026 against staging release `e5653e6` and the recorded
+Reviewed September 9, 2026 against staging release `9531079` and the recorded
 release verification. These are verified release states, not a live deployment monitor.
 
 | Label | Meaning |
 | --- | --- |
 | **Live** | Available in production at [getsideyard.com](https://getsideyard.com), source `ae6f16a`, and on staging. The legacy ClubDue hostname remains supported. |
-| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), release `e5653e6`: standalone jobs/site surveys, the single-line work-status badge fix, and configured private Azure photo storage. |
+| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), release `9531079`: standalone jobs/site surveys, the single-line work-status badge fix, and configured private Azure photo storage. |
 | **Conditional** | Implemented but requires explicit deployment configuration; not a promise of availability to clients. |
 
 Unless marked otherwise, catalog nodes are **Live**. “Signed in” means a user
@@ -82,8 +82,8 @@ flowchart TB
     PHOTOS["PHOTOS · Private property photos<br/>Azure storage on staging<br/>Availability feedback on staging"]
     IMAGE["IMAGE · Private image viewer"]
     EQUIPMENT["EQUIPMENT · Equipment record"]
-    EHISTORY["EHISTORY · Equipment service history<br/>Input handling on staging"]
-    VHISTORY["VHISTORY · Vehicle service history<br/>Input handling on staging"]
+    EHISTORY["EHISTORY · Equipment service history<br/>Draft recovery prepared for staging"]
+    VHISTORY["VHISTORY · Vehicle service history<br/>Draft recovery prepared for staging"]
     CUSTOMERS --> CUSTOMER
     CUSTOMER --> PROPERTY & EQUIPMENT & VHISTORY
     PROPERTY --> ADDRESS & PHOTOS & EQUIPMENT
@@ -96,11 +96,11 @@ flowchart TB
     NEWAGREEMENT["NEWAGREEMENT · Create agreement<br/>Save / number feedback on staging"]
     AGREEMENT["AGREEMENT · Terms / recurring services<br/>Save / number feedback on staging"]
     RENEWALS["RENEWALS · Renewal follow-up queue"]
-    WORK["WORK · Service work<br/>Save availability prepared for staging"]
-    SCHEDULE["SCHEDULE · Last / next service<br/>Availability prepared for staging"]
-    DATE["DATE · Change one recurring visit date<br/>Availability prepared for staging"]
-    RHISTORY["RHISTORY · Recurring visit notes"]
-    SHISTORY["SHISTORY · Seasonal visit notes"]
+    WORK["WORK · Service work<br/>Save availability on staging"]
+    SCHEDULE["SCHEDULE · Last / next service<br/>Availability on staging"]
+    DATE["DATE · Change one recurring visit date<br/>Availability on staging"]
+    RHISTORY["RHISTORY · Recurring visit notes<br/>Draft recovery prepared for staging"]
+    SHISTORY["SHISTORY · Seasonal visit notes<br/>Draft recovery prepared for staging"]
     CSV["CSV · Work export download"]
     AGREEMENTS --> NEWAGREEMENT & AGREEMENT & CUSTOMER
     NEWAGREEMENT -->|Save| AGREEMENT
@@ -355,6 +355,11 @@ Invalid text and event instants outside years 0001–9999 in UTC are rejected;
 date-only notes preserve their separate date. This input handling also applies
 to the shared visit-note form. [Validation](../internal/app/internal_notes.go).
 
+**Prepared for staging:** shared asset/visit-history forms preserve the submitted
+note and its submission key if a save cannot be confirmed and the history list
+also fails to load. The page labels history unavailable rather than empty. Exact
+retry data should be retained; corrections still use a new entry.
+
 ### EHISTORY — Equipment service history
 
 **Route:** `GET/POST /equipment/{id}/history`. **Access:** Owner.
@@ -431,7 +436,7 @@ before retrying. Creation has no general duplicate-submission key.
 - Generate a 30-day customer renewal link via `POST /agreements/{id}/renewal-link`, then copy/share it manually. No automatic email/SMS is sent by this action.
 - Agreement pricing does not implement deposits, installments, per-treatment invoices or live payment collection.
 - **Staging:** reads distinguish missing/malformed records (404) from unavailable storage (503). Failed saves cannot redirect as successful; malformed/overflowing numbers are rejected. Stale deleted-template references conflict. Ordinary edits still have no revision check. The recurring-service creation action also distinguishes unavailable agreement lookup from a missing record.
-- **Prepared for staging:** invalid recurring-service inputs return 422 and retain the name, cadence, interval, dates and entitlement choice. Unconfirmed creation/pause/resume returns 503 with instructions to check the agreement before retrying; an agreement that became inactive before creation returns 409. [Handler](../internal/app/servicework_handlers.go).
+- **Staging:** invalid recurring-service inputs return 422 and retain the name, cadence, interval, dates and entitlement choice. Unconfirmed creation/pause/resume returns 503 with instructions to check the agreement before retrying; an agreement that became inactive before creation returns 409. [Handler](../internal/app/servicework_handlers.go).
 
 ### RENEWALS — Renewal follow-up queue
 
@@ -465,7 +470,7 @@ method or general customer portal.
 - Recurring rows link to their agreement and individual date change. Both kinds link owners to their own visit notes. Open SCHEDULE or export the filtered work CSV.
 - Handed-off work has no appointment time. Staging standalone jobs remain in JOBS. **Staging visual change:** status labels such as “Due today” remain on one line.
 
-**Prepared for staging:** recurring outcome dependency failures return 503 without claiming a failed or successful save; selections remain when the work list can reload. An unavailable HTML fallback preserves the unconfirmed-save guidance. Known input, final-state and entitlement errors remain 400. Failed page reads return 503; an already-committed save still reports success if its list refresh fails. [Handler](../internal/app/visits_handlers.go).
+**Staging:** recurring outcome dependency failures return 503 without claiming a failed or successful save; selections remain when the work list can reload. An unavailable HTML fallback preserves the unconfirmed-save guidance. Known input, final-state and entitlement errors remain 400. Failed page reads return 503; an already-committed save still reports success if its list refresh fails. [Handler](../internal/app/visits_handlers.go).
 
 ### SCHEDULE — Last and next recurring service
 
@@ -478,7 +483,7 @@ the next visit date or open WORK to record completion/view history. Completion
 dates indicate when completion was recorded. This is not a crew dispatch board;
 seasonal windows and standalone jobs are not a combined appointment calendar.
 
-**Prepared for staging:** unavailable schedule reads return 503. [Handler](../internal/app/scheduling_handlers.go).
+**Staging:** unavailable schedule reads return 503. [Handler](../internal/app/scheduling_handlers.go).
 
 ### DATE — Change one recurring visit date
 
@@ -490,7 +495,7 @@ bounds without shifting the rest of the cadence. Rejects conflicts and changes
 to closed/skipped visits or paused/inactive service. Returns to the originating
 calendar context or schedule. This sets a day, not an arrival-time window.
 
-**Prepared for staging:** unavailable reads/unconfirmed saves return 503; failed saves retain the chosen date. Day/week cadence conflicts remain protected across the full accepted years 1–9999. Date validation follows the stored UTC day. No appointment time is introduced.
+**Staging:** unavailable reads/unconfirmed saves return 503; failed saves retain the chosen date. Day/week cadence conflicts remain protected across the full accepted years 1–9999. Date validation follows the stored UTC day. No appointment time is introduced.
 
 ### RHISTORY — Recurring visit notes
 
@@ -500,7 +505,11 @@ calendar context or schedule. This sets a day, not an arrival-time window.
 Read/add private authored event notes for one recurring occurrence, including
 optional time/timezone and preserved corrections as on VHISTORY. Return to WORK.
 Adding a note does not complete the visit, consume entitlement or trigger billing.
-Latest 100 notes are shown; older notes retained. No attached visit photos yet.
+Latest 100 notes are shown; older notes remain while the visit exists. Moves,
+completion and skipping preserve history. Pause/import cleanup deletes notes with
+removed pending occurrences; replacement visits receive new identities and no
+inherited notes. Surviving paused/inactive visits still accept notes. No attached
+visit photos yet. Draft recovery follows the shared VHISTORY form availability.
 
 ### SHISTORY — Seasonal visit notes
 
@@ -510,6 +519,9 @@ Latest 100 notes are shown; older notes retained. No attached visit photos yet.
 The same authored event-note features as RHISTORY, attached to a seasonal visit
 instead of a recurring occurrence. Return to WORK. Notes remain separate from
 handoff/completion and are excluded from work CSV and public renewal pages.
+Deleting the visit/agreement/shop deletes its notes. Notes remain writable on
+existing completed or inactive-agreement visits. Draft recovery follows the shared
+VHISTORY form availability.
 
 ### CSV — Service-work export
 
