@@ -1854,9 +1854,10 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
 
 - Added a staging-only, artifact-bound host workflow that bootstraps or audits a
   fixed dormant PostgreSQL export login without creating a credential. The workflow
-  uses a SHA-scoped temporary wrapper, never replaces shared host tooling, shares
-  the database-operation lock, requires PostgreSQL to remain authoritative, and
-  rejects a workflow revision that differs from the immutable running image.
+  uses a SHA-scoped temporary wrapper and state helper, never replaces shared host
+  tooling, shares the database-operation lock, requires PostgreSQL to remain
+  authoritative, and rejects a workflow revision that differs from the immutable
+  running image.
 - One no-login role owns the exact grants: `CONNECT` only to the source database,
   schema `USAGE`, and column-level `SELECT` only on the embedded current transfer
   profile plus migration version/checksum. The dormant passwordless login has

@@ -441,10 +441,10 @@ gh run list --workflow staging-postgres-exporter.yml --limit 1
 gh workflow run staging-postgres-exporter.yml --ref main -f action=check
 ```
 
-The workflow copies the reviewed wrapper only to a SHA-scoped temporary directory,
-acquires the existing host database-operation lock through the already installed
-state helper, verifies the immutable running revision, and then executes and removes
-the candidate. It never overwrites durable shared tooling. It rejects production,
+The workflow copies the reviewed wrapper and runtime-state helper only to a
+SHA-scoped temporary directory, acquires the existing host database-operation lock,
+verifies the immutable running revision, and then executes and removes both
+candidates. It never overwrites durable shared tooling. It rejects production,
 Azure authority, a stale workflow revision, a mutable running image or a mismatched
 data generation, and runs the exact binary already serving staging in a short-lived
 read-only container.

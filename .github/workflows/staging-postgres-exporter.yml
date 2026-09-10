@@ -32,7 +32,7 @@ jobs:
           host: ${{ secrets.DROPLET_HOST }}
           username: root
           key: ${{ secrets.DROPLET_SSH_KEY }}
-          source: scripts/azure/run-postgres-exporter-access.sh
+          source: scripts/azure/run-postgres-exporter-access.sh,scripts/azure/runtime-state.sh
           target: /root/.sideyard-postgres-exporter/${{ github.sha }}
           strip_components: 2
 
@@ -50,11 +50,15 @@ jobs:
             set -euo pipefail
             candidate_root="/root/.sideyard-postgres-exporter/${SIDEYARD_EXPECTED_REVISION}"
             candidate="${candidate_root}/run-postgres-exporter-access.sh"
+            runtime_state="${candidate_root}/runtime-state.sh"
             trap 'rm -rf "$candidate_root"' EXIT
             [[ "$SIDEYARD_EXPECTED_REVISION" =~ ^[0-9a-f]{40}$ ]]
             [ -f "$candidate" ] && [ ! -L "$candidate" ]
+            [ -f "$runtime_state" ] && [ ! -L "$runtime_state" ]
 
-            source /opt/clubdue/azure-tools/azure/runtime-state.sh
+            chmod 700 "$candidate"
+            chmod 600 "$runtime_state"
+            source "$runtime_state"
             prepare_sideyard_lock_root
             exec 9>"${SIDEYARD_LOCK_ROOT}/sideyard-staging-database-window.lock"
             flock -w 120 9
@@ -66,8 +70,7 @@ jobs:
             [ "$revision" = "$SIDEYARD_EXPECTED_REVISION" ]
             [[ "$image" =~ ^ghcr.io/wmichelin/clubdue@sha256:[0-9a-f]{64}$ ]]
 
-            chmod 700 "$candidate"
             SIDEYARD_DATABASE_LOCK_HELD=1 \
-              SIDEYARD_RUNTIME_STATE_SCRIPT=/opt/clubdue/azure-tools/azure/runtime-state.sh \
+              SIDEYARD_RUNTIME_STATE_SCRIPT="$runtime_state" \
               SIDEYARD_EXPECTED_REVISION="$SIDEYARD_EXPECTED_REVISION" \
               "$candidate" staging "$SIDEYARD_EXPORTER_ACTION"
