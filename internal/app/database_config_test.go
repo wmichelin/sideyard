@@ -14,7 +14,7 @@ import (
 )
 
 func azureOperatorTestEnv() map[string]string {
-	return map[string]string{"DATABASE_BACKEND": "azure_sql", "AZURE_SQL_SERVER": "sideyard-staging-test.database.windows.net", "AZURE_SQL_DATABASE": "sideyard", "AZURE_SQL_TENANT_ID": "11111111-1111-1111-1111-111111111111", "AZURE_SQL_CLIENT_ID": "22222222-2222-2222-2222-222222222222", "AZURE_SQL_RUNTIME_CLIENT_ID": "22222222-2222-2222-2222-222222222222", "AZURE_SQL_CLIENT_SECRET": "private-test-secret"}
+	return map[string]string{"DATABASE_BACKEND": "azure_sql", "DATA_GENERATION": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "SCHEDULED_WORK_OWNER": "host", "INTEREST_WAKE_FILE": "/var/run/sideyard/interest.wake", "AZURE_SQL_SERVER": "sideyard-staging-test.database.windows.net", "AZURE_SQL_DATABASE": "sideyard", "AZURE_SQL_TENANT_ID": "11111111-1111-1111-1111-111111111111", "AZURE_SQL_CLIENT_ID": "22222222-2222-2222-2222-222222222222", "AZURE_SQL_RUNTIME_CLIENT_ID": "22222222-2222-2222-2222-222222222222", "AZURE_SQL_CLIENT_SECRET": "private-test-secret"}
 }
 func TestAzureSQLConfigurationIsExplicitAndNeverDemo(t *testing.T) {
 	env := azureOperatorTestEnv()
@@ -45,8 +45,12 @@ func TestAzureSQLHTTPRuntimeIsStagingOnlyAndExplicit(t *testing.T) {
 	valid["SESSION_SECRET"] = strings.Repeat("a", 40)
 	valid["ENABLE_AZURE_SQL_HTTP"] = "1"
 	for name, change := range map[string]func(map[string]string){
-		"missing opt-in": func(values map[string]string) { delete(values, "ENABLE_AZURE_SQL_HTTP") },
-		"production":     func(values map[string]string) { values["APP_ENV"] = "production" },
+		"missing opt-in":      func(values map[string]string) { delete(values, "ENABLE_AZURE_SQL_HTTP") },
+		"missing host owner":  func(values map[string]string) { delete(values, "SCHEDULED_WORK_OWNER") },
+		"missing generation":  func(values map[string]string) { delete(values, "DATA_GENERATION") },
+		"missing wake file":   func(values map[string]string) { delete(values, "INTEREST_WAKE_FILE") },
+		"wake path traversal": func(values map[string]string) { values["INTEREST_WAKE_FILE"] = "/var/run/sideyard/../unsafe" },
+		"production":          func(values map[string]string) { values["APP_ENV"] = "production" },
 		"wrong target": func(values map[string]string) {
 			values["AZURE_SQL_SERVER"] = "sideyard-production-test.database.windows.net"
 		},
@@ -80,6 +84,14 @@ func TestAzureSQLHTTPRuntimeIsStagingOnlyAndExplicit(t *testing.T) {
 	postgres := map[string]string{"ENABLE_AZURE_SQL_HTTP": "1"}
 	if _, err := LoadConfig(func(key string) string { return postgres[key] }); err == nil {
 		t.Fatal("Azure runtime opt-in accepted with PostgreSQL")
+	}
+
+	postgresHost := map[string]string{
+		"APP_ENV": "production", "DATABASE_BACKEND": "postgres", "DATABASE_URL": "postgres://private",
+		"SCHEDULED_WORK_OWNER": "host", "INTEREST_WAKE_FILE": "/var/run/sideyard/interest.wake",
+	}
+	if _, err := LoadConfig(func(key string) string { return postgresHost[key] }); err == nil {
+		t.Fatal("PostgreSQL host ownership was accepted without a host executor")
 	}
 }
 

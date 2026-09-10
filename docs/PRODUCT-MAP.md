@@ -152,6 +152,7 @@ shop; it is not a client-facing identifier to invent during onboarding.
 - Saves interest and queues an owner email through Resend. Production notification delivery is configured; duplicate email submissions do not create repeated alerts. Failed delivery retries without losing the signup.
 - **Staging:** if a database acknowledgement is lost, the form keeps the submitted details and explains that the save is unconfirmed. The dependency failure does not consume the public submission throttle; confirmed validation and rate-limit failures remain 422 and 429.
 - **Staging worker; delivery requires Resend configuration:** successful saves wake delivery after commit; empty queues stop polling. Startup and daily maintenance reconcile durable work, while known pending failures keep their retry timers. A lost process handoff can delay recovery until reconciliation; prolonged outages can produce a duplicate beyond the provider's deduplication window. This does not enable SQL Server for the application.
+- **Conditional Azure host delivery:** after the durable signup commit, a host file wake starts bounded delivery batches. Full batches continue immediately; failed sends retain their backoff and the wake retries hourly, while an absent marker causes no SQL access. Boot and the daily database window reconcile missed wakes. This is not enabled on the recorded staging release.
 - Submission leads to THANKS. It does not create a shop or login. There is no in-app lead-management page yet.
 
 ### THANKS — Interest confirmation
@@ -685,6 +686,14 @@ write permission. It opens connections lazily, so LAND, THANKS, LOGIN, SIGNUP,
 DEMO, static assets and `/livez` can render without waking SQL; `/readyz`
 deliberately wakes SQL and verifies the fixed external-user alias, exact declared
 application SID, schema and effective permissions.
+Conditional host-owned `scheduled-work` and `deliver-interest` one-shots use
+that same least-privilege runtime identity. The HTTP process starts no scheduled
+writer in host mode. A root-owned backend/data-generation fence restricts normal
+deploy and rollback to the authoritative data, and retained app containers are
+stopped with restart disabled.
+Deployment, backup and host work serialize through a root-owned mode-0700 lock
+directory. Backup success records must match the selected backend and data
+generation; the monitor rejects stale records from a prior authority.
 The runtime is restricted to the exact staging database and an explicit
 `ENABLE_AZURE_SQL_HTTP=1` configuration. Its request, HTTP read/write, graceful
 shutdown and outer browser/proxy/probe budgets are fixed at 80, 90, 100 and 110 seconds.

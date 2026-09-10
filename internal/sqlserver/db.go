@@ -56,6 +56,11 @@ func NewAzure(server, name string, credential azcore.TokenCredential, runtimeCli
 		Connector: nativeConnector{connector}, budget: 80 * time.Second,
 		wait: waitForResume,
 	})
+	// Reuse one connection across a request so a cold demo or scheduled run does
+	// not pay a fresh TLS/login round trip for every statement. The short idle
+	// window releases it well before the 60-minute serverless auto-pause window.
+	pool.db.SetMaxIdleConns(1)
+	pool.db.SetConnMaxIdleTime(20 * time.Second)
 	if len(runtimeClientID) == 1 {
 		pool.runtimeClientID = runtimeClientID[0]
 	}

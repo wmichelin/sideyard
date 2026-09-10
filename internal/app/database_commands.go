@@ -78,32 +78,39 @@ func executeDatabaseCommand(ctx context.Context, c Config, db *DB, command strin
 		if err := schema.CheckSchema(ctx); err != nil {
 			return err
 		}
-		store := &Store{db: db}
-		if c.Environment == EnvironmentStaging {
-			if _, err := store.RetireLegacySharedDemo(ctx); err != nil {
-				return errors.New("retire legacy demo: " + err.Error())
-			}
-		}
-		asOf := store.nowUTC()
-		operations := []struct {
-			name string
-			run  func(context.Context) error
-		}{
-			{"sync seasonal visits", store.SyncAllVisitDues}, {"clean expired demos", store.CleanupExpiredPublicDemos}, {"generate recurring visits", store.GenerateAllServiceOccurrences},
-			{"generate renewal tasks", func(ctx context.Context) error { return store.GenerateAllRenewalTasks(ctx, asOf) }},
-			{"queue renewal digests", func(ctx context.Context) error { return store.QueueRenewalDigests(ctx, asOf) }},
-		}
-		for _, op := range operations {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			if err := op.run(ctx); err != nil {
-				return errors.New(op.name + ": " + err.Error())
-			}
+		if err := executeScheduledMaintenance(ctx, c, db); err != nil {
+			return err
 		}
 		log.Print("Azure SQL database maintenance complete")
 		return nil
 	default:
 		return errors.New("unsupported native database command")
 	}
+}
+
+func executeScheduledMaintenance(ctx context.Context, c Config, db *DB) error {
+	store := &Store{db: db}
+	if c.Environment == EnvironmentStaging {
+		if _, err := store.RetireLegacySharedDemo(ctx); err != nil {
+			return errors.New("retire legacy demo: " + err.Error())
+		}
+	}
+	asOf := store.nowUTC()
+	operations := []struct {
+		name string
+		run  func(context.Context) error
+	}{
+		{"sync seasonal visits", store.SyncAllVisitDues}, {"clean expired demos", store.CleanupExpiredPublicDemos}, {"generate recurring visits", store.GenerateAllServiceOccurrences},
+		{"generate renewal tasks", func(ctx context.Context) error { return store.GenerateAllRenewalTasks(ctx, asOf) }},
+		{"queue renewal digests", func(ctx context.Context) error { return store.QueueRenewalDigests(ctx, asOf) }},
+	}
+	for _, op := range operations {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := op.run(ctx); err != nil {
+			return errors.New(op.name + ": " + err.Error())
+		}
+	}
+	return nil
 }

@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"net/mail"
+	"os"
 	"strings"
 	"time"
 
@@ -51,6 +52,8 @@ type interestNotification struct {
 type interestNotificationSender interface {
 	Send(context.Context, interestNotification) (string, error)
 }
+
+var errInterestNotificationDeferred = errors.New("interest notification delivery was deferred by the provider")
 
 type notificationHTTPClient interface {
 	Do(*http.Request) (*http.Response, error)
@@ -147,7 +150,10 @@ func deliverInterestNotification(ctx context.Context, db *DB, sender interestNot
 	if err := tx.Commit(ctx); err != nil {
 		return true, errors.New("commit notification delivery state")
 	}
-	return true, sendErr
+	if sendErr != nil {
+		return true, errInterestNotificationDeferred
+	}
+	return true, nil
 }
 
 func interestNotificationBackoff(attempts int) time.Duration {
@@ -169,6 +175,21 @@ func newInterestNotificationSignal() (<-chan struct{}, func()) {
 		select {
 		case wake <- struct{}{}:
 		default:
+		}
+	}
+}
+
+// The host watches this file and owns the short-lived delivery process. A
+// missed filesystem wake is harmless because the durable queue is reconciled
+// after boot, deployment and in the daily database window.
+func newInterestNotificationFileSignal(path string) func() {
+	return func() {
+		file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+		if err == nil {
+			err = file.Close()
+		}
+		if err != nil {
+			log.Print("interest notification host wake failed; durable work remains queued")
 		}
 	}
 }

@@ -1663,3 +1663,53 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   safety, interest, closed signup, legacy login, isolated writable demos,
   expiration, import, work, renewal and CSV checks. Staging still uses
   PostgreSQL and production remains unchanged.
+
+### Host-owned work and backend rollback fence — implementation in review
+
+- The first direct-from-paused demo POST against reviewed source `e7d1019`
+  correctly stayed inside its request handler but returned 503 after 80.492
+  seconds; fixture renewal generation reached the deadline. No proxy or deployed
+  runtime changed. The canary drained, exited zero and was removed.
+- The next candidate reuses one SQL connection across a request and expires it
+  after 20 seconds, well before the 60-minute pause window. An unproxied demo
+  POST completed in 68.392 seconds and its dashboard in 8.869 seconds; the
+  canary again stopped cleanly. The control-plane-confirmed paused retest then
+  passed at `2026-09-10T18:20Z`: the database remained `Paused` through every
+  database-free request, the first demo POST returned 303 in 69.902 seconds,
+  its dashboard returned 200 in 7.147 seconds, and graceful shutdown exited zero.
+- The candidate adds explicit host-owned work, an immediate filesystem wake,
+  bounded interest delivery, boot/daily reconciliation, one environment lock,
+  stopped retained containers, safe restart policies, and an authoritative
+  backend/data-generation fence. Ordinary promotion and rollback cannot cross
+  that fence. The unified database window deliberately remains unusable on
+  Azure until slice 5 implements and rehearses native logical export/restore.
+  Staging and production remain on PostgreSQL while this source is reviewed.
+- Final review then found and drove fixes for post-nginx Docker failures,
+  world-accessible lock placement, retained notification retry wakes and stale
+  backup markers. Fault injection covers every promotion/rollback update, stop
+  and rename phase; recovery leaves a running, restart-enabled canonical current
+  release. Locks live under a root-owned mode-0700 runtime directory and are
+  acquired before state reads. Provider failures keep their durable backoff while
+  later due signups continue, full batches continue immediately, and a retained
+  wake retries hourly without idle SQL polling. Backup freshness requires the
+  current backend and data generation.
+- The closing operations review found two further interruption races. Interest
+  delivery now atomically claims the current wake before reading the queue, so
+  a signup committed during the final drain creates a distinct marker and an
+  immediate second pass; every unsuccessful pass restores a marker. Release
+  promotion and rollback now persist an exact root-owned finalization journal
+  before changing traffic or restart policy. Hard-kill tests at each of the
+  three container rename boundaries prove the next locked invocation restores
+  the intended current/previous IDs, nginx port, running state and restart
+  policies. The installation inventory now names and verifies all six host
+  units, including the reconciliation service targeted by its timer.
+- The stable claimed-wake path is reconstituted on the next locked invocation
+  after SIGKILL or OOM. Its regression test hard-kills delivery immediately
+  after the claim, then proves a second invocation drains it; a separate empty-
+  marker case proves the wrapper performs no Docker inspection or SQL access.
+  The journal flushes its complete mode/owner/content and containing directory
+  before side effects. Final architecture, operations and QA reviews report no
+  actionable findings. Fresh PostgreSQL and native SQL Server suites, vet,
+  formatting, static build, production recovery, Python backup checks, systemd
+  unit verification, shell syntax and fault-injection contracts all pass. This
+  slice is ready for publication to staging with PostgreSQL still authoritative.

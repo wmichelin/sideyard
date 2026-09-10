@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Sideyard %i database window
+
+[Timer]
+OnCalendar=*-*-* 07:00:00 UTC
+RandomizedDelaySec=10m
+Persistent=true
+Unit=sideyard-database-window@%i.service
+
+[Install]
+WantedBy=timers.target

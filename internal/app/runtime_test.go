@@ -59,7 +59,7 @@ func TestRollbackSafetyMarkerAttestsDemoSandboxAwareRelease(t *testing.T) {
 	server := &Server{}
 	response := httptest.NewRecorder()
 	server.handleRollbackSafety(response, httptest.NewRequest(http.MethodGet, "/rollback-safetyz", nil))
-	if response.Code != http.StatusOK || response.Body.String() != "demo-sandbox-v1\n" {
+	if response.Code != http.StatusOK || response.Body.String() != "demo-sandbox-v2\nenvironment=\nbackend=postgres\ngeneration=legacy\n" {
 		t.Fatalf("rollback marker = %d %q", response.Code, response.Body.String())
 	}
 	if response.Header().Get("Cache-Control") != "no-store" {

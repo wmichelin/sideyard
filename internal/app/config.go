@@ -41,6 +41,9 @@ type Config struct {
 	Environment             Environment
 	Address                 string
 	DatabaseBackend         string
+	DataGeneration          string
+	ScheduledWorkOwner      string
+	InterestWakeFile        string
 	AzureSQL                AzureSQLConfig
 	AzureSQLRuntimeClientID string
 	DatabaseURL             string
@@ -96,6 +99,30 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 	}
 	if config.DatabaseBackend != "postgres" && config.DatabaseBackend != "azure_sql" {
 		return Config{}, fmt.Errorf("DATABASE_BACKEND must be postgres or azure_sql")
+	}
+	config.DataGeneration = strings.ToLower(strings.TrimSpace(getenv("DATA_GENERATION")))
+	if config.DataGeneration != "" {
+		if err := validateRecordIDs(config.DataGeneration); err != nil {
+			return Config{}, fmt.Errorf("DATA_GENERATION must be a UUID")
+		}
+	}
+	config.ScheduledWorkOwner = strings.ToLower(strings.TrimSpace(getenv("SCHEDULED_WORK_OWNER")))
+	config.InterestWakeFile = strings.TrimSpace(getenv("INTEREST_WAKE_FILE"))
+	if config.ScheduledWorkOwner == "" {
+		config.ScheduledWorkOwner = "embedded"
+	}
+	if config.ScheduledWorkOwner != "embedded" && config.ScheduledWorkOwner != "host" {
+		return Config{}, fmt.Errorf("SCHEDULED_WORK_OWNER must be embedded or host")
+	}
+	if config.ScheduledWorkOwner == "host" {
+		if config.DatabaseBackend != "azure_sql" || config.Environment != EnvironmentStaging {
+			return Config{}, fmt.Errorf("host-owned scheduled work currently requires staging Azure SQL")
+		}
+		if !strings.HasPrefix(config.InterestWakeFile, "/var/run/sideyard/") || strings.Contains(config.InterestWakeFile, "..") {
+			return Config{}, fmt.Errorf("host-owned scheduled work requires INTEREST_WAKE_FILE under /var/run/sideyard")
+		}
+	} else if config.InterestWakeFile != "" {
+		return Config{}, fmt.Errorf("INTEREST_WAKE_FILE requires host-owned scheduled work")
 	}
 	if config.DatabaseBackend == "azure_sql" {
 		if config.DatabaseURL != "" {
@@ -203,6 +230,9 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 		return Config{}, fmt.Errorf("ENABLE_PUBLIC_DEMO is allowed only in staging or production")
 	}
 	if config.DatabaseBackend == "azure_sql" {
+		if config.ScheduledWorkOwner != "host" || config.DataGeneration == "" {
+			return Config{}, fmt.Errorf("Azure SQL HTTP runtime requires host-owned scheduled work and a data generation")
+		}
 		if config.Environment != EnvironmentStaging || !config.EnableAzureSQLHTTP {
 			return Config{}, fmt.Errorf("Azure SQL HTTP runtime requires explicit staging opt-in")
 		}

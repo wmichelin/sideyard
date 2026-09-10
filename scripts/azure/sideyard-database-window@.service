@@ -1,0 +1,13 @@
+[Unit]
+Description=Sideyard %i maintenance, notification and verified backup window
+After=docker.service network-online.target
+Wants=network-online.target
+OnFailure=sideyard-backup-monitor@%i.service
+
+[Service]
+Type=oneshot
+User=root
+UMask=0077
+EnvironmentFile=/opt/clubdue/azure/%i-backups.env
+ExecStart=/bin/bash /opt/clubdue/azure-tools/azure/run-database-window.sh %i
+TimeoutStartSec=40min

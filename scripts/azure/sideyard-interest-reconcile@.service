@@ -1,0 +1,9 @@
+[Unit]
+Description=Queue Sideyard %i interest notification reconciliation
+After=systemd-tmpfiles-setup.service
+
+[Service]
+Type=oneshot
+User=root
+UMask=0077
+ExecStart=/usr/bin/touch /run/sideyard/%i/interest.wake

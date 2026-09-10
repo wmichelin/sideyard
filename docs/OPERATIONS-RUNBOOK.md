@@ -139,16 +139,17 @@ current PostgreSQL database.
 
 This recovery path changes only the ClubDue nginx upstream; it does not touch
 Pantry, Headscale, Postgres data, backups, or credentials. A normal rollout
-leaves one `clubdue-previous` container running on the other ClubDue loopback
-port (`8083`/`28083`). After the required production approvals:
+leaves one stopped `clubdue-previous` container on the other ClubDue loopback
+port (`8083`/`28083`) with restart disabled. After the required production approvals:
 
 1. Record the incident time, current image ID, retained previous image ID, and
    both local ports.
 2. Dispatch the reviewed **Deploy Production** GitHub workflow with
    `mode=rollback`; do not SSH to the droplet or invoke the helper directly.
 3. The workflow invokes the helper with `CONTAINER=clubdue`, `PORT=8083`, and
-   `DOMAIN=clubdue.michelindigitalmedia.com`. The helper verifies
-   `clubdue-previous` readiness, validates the uniquely
+   `DOMAIN=getsideyard.com`. The helper verifies
+   backend and data generation against the root-owned host fence, starts
+   `clubdue-previous` with restart disabled, verifies readiness, validates the uniquely
    identified ClubDue vhost, points only that vhost at the retained release,
    reloads nginx, and swaps the current/previous container names.
 4. Run the read-only production smoke with the approved smoke account and
@@ -159,6 +160,9 @@ port (`8083`/`28083`). After the required production approvals:
 Do not use application rollback after a migration that is not backwards
 compatible with the retained binary. Restore testing is an isolated database
 recovery procedure, not an application rollback shortcut.
+The helper always rejects cross-backend or cross-generation rollback before
+starting the retained container. After Azure receives writes, use fix-forward
+or a separately reviewed freeze, reverse transfer and reconciliation.
 
 ## Production approval and pilot limits
 

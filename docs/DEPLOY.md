@@ -39,12 +39,15 @@ explicit chat approval and the GitHub Actions production gate remain required.
 ### Reversible ClubDue application rollout
 
 Each normal deployment preserves the environment database and changes only the
-ClubDue application tier. It retains one `*-previous` rollback release on the
-alternate port. Before the next candidate starts, that stale rollback slot is
-removed to free the alternate port; the current release continues serving.
+ClubDue application tier. It retains one **stopped** `*-previous` rollback
+release on the alternate port. Before the next candidate starts, that stale
+rollback slot is removed to free the alternate port; the current release
+continues serving.
 The new `*-candidate` must then return `ok` from `GET /readyz` before the
 single, identified ClubDue nginx vhost upstream changes. The old active
-container is then retained as the next `*-previous` release. If candidate
+container is drained with the 110-second stop envelope, assigned `restart=no`,
+and retained as the next `*-previous` release. The candidate starts with
+`restart=no` and receives `restart=unless-stopped` only after promotion. If candidate
 startup fails, traffic remains on the active release, but the stale rollback
 slot is no longer available.
 
@@ -67,6 +70,22 @@ Postgres container or volume. A stopped existing database is restarted; an
 unhealthy one stops the rollout for investigation. Pantry (`:8080`) and
 Headscale (`:8081`) are never candidate, active, or rollback ports.
 
+The root-owned mode-0600 backend selector records `DATABASE_BACKEND` and a UUID
+`DATA_GENERATION`. Runtime markers and Docker labels must match both values.
+Ordinary promotion and rollback cannot change them. A retained release from
+another backend or generation is rejected before it is started or nginx is
+touched. Once Azure accepts writes, restoring PostgreSQL requires a separately
+reviewed freeze, reverse transfer and reconciliation; application rollback can
+only select another Azure binary against the same generation.
+Deployment and database jobs acquire their common lock from the root-owned
+mode-0700 `/run/sideyard-locks` directory before reading this selector. After
+candidate verification, the helper persists a root-owned mode-0600 journal with
+the immutable target and retained container IDs before changing restart policy
+or nginx. The ordinary exit trap completes the transition after a command
+failure; a later locked invocation resumes the same journal after process death
+or host restart. The journal is removed only after nginx, canonical names,
+running state and restart policies all match the selected release.
+
 #### Approved production rollback
 
 Production rollback is a separate, human-approved recovery action. It does not
@@ -74,8 +93,8 @@ restore a database or pull an image. After obtaining the same explicit chat and
 GitHub production-environment approvals required for a deploy, dispatch the
 reviewed **Deploy Production** workflow with `mode=rollback`. The workflow
 passes `CLUBDUE_DEPLOY_MODE=rollback`, `CONTAINER=clubdue`, `PORT=8083`, and
-`DOMAIN=clubdue.michelindigitalmedia.com` only to the reviewed helper. It
-verifies the retained `clubdue-previous` container's `/readyz`, changes only
+`DOMAIN=getsideyard.com` only to the reviewed helper. It starts the retained
+container under `restart=no`, verifies its backend/generation and `/readyz`, changes only
 the ClubDue nginx proxy to that retained alternate port, then swaps the
 `current`/`previous` names so a forward recovery remains possible. It fails
 closed if either slot or the safe vhost contract is absent. Record active and

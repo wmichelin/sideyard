@@ -1,0 +1,9 @@
+[Unit]
+Description=Reconcile Sideyard %i interest notifications once after boot
+
+[Timer]
+OnBootSec=2min
+Unit=sideyard-interest-reconcile@%i.service
+
+[Install]
+WantedBy=timers.target

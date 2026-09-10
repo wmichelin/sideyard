@@ -4,10 +4,38 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import time
 import urllib.request
 import urllib.error
+
+
+GENERATION = re.compile(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}")
+
+
+def read_runtime_state(path, owner_uid=None):
+    if path.is_symlink() or not path.is_file() or path.stat().st_mode & 0o777 != 0o600:
+        raise ValueError("unsafe backup runtime state")
+    if owner_uid is not None and path.stat().st_uid != owner_uid:
+        raise ValueError("unsafe backup runtime state")
+    lines = path.read_text().splitlines()
+    if len(lines) != 2 or not lines[0].startswith("DATABASE_BACKEND=") or not lines[1].startswith("DATA_GENERATION="):
+        raise ValueError("invalid backup runtime state")
+    backend, generation = lines[0].split("=", 1)[1], lines[1].split("=", 1)[1]
+    if backend not in ("postgres", "azure_sql") or not GENERATION.fullmatch(generation):
+        raise ValueError("invalid backup runtime state")
+    return backend, generation
+
+
+def read_success(path, backend, generation):
+    try:
+        lines = path.read_text().splitlines()
+        if len(lines) != 4 or lines[1] != "backend=" + backend or lines[2] != "generation=" + generation or not lines[3].startswith("manifest=") or not lines[3][9:]:
+            return None
+        return int(lines[0])
+    except (OSError, ValueError, IndexError):
+        return None
 
 
 def backup_problem(now, last_success, failed):
@@ -18,10 +46,10 @@ def backup_problem(now, last_success, failed):
     return ""
 
 
-def send_notice(env, environment, incident, message, opener):
+def send_notice(env, environment, incident, message, service, opener):
     if env.get("INTEREST_NOTIFY_TO") != "wmichelin@gmail.com":
         raise ValueError("backup notifications require the configured Sideyard owner address")
-    data = json.dumps({"from": env["INTEREST_NOTIFY_FROM"], "to": [env["INTEREST_NOTIFY_TO"]], "subject": f"Sideyard {environment} backup alert", "text": message + "\n\nInspect sideyard-azure-backup@" + environment + ".service and the Azure backup manifest before relying on recovery."}).encode()
+    data = json.dumps({"from": env["INTEREST_NOTIFY_FROM"], "to": [env["INTEREST_NOTIFY_TO"]], "subject": f"Sideyard {environment} backup alert", "text": message + "\n\nInspect " + service + " and its backend/generation-matched Azure backup manifest before relying on recovery."}).encode()
     request = urllib.request.Request("https://api.resend.com/emails", data=data, headers={"Authorization": "Bearer " + env["RESEND_API_KEY"], "Content-Type": "application/json", "User-Agent": "Sideyard/1.0", "Idempotency-Key": f"sideyard-backups/{environment}/{incident}"})
     with opener.open(request, timeout=20) as response:
         result = json.loads(response.read(4096))
@@ -38,20 +66,24 @@ def main():
     now = int(time.time())
     root = Path("/var/lib/sideyard-backups")
     root.mkdir(parents=True, exist_ok=True)
-    try:
-        last_success = int((root / f"{environment}.last-success").read_text().splitlines()[0])
-    except (OSError, ValueError, IndexError):
-        last_success = None
-    failed = subprocess.run(["systemctl", "is-failed", "--quiet", f"sideyard-azure-backup@{environment}.service"], check=False).returncode == 0
+    state_root = Path(os.environ.get("SIDEYARD_STATE_ROOT", "/var/lib/sideyard-operations"))
+    backend, generation = read_runtime_state(state_root / f"{environment}-backend.env", owner_uid=0)
+    last_success = read_success(root / f"{environment}.last-success", backend, generation)
+    unit = "sideyard-database-window" if backend == "azure_sql" else "sideyard-azure-backup"
+    service = f"{unit}@{environment}.service"
+    failed = subprocess.run(["systemctl", "is-failed", "--quiet", service], check=False).returncode == 0
     problem = backup_problem(now, last_success, failed)
     state = root / f"{environment}.alert-state"
     if not problem:
         state.unlink(missing_ok=True)
         return
-    if state.exists():
+    incident_key = f"{backend}/{generation}/{problem}"
+    try:
         incident = json.loads(state.read_text())
-    else:
-        incident = {"id": str(now), "sent": False}
+    except (OSError, ValueError, TypeError):
+        incident = {}
+    if incident.get("key") != incident_key:
+        incident = {"id": str(now), "key": incident_key, "sent": False}
         state.write_text(json.dumps(incident))
     if incident["sent"]:
         return
@@ -59,7 +91,7 @@ def main():
     class NoRedirect(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, *args, **kwargs):
             return None
-    send_notice(os.environ, environment, incident["id"], problem, urllib.request.build_opener(NoRedirect()))
+    send_notice(os.environ, environment, incident["id"], problem, service, urllib.request.build_opener(NoRedirect()))
     incident["sent"] = True
     temporary = state.with_suffix(".tmp")
     temporary.write_text(json.dumps(incident))

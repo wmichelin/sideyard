@@ -47,6 +47,12 @@ func run(config Config, args []string) error {
 		return runDatabaseCommand(config, args[0])
 	}
 	if len(args) > 0 {
+		if len(args) == 1 && args[0] == "scheduled-work" {
+			return runScheduledWork(config)
+		}
+		if len(args) == 1 && args[0] == "deliver-interest" {
+			return runInterestDelivery(config)
+		}
 		if len(args) == 1 && args[0] == "sync-photos" {
 			return runSyncPhotos(config)
 		}
@@ -90,7 +96,13 @@ func run(config Config, args []string) error {
 			}
 			log.Print("Sideyard Azure private photo storage enabled; database recovery copies retained")
 		}
-		interestWake, wakeInterest := newInterestNotificationSignal()
+		var interestWake <-chan struct{}
+		var wakeInterest func()
+		if config.ScheduledWorkOwner == "embedded" {
+			interestWake, wakeInterest = newInterestNotificationSignal()
+		} else {
+			wakeInterest = newInterestNotificationFileSignal(config.InterestWakeFile)
+		}
 		srv.interest = &databaseInterestRecorder{db: db, wake: wakeInterest}
 		if config.DatabaseBackend != "azure_sql" && config.Environment == EnvironmentStaging {
 			retired, err := srv.store.RetireLegacySharedDemo(ctx)
@@ -112,14 +124,14 @@ func run(config Config, args []string) error {
 		}
 
 		srv.auth = auth
-		if config.DatabaseBackend != "azure_sql" {
+		if config.ScheduledWorkOwner == "embedded" {
 			if err := srv.store.SyncAllVisitDues(ctx); err != nil {
 				log.Printf("renewal maintenance failed phase=startup operation=sync_visit_dues error=%v", err)
 			}
 			runRenewalMaintenance(ctx, srv.store, time.Now, "startup")
 			go runDailyRenewalGeneration(ctx, srv.store, 24*time.Hour, time.Now, wakeInterest)
 		}
-		if config.InterestNotifications.APIKey != "" && config.DatabaseBackend != "azure_sql" {
+		if config.InterestNotifications.APIKey != "" && config.ScheduledWorkOwner == "embedded" {
 			sender := &resendInterestSender{
 				client: &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 				config: config.InterestNotifications, environment: config.Environment,
@@ -135,7 +147,7 @@ func run(config Config, args []string) error {
 		} else {
 			log.Print("Sideyard signup email notifications unconfigured; alerts remain queued")
 		}
-		if config.DatabaseBackend == "azure_sql" {
+		if config.ScheduledWorkOwner == "host" {
 			log.Print("Sideyard running with Azure SQL lazy connections; scheduled maintenance disabled in HTTP process")
 		} else {
 			log.Print("Sideyard running with Postgres")
@@ -249,7 +261,15 @@ func (s *Server) handler(static fs.FS) http.Handler {
 func (s *Server) handleRollbackSafety(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write([]byte("demo-sandbox-v1\n"))
+	generation := s.config.DataGeneration
+	if generation == "" {
+		generation = "legacy"
+	}
+	backend := s.config.DatabaseBackend
+	if backend == "" {
+		backend = "postgres"
+	}
+	_, _ = fmt.Fprintf(w, "demo-sandbox-v2\nenvironment=%s\nbackend=%s\ngeneration=%s\n", s.config.Environment, backend, generation)
 }
 
 func runProvisionOwner(config Config) error {

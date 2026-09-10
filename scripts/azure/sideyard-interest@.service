@@ -1,0 +1,13 @@
+[Unit]
+Description=Deliver queued Sideyard %i interest notifications
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+UMask=0077
+ExecStart=/bin/bash /opt/clubdue/azure-tools/azure/run-interest-delivery.sh %i
+TimeoutStartSec=15min
+Restart=on-failure
+RestartSec=1h

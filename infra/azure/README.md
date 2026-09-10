@@ -194,6 +194,49 @@ identities. The conditional HTTP runtime requires this distinct client identity
 and its contained database grants; do not grant DDL to it or reuse the Blob photo
 or backup identities.
 
+### Conditional host-owned work and rollback fence
+
+Azure HTTP configuration requires `SCHEDULED_WORK_OWNER=host`, the fixed
+`INTEREST_WAKE_FILE=/var/run/sideyard/interest.wake`, and a UUID data generation
+supplied by the host selector. The deploy helper maintains a root-owned mode-0600
+`/var/lib/sideyard-operations/staging-backend.env`, validates the running and
+retained container labels/markers against it, and refuses an ordinary backend
+or generation change. It omits `DATABASE_URL` and does not start PostgreSQL when
+the authoritative backend is Azure SQL. Changing that selector is reserved for
+the final transfer procedure; editing the SQL credential file cannot select a
+backend.
+
+Install `runtime-state.sh`, `run-interest-delivery.sh`, and
+`run-database-window.sh` under `/opt/clubdue/azure-tools/azure`; install
+`sideyard-interest@.service`, `sideyard-interest@.path`,
+`sideyard-interest-reconcile@.service`, `sideyard-interest-reconcile@.timer`,
+`sideyard-database-window@.service`, and `sideyard-database-window@.timer` under
+`/etc/systemd/system`; and install `sideyard-tmpfiles.conf` under
+`/etc/tmpfiles.d`. Run `systemd-tmpfiles --create`, `systemctl daemon-reload`,
+and `systemd-analyze verify` over all six units. Confirm the timer target with
+`systemctl show -p Triggers sideyard-interest-reconcile@staging.timer` and the
+path target with `systemctl show -p Triggers sideyard-interest@staging.path`
+before enabling either. Keep all new units disabled while PostgreSQL is
+authoritative. At the later reviewed Azure cutover,
+the interest path and one-shot boot reconciliation replace the embedded worker.
+The unified 07:00 UTC database-window timer replaces the old backup timer only
+after slice 5 supplies a tested Azure logical export/restore. Until then,
+`run-backup.sh` deliberately refuses to report a stale PostgreSQL export as an
+Azure backup.
+
+Each atomic backup-success record includes the authoritative backend and data
+generation. The monitor rejects an otherwise recent marker when either differs,
+and checks the unified database-window service after Azure becomes authoritative.
+
+The immediate host worker and deploy helper share
+`/run/sideyard-locks/sideyard-staging-database-window.lock` inside a root-owned
+mode-0700 directory. They acquire it before reading the backend selector. A wake invokes
+`docker exec clubdue-staging-current /clubdue deliver-interest`; the daily
+window invokes `scheduled-work`, then attempts its verified backup even when
+maintenance or delivery fails. Both commands are bounded and exit, leaving no
+leadership connection. A stopped retained app has `restart=no`; rollback starts
+it only after its backend and generation match the selector.
+
 If access fails, confirm the CLI account and staging firewall allowlist, then
 change the allowlist through a reviewed Terraform plan. Do not add an ad hoc SQL
 login or widen the firewall. Remove obsolete operator addresses afterward while

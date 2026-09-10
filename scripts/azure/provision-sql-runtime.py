@@ -91,6 +91,8 @@ def validate_credential_values(values, *, server, tenant, client_id):
         "AZURE_SQL_RUNTIME_CLIENT_ID": client_id,
         "AZURE_SQL_AUTH_MODE": "client_secret",
         "ENABLE_AZURE_SQL_HTTP": "1",
+        "SCHEDULED_WORK_OWNER": "host",
+        "INTEREST_WAKE_FILE": "/var/run/sideyard/interest.wake",
     }
     allowed = set(expected) | {
         "AZURE_SQL_CLIENT_SECRET",
@@ -269,6 +271,8 @@ def main():
             "AZURE_SQL_CLIENT_SECRET": secret,
             "AZURE_SQL_AUTH_MODE": "client_secret",
             "ENABLE_AZURE_SQL_HTTP": "1",
+            "SCHEDULED_WORK_OWNER": "host",
+            "INTEREST_WAKE_FILE": "/var/run/sideyard/interest.wake",
             "AZURE_SQL_CREDENTIAL_KEY_ID": key_id,
             "AZURE_SQL_CREDENTIAL_EXPIRES": current["endDateTime"],
         })

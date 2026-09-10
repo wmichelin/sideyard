@@ -21,6 +21,7 @@ cleanup() {
 trap cleanup EXIT
 
 python3 "$ROOT/scripts/test-backup-auth.py"
+bash "$ROOT/scripts/azure/test-runtime-operations.sh"
 
 # Keep every outer transport beyond the Azure request deadline and keep the
 # container stop grace beyond the application's shutdown window.
@@ -209,7 +210,8 @@ printf '%s' "$second_dashboard" | grep -q 'Dashboard — Sideyard'
 
 dev_route_status="$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:${PORT}/dev/seed")"
 [ "$dev_route_status" = "404" ]
-curl -fsS "http://127.0.0.1:${PORT}/rollback-safetyz" | grep -qx demo-sandbox-v1
+rollback_marker="$(curl -fsS "http://127.0.0.1:${PORT}/rollback-safetyz")"
+[ "${rollback_marker%%$'\n'*}" = demo-sandbox-v2 ]
 
 demo_html="$WORK_DIR/demo.html"
 demo_headers="$WORK_DIR/demo.headers"

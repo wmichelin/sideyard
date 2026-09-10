@@ -43,7 +43,8 @@ curl -fsS "${CLUBDUE_URL}/livez" | grep -qx ok
 echo "  ✓ /livez"
 curl -fsS "${CLUBDUE_URL}/readyz" | grep -qx ok
 echo "  ✓ /readyz"
-curl -fsS "${CLUBDUE_URL}/rollback-safetyz" | grep -qx demo-sandbox-v1
+rollback_marker="$(curl -fsS "${CLUBDUE_URL}/rollback-safetyz")"
+case "${rollback_marker%%$'\n'*}" in demo-sandbox-v1|demo-sandbox-v2) ;; *) exit 1 ;; esac
 echo "  ✓ rollback safety marker"
 
 LANDING_FILE="$WORK_DIR/landing.html"

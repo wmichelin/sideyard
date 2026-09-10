@@ -43,21 +43,24 @@ only to the configured owner, with the visitor's name, email, business, trade,
 and message. Provider acknowledgement is recorded in `interest_notifications`.
 Existing signups are preserved and are not automatically re-mailed.
 
-**Azure preparation update — pending staging verification:** the new worker uses
-a buffered wake after a committed signup and sleeps without a timer when no work
-is pending. It checks queued work at startup, retries known pending work at its
-stored deadline (with a 15-second minimum for contention/batch continuation), and
-backs off database failures from one minute up to one hour. Daily reconciliation
-shares the existing maintenance window rather than waking an idle database on a
-separate schedule. Wakes can interrupt a later retry deadline.
+**Conditional Azure host delivery — pending staging verification:** the HTTP
+process commits the signup and outbox row, then touches a file in its dedicated
+host-wake mount. A systemd path unit invokes one bounded `deliver-interest`
+process against the current container under the environment database lock. It
+attempts at most 20 due rows, gives a cold database operation up to 80 seconds,
+and gives Resend its own 10-second deadline. A provider failure records durable
+backoff while the batch continues with other due signups. Full batches continue
+immediately; provider, container and lock failures retain the wake and retry
+after one hour. With no wake marker, the host service performs no SQL access.
 
-The worker remains alive through graceful HTTP shutdown so in-flight signups can
-still wake it. Current deployments retain the previous app container running;
-its pending work stays recoverable and row locks prevent simultaneous claims.
-An interrupted process handoff can still require startup/daily reconciliation,
-potentially delaying an alert up to a day if no earlier wake occurs. This remains
-at-least-once delivery with the provider's bounded duplicate suppression below.
-Production still uses the previously verified polling release until promotion.
+Host-owned mode starts no HTTP-process maintenance ticker or delivery worker.
+The previous application container is drained, stopped and restart-disabled
+after promotion. Wake-file failure cannot undo a saved signup, and `/run` loss
+on reboot is covered by a single boot reconciliation. The daily 07:00 UTC window
+will combine idempotent maintenance, due-interest drain and a backend-aware
+verified backup. That timer stays disabled until native Azure logical
+export/restore is implemented and rehearsed. Production continues using its
+verified PostgreSQL worker until a separately approved migration.
 
 Native SQL Server schema and queries for interest/outbox pass the same retry and
 concurrent-worker tests as PostgreSQL, plus atomic concurrent signup and Unicode
