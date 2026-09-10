@@ -63,6 +63,7 @@ jobs:
       - name: Azure backup integrity and monitor checks
         run: |
           python3 scripts/azure/test-backup-store.py
+          python3 scripts/azure/test-logical-backup-store.py
           python3 scripts/azure/test-backup-monitor.py
 
   sqlserver-rehearsal:

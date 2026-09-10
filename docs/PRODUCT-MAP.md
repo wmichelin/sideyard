@@ -708,9 +708,16 @@ to their Azure storage resource/account and fixed private `photos` container;
 the production profile declares inline-only recovery. There is no operator-facing
 transfer command yet; encryption, authenticated Blob publication/readback,
 isolated-target provisioning and oldest/newest restore drills remain activation
-gates. The application selector therefore remains PostgreSQL.
+gates. An internal, staging-only Azure Blob contract now binds the complete
+package descriptor into a separately authenticated, create-only ciphertext pair,
+verifies the pair together and every exact required photo version, and writes a
+version-pinned completion marker last. It downloads only the exact completion and
+component versions, then atomically exposes both mode-0600 files through a private
+owner directory. It has no command or credentials yet and cannot activate a
+restore. The application selector therefore remains PostgreSQL.
 [Transfer contract](../internal/transfer/catalog.go) ·
 [Restore implementation](../internal/transfer/restore.go) ·
+[Logical Blob contract](../scripts/azure/logical-backup-store.py) ·
 [Real-engine rehearsal](../internal/app/transfer_sqlserver_test.go).
 The runtime is restricted to the exact staging database and an explicit
 `ENABLE_AZURE_SQL_HTTP=1` configuration. Its request, HTTP read/write, graceful

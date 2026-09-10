@@ -1769,16 +1769,39 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   container; v29 explicitly uses inline-only recovery. Active, pending, interrupted
   legacy backfill, retired orphan and linked/orphan purged states are covered. Build
   and open enforce absolute 240 MiB archive and 250 MiB pre-encryption package caps.
-- This library has no operator command and is not a backup release. Encrypted Blob
-  wrapping and exact-version remote readback, least-privilege exporter/importer
-  identities, Terraform-derived disposable targets and oldest/newest recovery
-  drills remain. The staging selector is still PostgreSQL; production is unchanged.
-- Source `bf01490788b4c99d0de53de2d4a5cbe4fc78ae3d` passed all four CI
-  jobs [34526440832](https://github.com/wmichelin/clubdue/actions/runs/34526440832)
+- Its internal staging-only Azure Blob contract uses an independent authentication
+  domain and binds the complete package descriptor into the ciphertext pair. It
+  accepts only locally authenticated encrypted packages, creates immutable,
+  version-pinned ciphertext and sidecar objects, reads and authenticates the exact pair,
+  audits every required photo by exact version, digest, size and MIME type, then
+  writes the authenticated completion marker last. The marker exposes only the
+  inventory count/root, not tenant or photo identifiers. Restore retrieval starts
+  from the exact marker version, verifies every bound environment, generation,
+  release, package and inventory field, and atomically promotes mode-0600 restore
+  files only after its exact ciphertext pair authenticates. Cross-environment
+  sources, altered current versions, interrupted finalization and partial
+  publication fail closed. Required photos are audited before package upload.
+  Logical completion markers expire at seven days; their separately prefixed
+  components expire at eight, so a retained marker cannot outlive its exact pair
+  and partial uploads still age out. Component-name conflicts require a fresh
+  export ID instead of reusing a possibly old version, and completion must publish
+  within one hour of the first component write. Publication and retrieval both
+  enforce that bound from exact-version Azure `Last-Modified` metadata rather than
+  trusting the operator host clock. A trusted Azure `Date` preflight reserves five
+  minutes for marker creation/readback, so an out-of-window authoritative marker
+  is not written; the post-write and restore checks remain as defense in depth.
+- These libraries still have no operator command or credentials and are not a
+  backup release. The encryption command, hardened least-privilege exporter,
+  publisher, photo-reader and importer identities, Terraform-derived disposable
+  targets and oldest/newest recovery drills remain. The staging selector is still
+  PostgreSQL; production is unchanged.
+- Source `2f6cbeb3cffb2253e6adadf229aef1cba17da9dc` passed all four CI
+  jobs [34528891581](https://github.com/wmichelin/clubdue/actions/runs/34528891581)
   and staging deployment
-  [34526440707](https://github.com/wmichelin/clubdue/actions/runs/34526440707).
+  [34528891561](https://github.com/wmichelin/clubdue/actions/runs/34528891561).
   The running revision label, restart policy and immutable manifest were read back
-  as `ghcr.io/wmichelin/clubdue@sha256:b57c30b3be474aab7a6a14f686278b0f06e9362b22e17b1c2c2a47e888d27b8b`.
-  The workflow smoke and a separate complete live smoke passed; recent application
-  logs showed the exercised requests completing without server errors. The runtime
-  backend/generation fence remains on PostgreSQL and production is unchanged.
+  as `ghcr.io/wmichelin/clubdue@sha256:e2e58a195c3f2e464debea38e3cf4b9ccedaeaa247bb199ec301ed0cf357ddf3`.
+  The workflow smoke and independent health, landing and login checks passed;
+  recent application logs showed the exercised requests completing without server
+  errors. The runtime backend/generation fence remains on PostgreSQL and production
+  is unchanged.

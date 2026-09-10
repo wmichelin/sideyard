@@ -170,21 +170,36 @@ resource "azurerm_role_assignment" "backups" {
   depends_on         = [azurerm_storage_container.private]
 }
 
-# Export keys are immutable and self-contained, including inline photo recovery
-# bytes. This age rule applies ONLY to encrypted exports, never photo/state blobs.
+# Export keys are immutable. This age rule applies ONLY to encrypted database
+# exports and their completion records, never photo/state blobs.
 resource "azurerm_storage_management_policy" "exports" {
   storage_account_id = azurerm_storage_account.app.id
   rule {
     name    = "seven-day-encrypted-exports"
     enabled = true
     filters {
-      prefix_match = ["backups/postgres/"]
+      prefix_match = ["backups/postgres/", "backups/logical-completions/"]
       blob_types   = ["blockBlob"]
     }
     actions {
       base_blob { delete_after_days_since_modification_greater_than = 7 }
       version { delete_after_days_since_creation = 7 }
       snapshot { delete_after_days_since_creation_greater_than = 7 }
+    }
+  }
+  # Components remain one day longer than their completion record. Therefore a
+  # retained completion marker can never outlive the versions it references.
+  rule {
+    name    = "eight-day-logical-components"
+    enabled = true
+    filters {
+      prefix_match = ["backups/logical-components/"]
+      blob_types   = ["blockBlob"]
+    }
+    actions {
+      base_blob { delete_after_days_since_modification_greater_than = 8 }
+      version { delete_after_days_since_creation = 8 }
+      snapshot { delete_after_days_since_creation_greater_than = 8 }
     }
   }
 }

@@ -336,7 +336,15 @@ Exports include full inline photo recovery data. Each encrypted export is capped
 at 256 MiB to bound free storage use; exceeding it fails visibly and alerts the
 owner rather than pretending the backup completed.
 
-Only the `backups/postgres/` prefix has age-based seven-day cleanup. Native SQL
+PostgreSQL exports and logical completion markers have age-based seven-day
+cleanup. Logical ciphertext components use a separate prefix with eight-day
+cleanup, so a retained completion marker cannot outlive the exact versions it
+references and failed uploads still expire. The publisher refuses to reuse an
+existing component name and allows at most one hour from its first component write
+to completion, based on exact-version Azure `Last-Modified` metadata checked again
+during retrieval. The publisher checks trusted Azure server time before the marker
+write and reserves five minutes for its bounded creation/readback. Retry an
+interrupted publication with a freshly built export and export ID. Native SQL
 retention is also seven days. Azure lifecycle scheduling and soft delete can retain
 billable backup bytes longer; photo/state versions have no age-deletion rule.
 

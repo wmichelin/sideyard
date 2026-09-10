@@ -457,7 +457,9 @@ variable files, backend keys and `TF_DATA_DIR` values. Do not invent per-environ
 configuration directories. The internal native logical-transfer contract and
 resumable SQL restore are implemented and exercised across the current staging
 schema and frozen production migration 29 schema. They are deliberately not
-operator commands yet. Authenticated encryption, exact Blob/photo manifests,
+operator commands yet. The internal staging-only Blob contract now binds its
+encrypted package identity, exact object versions and required-photo inventory,
+but authenticated encryption/operator wiring, dedicated identities,
 Terraform-derived disposable restore targets and oldest/newest recovery drills
 remain implementation work. Use the recorded PostgreSQL recovery procedure until
 all of those gates pass.
