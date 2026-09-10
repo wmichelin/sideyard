@@ -1750,17 +1750,21 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   relationships, malformed JSON membership and derived email identity drift.
 - Real disposable-engine tests passed SQL Server to SQL Server, PostgreSQL 31 to
   SQL Server, and a PostgreSQL 29 fixture to current SQL Server. Seeded rows cover
-  cross-engine null/empty distinctions and supplementary/private-use Unicode key
-  ordering. The restore matrix covers wrong authenticated digests, interruption
+  cross-engine null/empty distinctions and supplementary/private-use Unicode value
+  preservation. The restore matrix covers wrong authenticated digests, interruption
   after partial batches, unknown successful commits, changed resume batch sizes
   and final root reconciliation. A changed PostgreSQL migration checksum is
   rejected at the transfer boundary.
+- A follow-up deterministic fixture now places valid connected data in every
+  table in both release profiles. It exercises inline photo bytes, exact object
+  versions, JSON and text/UUID arrays, decimals, booleans, dates/timestamps,
+  nullable versus empty values, trailing spaces and supplementary Unicode. Each
+  round trip asserts every source table is nonempty, compares its destination row
+  count, and still requires the complete root reconciliation.
 - This library has no operator command and is not a backup release. Encrypted Blob
   wrapping, exact photo-object/version manifests, least-privilege exporter/importer
-  identities, Terraform-derived disposable targets, a nonempty valid row in every
-  profile table/value family and oldest/newest recovery drills remain. In
-  particular, the current v29 fixture does not yet exercise inline
-  photo bytes. The staging selector is still PostgreSQL; production is unchanged.
+  identities, Terraform-derived disposable targets and oldest/newest recovery
+  drills remain. The staging selector is still PostgreSQL; production is unchanged.
 - Source `8af5371f0bbdb437e2e923f67a2cd27d136670bf` passed all four CI
   jobs [34523739030](https://github.com/wmichelin/clubdue/actions/runs/34523739030)
   and staging deployment

@@ -6,12 +6,14 @@ import (
 	"database/sql"
 	"errors"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/wmichelin/clubdue/internal/database"
 	pgstore "github.com/wmichelin/clubdue/internal/postgres"
+	"github.com/wmichelin/clubdue/internal/testdb"
 	"github.com/wmichelin/clubdue/internal/transfer"
 )
 
@@ -21,8 +23,7 @@ func TestSQLServerLogicalRestoreRoundTrip(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 	source := sqlServerTestDB(t)
-	store := &Store{db: source, clock: fixedClock{now: time.Date(2035, 9, 2, 12, 0, 0, 0, time.UTC)}}
-	if _, err := store.SeedPublicDemo(ctx); err != nil {
+	if err := testdb.SeedLogicalTransfer(ctx, source.Pool, true); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := source.Pool.Exec(ctx, `
@@ -45,8 +46,7 @@ func TestSQLServerLogicalRestoreFromPostgres(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(source.Close)
-	store := &Store{db: source, clock: fixedClock{now: time.Date(2035, 9, 2, 12, 0, 0, 0, time.UTC)}}
-	if _, err := store.SeedPublicDemo(ctx); err != nil {
+	if err := testdb.SeedLogicalTransfer(ctx, source.Pool, true); err != nil {
 		t.Fatal(err)
 	}
 	assertLogicalExportRejectsAlteredPostgresLedger(t, ctx, source)
@@ -97,6 +97,8 @@ func TestSQLServerLogicalRestoreFromProductionV29(t *testing.T) {
 
 func assertLogicalRoundTrip(t *testing.T, ctx context.Context, source *DB, sourceBackend, environment, logicalSchema string, target *DB) {
 	t.Helper()
+	sourceCounts := logicalProfileTableCounts(t, ctx, source, logicalSchema)
+	assertLogicalProfileTablesNonEmpty(t, sourceCounts)
 	var archive bytes.Buffer
 	footer, err := transfer.Export(ctx, source.Pool, &archive, transfer.ExportOptions{
 		Environment: environment, Generation: transferTestGeneration, LogicalSchema: logicalSchema,
@@ -138,6 +140,12 @@ func assertLogicalRoundTrip(t *testing.T, ctx context.Context, source *DB, sourc
 	if !result.Verified || result.Inspection.Footer.RootSHA256 != footer.RootSHA256 {
 		t.Fatal("logical restore did not verify the source root")
 	}
+	targetCounts := logicalProfileTableCounts(t, ctx, target, logicalSchema)
+	for table, sourceCount := range sourceCounts {
+		if targetCounts[table] != sourceCount {
+			t.Fatalf("logical table %s restored %d rows, want %d", table, targetCounts[table], sourceCount)
+		}
+	}
 	if !result.Resumed || !failing.returnedUnknownCommit {
 		t.Fatal("logical restore did not resume a partial table or reconcile an unknown commit")
 	}
@@ -150,6 +158,41 @@ func assertLogicalRoundTrip(t *testing.T, ctx context.Context, source *DB, sourc
 	}
 	if !resumed.Resumed || !resumed.Verified {
 		t.Fatal("completed logical restore was not safely resumable")
+	}
+}
+
+func logicalProfileTableCounts(t *testing.T, ctx context.Context, source *DB, logicalSchema string) map[string]int {
+	t.Helper()
+	catalog := transfer.CurrentProfile.Catalog
+	if logicalSchema == transfer.ProductionV29LogicalSchema {
+		catalog = transfer.ProductionV29Profile.Catalog
+	}
+	counts := make(map[string]int, len(catalog))
+	for _, table := range catalog {
+		name := `"` + table.Name + `"`
+		if source.Pool.Dialect() == database.SQLServer {
+			name = `dbo.[` + table.Name + `]`
+		}
+		var count int
+		if err := source.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM `+name).Scan(&count); err != nil {
+			t.Fatalf("count logical fixture table %s: %v", table.Name, err)
+		}
+		counts[table.Name] = count
+	}
+	return counts
+}
+
+func assertLogicalProfileTablesNonEmpty(t *testing.T, counts map[string]int) {
+	t.Helper()
+	var missing []string
+	for table, count := range counts {
+		if count == 0 {
+			missing = append(missing, table)
+		}
+	}
+	if len(missing) != 0 {
+		slices.Sort(missing)
+		t.Fatalf("logical fixture has empty profile tables: %s", strings.Join(missing, ", "))
 	}
 }
 

@@ -382,7 +382,9 @@ var Catalog = []Table{
 		{Name: "created_at", Kind: Instant, Nullable: false},
 		{Name: "sent_at", Kind: Instant, Nullable: true},
 	}},
-	{Name: "demo_import_previews", Key: []string{"token_hash"}, ShopColumn: "shop_id", Columns: []Column{
+	// Both engines enforce one preview per shop. The UUID owner is the portable
+	// key; opaque historical token text has different UTF-16/UTF-8 sort orders.
+	{Name: "demo_import_previews", Key: []string{"shop_id"}, ShopColumn: "shop_id", Columns: []Column{
 		{Name: "token_hash", Kind: Text, Nullable: false},
 		{Name: "shop_id", Kind: UUID, Nullable: false},
 		{Name: "csv_data", Kind: Bytes, Nullable: false},

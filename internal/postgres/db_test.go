@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/wmichelin/clubdue/internal/testdb"
 )
 
 func TestMigrationChecksumsApplyAndSurviveRestart(t *testing.T) {
@@ -126,14 +127,7 @@ func TestPrepareV29Fixture(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := db.Pool.Exec(ctx, `
-		INSERT INTO shops(id,name,slug) VALUES('20000000-0000-4000-8000-000000000001','Production v29 fixture','production-v29-fixture');
-		INSERT INTO users(id,shop_id,email,password_hash,role) VALUES('20000000-0000-4000-8000-000000000002','20000000-0000-4000-8000-000000000001','owner@v29.example','$2a$10$fixture','owner');
-		INSERT INTO customers(id,shop_id,name,email,phone) VALUES
-		('20000000-0000-4000-8000-000000000011','20000000-0000-4000-8000-000000000001','Alpha & Sons',NULL,''),
-		('20000000-0000-4000-8000-000000000012','20000000-0000-4000-8000-000000000001','Bravo <Home>','bravo@example.test',NULL),
-		('20000000-0000-4000-8000-000000000013','20000000-0000-4000-8000-000000000001','Café 🚜','cafe@example.test',''),
-		('20000000-0000-4000-8000-000000000014','20000000-0000-4000-8000-000000000001','Delta > Yard','delta@example.test','555-0100')`); err != nil {
+	if err := testdb.SeedLogicalTransfer(ctx, Wrap(db.Pool), false); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.CheckSchemaThrough(ctx, 29); err != nil {

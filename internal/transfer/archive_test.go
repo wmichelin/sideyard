@@ -25,11 +25,11 @@ func TestCatalogDefinitionAndDigest(t *testing.T) {
 	if err := validateCatalog(ProductionV29Profile.Catalog); err != nil {
 		t.Fatal(err)
 	}
-	const expected = "c0455a4bce2a34d22b17b7e4a81f04fea954276f2e75c25a109655f686566544"
+	const expected = "acc7ad3e5ea72c5c1c572a7763c4f119e04c30e7e134fea4755a860a39171b63"
 	if got := CatalogDigest(); got != expected {
 		t.Fatalf("catalog digest = %s, update expected only with a reviewed schema change", got)
 	}
-	const productionExpected = "11fe5cd62f93af52e787a381a9954372962519624d5b5d40057b6d247fb12863"
+	const productionExpected = "8e063835784b66a22bdd0ebd6590472bf7cc35c0acd16e50d1f676c884e2d3f2"
 	if got := catalogDigest(ProductionV29Profile.Catalog); got != productionExpected {
 		t.Fatalf("production v29 catalog digest = %s, update expected only with a reviewed release-profile change", got)
 	}
