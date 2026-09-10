@@ -93,9 +93,52 @@ must pass the execution plan's independent gates.
 The SQL Server connection/migration boundary can be tested from a checkout with
 `./scripts/sqlserver-rehearsal.sh`. It builds the tests, creates an isolated local
 SQL Server Developer container, runs required real-engine tests, and removes its
-database, network and synthetic credentials. It uses no Azure resources. The
-application still opens PostgreSQL; the new adapter is an inactive foundation
-until the native schema, domain queries and migration/cold-start gates pass.
+database, network and synthetic credentials. It uses no Azure resources. Web
+traffic still opens PostgreSQL; Azure SQL HTTP startup remains fail-closed.
+
+## Staging SQL operator boundary
+
+Only the checked-in wrapper may run native database commands against Azure:
+
+```sh
+export PATH="$PWD/scripts/azure/bin:$PATH"
+az account show --output table
+python3 scripts/azure/sql-operator.py staging check-db
+python3 scripts/azure/sql-operator.py staging migrate
+python3 scripts/azure/sql-operator.py staging check-db
+python3 scripts/azure/sql-operator.py staging maintenance
+```
+
+The wrapper reads the exact server and database from the isolated staging
+Terraform state, checks the active Azure CLI subscription against the resource
+ID, builds a temporary static binary from the checkout, and supplies only the
+operator settings. The binary independently requires `APP_ENV=staging`, an
+Azure host beginning `sideyard-staging-`, database `sideyard`, Azure CLI auth,
+no client credential, and no `DATABASE_URL`. It logs the non-secret target before
+connecting. Commands time out after 15 minutes and release all connections when
+the process exits. The scratch application image has no Azure CLI and is not the
+operator execution environment.
+
+`check-db` is read-only and verifies the complete embedded migration ledger plus
+snapshot isolation settings. `migrate` enables the required isolation settings,
+applies pending native migrations under a session lock, and performs the same
+check. `maintenance` checks the schema first, retires only the exact legacy
+staging demo, then runs visit, demo-expiry, recurrence, renewal, and digest work.
+It is repeatable and stops on its first failure.
+
+Production commands are rejected by this slice. Enabling production requires a
+separate reviewed implementation with an exact artifact gate, verified backup
+and reconciliation evidence, explicit approval, and least-privilege production
+identities. The future HTTP runtime also needs a distinct client identity and
+contained database grants; do not grant DDL to the Blob photo or backup identities.
+
+If access fails, confirm the CLI account and staging firewall allowlist, then
+change the allowlist through a reviewed Terraform plan. Do not add an ad hoc SQL
+login or widen the firewall. Remove obsolete operator addresses afterward while
+preserving the application address. A failed or interrupted command is followed
+by `check-db`; migration checksums and the session lock make a retry safe. Record
+the reviewed source SHA, start/end time, target printed by the wrapper, command
+result, and Azure backup restore window in the delivery evidence.
 
 ## Current deployment and remote recovery
 

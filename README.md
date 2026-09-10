@@ -6,7 +6,8 @@ beside a spreadsheet, calendar, billing tool, or field-service suite. The same
 neutral core supports the established HVAC workflow and a landscaping
 design-partner workflow.
 
-It is a single Go binary with embedded HTML/CSS and Postgres.
+It is a single Go binary with embedded HTML/CSS. Deployed web traffic still uses Postgres;
+the Azure SQL port has a staging-only operator boundary and is not an active web runtime.
 
 ## Local demo in five minutes
 
@@ -94,6 +95,9 @@ checklist, feedback cadence, and honest FAQ, see [docs/CONTROLLED-PILOT.md](docs
 |----------|---------|
 | `APP_ENV` | `development` (default), `staging`, or `production`; staging/production fail closed without their required configuration |
 | `DATABASE_URL` | Postgres connection string |
+| `DATABASE_BACKEND` | Defaults to `postgres`. `azure_sql` is accepted only by the gated Azure operator path; HTTP startup refuses it. |
+| `AZURE_SQL_SERVER` / `AZURE_SQL_DATABASE` | Exact native database target. Staging operator commands require a `sideyard-staging-*` Azure SQL host and database `sideyard`. |
+| `AZURE_SQL_TENANT_ID` / `AZURE_SQL_AUTH_MODE` | Native authentication. Operator commands require the signed-in Azure CLI (`azure_cli`) and reject client secrets. |
 | `SESSION_SECRET` | Required secret for session and homeowner-link hashes |
 | `PUBLIC_URL` | HTTPS public URL required in staging and production |
 | `ENABLE_DEV_ROUTES` | Set to `1` to enable `POST /dev/seed` locally; rejected by staging and production |
@@ -104,6 +108,10 @@ checklist, feedback cadence, and honest FAQ, see [docs/CONTROLLED-PILOT.md](docs
 For audited, operator-run pilot owner provisioning or password recovery, see
 [owner provisioning](docs/OWNER-PROVISIONING.md). Never place production owner
 credentials in the repository or a GitHub workflow.
+
+Native `migrate`, `check-db`, and `maintenance` commands are staging-only and
+load only explicit process environment variables, never `.env`. Run them through
+the target-checking procedure in [the Azure infrastructure runbook](infra/azure/README.md#staging-sql-operator-boundary).
 
 ## Verify
 

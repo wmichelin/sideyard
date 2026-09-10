@@ -191,12 +191,15 @@ func safeInterestCSVCell(value string) string {
 }
 
 func runExportInterest(config Config, out io.Writer) error {
-	if config.DatabaseURL == "" {
-		return fmt.Errorf("DATABASE_URL is required for export-interest")
+	if config.DemoMode() {
+		return fmt.Errorf("a configured database is required for export-interest")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	if config.DatabaseBackend == "azure_sql" {
+		ctx, cancel = databaseCommandContext()
+	}
 	defer cancel()
-	db, err := openDB(ctx, config.DatabaseURL)
+	db, err := openConfiguredDB(ctx, config)
 	if err != nil {
 		return err
 	}

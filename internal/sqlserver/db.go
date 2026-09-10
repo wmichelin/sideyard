@@ -52,10 +52,17 @@ func NewAzure(server, name string, credential azcore.TokenCredential) (*Pool, er
 	}), nil
 }
 
-func azureConfig(server, name string) (msdsn.Config, error) {
+// ValidateAzureEndpoint checks names without creating credentials or connecting.
+func ValidateAzureEndpoint(server, name string) error {
 	if !azureHost.MatchString(server) || !databaseName.MatchString(name) || strings.EqualFold(name, "master") {
-		// Do not include the supplied value; an invalid value may contain a secret.
-		return msdsn.Config{}, fmt.Errorf("invalid Azure SQL server or database name")
+		return fmt.Errorf("invalid Azure SQL server or database name")
+	}
+	return nil
+}
+
+func azureConfig(server, name string) (msdsn.Config, error) {
+	if err := ValidateAzureEndpoint(server, name); err != nil {
+		return msdsn.Config{}, err
 	}
 	return msdsn.Parse("server=" + server + ";database=" + name + ";encrypt=true;TrustServerCertificate=false;tlsmin=1.2;connection timeout=60;app name=Sideyard;disableretry=true")
 }

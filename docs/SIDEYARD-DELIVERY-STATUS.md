@@ -1515,3 +1515,25 @@ paid integrations or live customer payment collection are configured by this cha
   isolated rehearsal is running again before publication.
 - Corrected isolated rehearsal passed in full, including the shared landscaping
   fixture test. All local gates are complete; CSV slice is ready for staging.
+
+### Native database operator boundary — implementation starting
+
+The reviewed next slice is explicit backend configuration, a shared lazy Azure
+factory, and bounded native migrate/check/maintenance commands. Existing operator
+commands will use the selected factory. PostgreSQL remains the deployed default;
+native HTTP startup stays explicitly gated until deadline, idle and rollback work
+passes. This slice creates no Azure schemas or new privileges automatically.
+The six-role runtime review is recorded in the Azure plan: separate startup from
+DDL, verify complete checksums/isolation, preserve public availability, avoid
+unbounded or repeated wakeups, and require transfer/recovery evidence before cutover.
+Staging https://clubdue-staging.michelindigitalmedia.com: importer716a08b deployed,
+manual and browser acceptance passed, including repeat import, rejected service
+changes, tenant isolation and 390/1440px layouts. Production remains unchanged.
+
+The operator implementation is now staging-only. It rejects production, implicit
+`.env` targets, PostgreSQL URLs, application client secrets and mismatched Azure
+server/database names before opening a connection. A checked-in wrapper derives
+the exact target from isolated Terraform state and verifies the active Azure CLI
+subscription. Native HTTP startup remains disabled. Local schema, isolation,
+configuration, token-cache and maintenance checks passed before documentation;
+actual Azure staging execution is the next acceptance gate and is not yet claimed.

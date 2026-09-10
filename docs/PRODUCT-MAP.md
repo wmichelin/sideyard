@@ -13,13 +13,13 @@ for the distinction between provisioned resources and deployed app behavior.
 
 ## Availability snapshot
 
-Reviewed September 9, 2026 against staging release `b1efeae` and the recorded
+Reviewed September 10, 2026 against staging release `716a08b` and the recorded
 release verification. These are verified release states, not a live deployment monitor.
 
 | Label | Meaning |
 | --- | --- |
 | **Live** | Available in production at [getsideyard.com](https://getsideyard.com), source `ae6f16a`, and on staging. The legacy ClubDue hostname remains supported. |
-| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), release `b1efeae`: standalone jobs/site surveys, the single-line work-status badge fix, and configured private Azure photo storage. |
+| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), release `716a08b`: standalone jobs/site surveys, the single-line work-status badge fix, configured private Azure photo storage, and native-compatible CSV import behavior. |
 | **Conditional** | Implemented but requires explicit deployment configuration; not a promise of availability to clients. |
 
 Unless marked otherwise, catalog nodes are **Live**. “Signed in” means a user
@@ -667,6 +667,9 @@ CSS/JS/icons and sample files under `/static/`, operational probes (`/healthz`,
 `/livez`, `/readyz`, `/rollback-safetyz`), disabled deployment-only development
 seeding (`POST /dev/seed`) and the legacy no-database sample screen. Those are
 assets, operator tools or a development fallback, not client product pages.
+The staging-only native `migrate`, `check-db`, and `maintenance` commands are
+documented in the [Azure runbook](../infra/azure/README.md#staging-sql-operator-boundary).
+They do not add a page, and Azure SQL HTTP startup remains disabled.
 POST-only actions are recorded under their originating catalog page instead of
 inventing extra screens. External phone/email/Maps destinations are documented
 as page features rather than Sideyard pages.

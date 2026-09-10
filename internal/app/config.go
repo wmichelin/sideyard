@@ -39,6 +39,8 @@ type OwnerCredentials struct {
 type Config struct {
 	Environment           Environment
 	Address               string
+	DatabaseBackend       string
+	AzureSQL              AzureSQLConfig
 	DatabaseURL           string
 	SessionSecret         string
 	PublicURL             *url.URL
@@ -84,6 +86,23 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 	}
 	config.Address = ":" + port
 	config.DatabaseURL = strings.TrimSpace(getenv("DATABASE_URL"))
+	config.DatabaseBackend = strings.ToLower(strings.TrimSpace(getenv("DATABASE_BACKEND")))
+	if config.DatabaseBackend == "" {
+		config.DatabaseBackend = "postgres"
+	}
+	if config.DatabaseBackend != "postgres" && config.DatabaseBackend != "azure_sql" {
+		return Config{}, fmt.Errorf("DATABASE_BACKEND must be postgres or azure_sql")
+	}
+	if config.DatabaseBackend == "azure_sql" {
+		if config.DatabaseURL != "" {
+			return Config{}, fmt.Errorf("DATABASE_URL must be unset when DATABASE_BACKEND=azure_sql")
+		}
+		var err error
+		config.AzureSQL, err = loadAzureSQLConfig(getenv)
+		if err != nil {
+			return Config{}, err
+		}
+	}
 	config.SessionSecret = getenv("SESSION_SECRET")
 	if config.Environment == EnvironmentDevelopment && config.SessionSecret == "" {
 		config.SessionSecret = developmentSessionSecret
@@ -143,7 +162,7 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 	}
 
 	if config.Environment != EnvironmentDevelopment {
-		if config.DatabaseURL == "" {
+		if config.DemoMode() {
 			return Config{}, fmt.Errorf("DATABASE_URL is required outside development")
 		}
 		if !isStrongSessionSecret(config.SessionSecret) {
@@ -163,7 +182,7 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 }
 
 func (c Config) DemoMode() bool {
-	return c.DatabaseURL == ""
+	return c.DatabaseBackend != "azure_sql" && c.DatabaseURL == ""
 }
 
 func (c Config) TestPaymentStubEnabled() bool {

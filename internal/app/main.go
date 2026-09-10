@@ -23,6 +23,13 @@ var staticFS embed.FS
 
 // Run starts the Sideyard application or executes a supported operator command.
 func Run(args []string) error {
+	if len(args) == 1 && isNativeDatabaseCommand(args[0]) {
+		config, err := loadDatabaseOperatorConfig(os.Getenv)
+		if err != nil {
+			return err
+		}
+		return run(config, args)
+	}
 	loadEnvFile(".env")
 	config, err := LoadConfig(os.Getenv)
 	if err != nil {
@@ -31,7 +38,14 @@ func Run(args []string) error {
 	return run(config, args)
 }
 
+func isNativeDatabaseCommand(command string) bool {
+	return command == "migrate" || command == "check-db" || command == "maintenance"
+}
+
 func run(config Config, args []string) error {
+	if len(args) == 1 && isNativeDatabaseCommand(args[0]) {
+		return runDatabaseCommand(config, args[0])
+	}
 	if len(args) > 0 {
 		if len(args) == 1 && args[0] == "sync-photos" {
 			return runSyncPhotos(config)
@@ -43,6 +57,9 @@ func run(config Config, args []string) error {
 			return fmt.Errorf("unsupported command")
 		}
 		return runProvisionOwner(config)
+	}
+	if config.DatabaseBackend == "azure_sql" {
+		return fmt.Errorf("Azure SQL HTTP startup is not enabled yet; use explicit operator commands while runtime and recovery checks are completed")
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -233,16 +250,18 @@ func runProvisionOwner(config Config) error {
 	if err != nil {
 		return err
 	}
-	if config.DatabaseURL == "" {
-		return fmt.Errorf("DATABASE_URL is required for provision-owner")
+	if config.DemoMode() {
+		return fmt.Errorf("a configured database is required for provision-owner")
 	}
-	db, err := openDB(context.Background(), config.DatabaseURL)
+	ctx, done := databaseCommandContext()
+	defer done()
+	db, err := openConfiguredDB(ctx, config)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
 	auth := newAuth(db, config.SessionSecret, config.Environment != EnvironmentDevelopment)
-	action, err := auth.provisionOwner(context.Background(), credentials)
+	action, err := auth.provisionOwner(ctx, credentials)
 	if err != nil {
 		return fmt.Errorf("provision owner: %w", err)
 	}

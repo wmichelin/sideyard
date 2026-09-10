@@ -106,6 +106,14 @@ for which environment is actually connected. Historical backup files keep their
 previous retention. New backups use the versioned 39-byte authentication sidecar;
 old public-checksum sidecars require explicit isolated legacy recovery.
 
+The native database operator is currently staging-only. Use the
+[target-checking Azure wrapper](../infra/azure/README.md#staging-sql-operator-boundary),
+which rejects production, client-secret auth, an implicit `.env`, a PostgreSQL
+URL, and a server/database that does not match staging. Run the read-only check
+before and after any migration or maintenance window. Azure SQL web startup is
+still disabled, so these commands do not switch staging traffic away from its
+current PostgreSQL database.
+
 - Use the authenticated encrypted backup and isolated restore-rehearsal
   commands in [DEPLOY.md](DEPLOY.md#encrypted-postgres-backups-and-restore-rehearsal).
   Backups and restores need distinct approved secret-manager values for

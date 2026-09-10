@@ -52,12 +52,12 @@ func newAzurePhotoStorage(c AzurePhotoConfig) (photoObjectStorage, error) {
 // A bounded command makes interrupted handoffs recoverable from the CLI or a
 // scheduled maintenance window without a polling worker holding SQL awake.
 func runSyncPhotos(config Config) error {
-	if config.DatabaseURL == "" || config.AzurePhotos.AccountURL == "" {
+	if config.DemoMode() || config.AzurePhotos.AccountURL == "" {
 		return errors.New("sync-photos requires a database and configured Azure photo storage")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	ctx, cancel := databaseCommandContext()
 	defer cancel()
-	db, err := openDB(ctx, config.DatabaseURL)
+	db, err := openConfiguredDB(ctx, config)
 	if err != nil {
 		return err
 	}
