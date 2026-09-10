@@ -1388,3 +1388,54 @@ paid integrations or live customer payment collection are configured by this cha
 - Demo-controls full checks passed: fresh both-engine Go suite (app190.831s),
   vet, static build and isolated SQL rehearsal. Graph validation passed36/64.
   Staging deployment next; native fixture/CSV runtime remain gated.
+
+
+- Demo-controls source `c490848371602bc054ce2a19b360413eccf03e3a` passed CI
+  [34432289197](https://github.com/wmichelin/clubdue/actions/runs/34432289197) and
+  staging [34432289273](https://github.com/wmichelin/clubdue/actions/runs/34432289273).
+  Manual smoke and running revision/image readback passed:
+  `ghcr.io/wmichelin/clubdue@sha256:c02e2668fdb09e3bbcf3d4749c7b50b1a8a315c62de0cc264b5780cbe651e2bd`.
+  Smoke includes isolated writable demos, expired-session rejection and bounded
+  CSV preview/commit plus work/renewal actions. No new page behavior in this slice.
+  Production unchanged.
+
+- Public-fixture plan refinement reviewed: native base inserts use one typed JSON
+  batch with stable fixture-key/NEWID maps, full text/array preservation and checked
+  counts per table. Go computes dates; snapshots come from inserted templates.
+  This avoids about150 separate insert calls. Shared hydration uses the same captured
+  timestamp throughout, including a seed that crosses UTC midnight. Session-failure
+  cleanup uses the same bounded native/PG helper as hydration failure.
+
+### Native public seeding — implementation and focused verification
+
+- One native typed-JSON base batch creates stable fixture maps and inserts all
+  six domains with expected-count checks; array snapshots come from the inserted
+  templates. No cross-transaction Store calls are made for the uncommitted shop.
+  Go computes dates; hydration uses one captured clock across midnight/year-end.
+- Process admission now waits with cancellation. Database admission keeps the
+  transaction-owned capacity lock with checked native return code. Post-failure
+  cleanup is bounded to five seconds and targets only the newly allocated demo.
+  A lost base-commit acknowledgement also invokes cleanup; a lost session-commit
+  acknowledgement cannot issue a cookie and cleans up the session via shop cascade.
+- Shared realistic-book and seasonal-calendar tests pass both engines, including
+  dashboard MRR/renewals/work counts, lifecycle states, contacts and zero initial
+  budgets. Existing PostgreSQL20-start admission test passes in2.39s. A single
+  native warm seed measured0.85s locally; native concurrent-load and actual Azure
+  warm/cold timing remain activation gates, not implied by these local results.
+- Native focused checks pass late base-insert rollback, post-commit hydration
+  cleanup, missing JSON-map count failure, real successful base/session commits
+  followed by simulated acknowledgement failure, single-clock year boundary,
+  local/database admission cancellation and full hydration with one connection.
+  Two independent Store instances competing for the last of100 slots yield one
+  admission. Development seeding preserves its three agreements on repeat calls
+  and does not reinterpret lookup failures as missing rows.
+- Architect/staff, DevOps and product/unit/QA reviews identified the ambiguous base
+  commit gap; corrected transaction-level failure tests prove the fix. No current
+  fixture or user-limit change; native runtime and domain CSV imports remain gated.
+  Full suite/vet/build and clean SQL rehearsal running; staging verifiedc490848.
+
+- Public-seeding complete checks passed: fresh PostgreSQL/native Go suite
+  (`go test -count=1 ./...`, app204.841s), `go vet ./...`, static binary build
+  and `scripts/sqlserver-rehearsal.sh` against a fresh isolated SQL Server.
+  Both combined commands exited0. Staging deployment and browser acceptance
+  are next; the application database remains PostgreSQL.

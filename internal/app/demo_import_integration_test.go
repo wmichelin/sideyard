@@ -552,7 +552,7 @@ func countShopRows(t *testing.T, ctx context.Context, db *DB, table, shopID stri
 		t.Fatalf("unsupported test table %q", table)
 	}
 	var count int
-	if err := db.Pool.QueryRow(ctx, "SELECT count(*) FROM "+table+" WHERE shop_id = $1", shopID).Scan(&count); err != nil {
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), "SELECT count(*) FROM "+table+" WHERE shop_id = $1", "SELECT COUNT(*) FROM dbo."+table+" WHERE shop_id=CONVERT(uniqueidentifier,@p1)"), shopID).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
 	return count

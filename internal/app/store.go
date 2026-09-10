@@ -104,10 +104,11 @@ type RenewalItem struct {
 }
 
 type Store struct {
-	db               *DB
-	clock            Clock
-	publicDemoSeedMu sync.Mutex
-	photoObjects     photoObjectStorage
+	db                 *DB
+	clock              Clock
+	publicDemoSeedOnce sync.Once
+	publicDemoSeedGate chan struct{}
+	photoObjects       photoObjectStorage
 }
 
 func (s *Store) nowUTC() time.Time {

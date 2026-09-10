@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"errors"
 	"log"
 	"net/http"
@@ -43,8 +42,7 @@ func (s *Server) handlePublicDemoPost(w http.ResponseWriter, r *http.Request) {
 	}
 	token, err := s.auth.createSessionUntil(r.Context(), result.UserID, result.ExpiresAt)
 	if err != nil {
-		_, _ = s.store.db.Pool.Exec(context.WithoutCancel(r.Context()),
-			`DELETE FROM shops WHERE id = $1 AND kind = 'demo_sandbox'`, result.ShopID)
+		s.store.cleanupFailedPublicDemo(r.Context(), result.ShopID)
 		log.Printf("public demo session creation failed request_id=%s", requestIDFromContext(r.Context()))
 		http.Error(w, "The demo could not start. Please try again.", http.StatusServiceUnavailable)
 		return

@@ -9,6 +9,9 @@ import (
 )
 
 func insertPublicDemoFixtureTx(ctx context.Context, tx database.Tx, shopID string, now time.Time) error {
+	if tx.Dialect() == database.SQLServer {
+		return insertSQLServerPublicDemoFixture(ctx, tx, shopID, now)
+	}
 	planIDs := make(map[string]string, len(publicDemoFixture.Plans))
 	for _, plan := range publicDemoFixture.Plans {
 		var id string
@@ -144,19 +147,19 @@ func (s *Store) hydratePublicDemoDerivedData(ctx context.Context, shopID string,
 }
 
 func (s *Store) curatePublicDemoRecurringHistory(ctx context.Context, shopID string, now time.Time) error {
-	if _, err := s.db.Pool.Exec(ctx, `
+	if _, err := s.db.Pool.Exec(ctx, database.Statement(s.db.Pool.Dialect(), `
 		UPDATE service_occurrences o
 		SET status = 'completed', completed_at = o.due_on + interval '16 hours',
 			notes = 'Completed on the fictional demo route', updated_at = now()
 		FROM service_schedules sc
 		JOIN agreements a ON a.id = sc.agreement_id AND a.shop_id = sc.shop_id
 		WHERE o.shop_id = $1 AND o.schedule_id = sc.id
-		  AND sc.active AND a.status = 'active' AND o.due_on < $2::date`, shopID, now); err != nil {
+		  AND sc.active AND a.status = 'active' AND o.due_on < $2::date`, `UPDATE o SET status=N'completed',completed_at=DATEADD(hour,16,CONVERT(datetime2(6),o.due_on)),notes=N'Completed on the fictional demo route',updated_at=SYSUTCDATETIME() FROM dbo.service_occurrences o JOIN dbo.service_schedules sc ON sc.id=o.schedule_id AND sc.shop_id=o.shop_id JOIN dbo.agreements a ON a.id=sc.agreement_id AND a.shop_id=sc.shop_id WHERE o.shop_id=CONVERT(uniqueidentifier,@p1) AND sc.active=1 AND a.status=N'active' AND o.due_on<CONVERT(date,@p2)`), shopID, now); err != nil {
 		return fmt.Errorf("complete public demo recurring history: %w", err)
 	}
 
 	for _, outcome := range publicDemoFixture.RecurringOutcomes {
-		tag, err := s.db.Pool.Exec(ctx, `
+		tag, err := s.db.Pool.Exec(ctx, database.Statement(s.db.Pool.Dialect(), `
 			UPDATE service_occurrences
 			SET status = $3, completed_at = NULL, notes = $4, updated_at = now()
 			WHERE id = (
@@ -165,7 +168,7 @@ func (s *Store) curatePublicDemoRecurringHistory(ctx context.Context, shopID str
 				JOIN service_schedules sc ON sc.id = o.schedule_id AND sc.shop_id = o.shop_id
 				WHERE o.shop_id = $1 AND sc.external_id = $2 AND o.due_on < $5::date
 				ORDER BY o.due_on DESC LIMIT 1
-			)`, shopID, "demo-service-"+outcome.ScheduleKey, outcome.Status, outcome.Notes, now)
+			)`, `UPDATE dbo.service_occurrences SET status=@p3,completed_at=NULL,notes=@p4,updated_at=SYSUTCDATETIME() WHERE id=(SELECT TOP(1) o.id FROM dbo.service_occurrences o JOIN dbo.service_schedules sc ON sc.id=o.schedule_id AND sc.shop_id=o.shop_id WHERE o.shop_id=CONVERT(uniqueidentifier,@p1) AND sc.external_id=@p2 AND DATALENGTH(sc.external_id)=DATALENGTH(@p2) AND o.due_on<CONVERT(date,@p5) ORDER BY o.due_on DESC)`), shopID, "demo-service-"+outcome.ScheduleKey, outcome.Status, outcome.Notes, now)
 		if err != nil {
 			return fmt.Errorf("curate public demo recurring outcome %q: %w", outcome.ScheduleKey, err)
 		}
@@ -179,14 +182,14 @@ func (s *Store) curatePublicDemoRecurringHistory(ctx context.Context, shopID str
 		if history.Status == "completed" {
 			completedAt = now.AddDate(0, 0, -history.DaysAgo).Add(16 * time.Hour)
 		}
-		tag, err := s.db.Pool.Exec(ctx, `
+		tag, err := s.db.Pool.Exec(ctx, database.Statement(s.db.Pool.Dialect(), `
 			INSERT INTO service_occurrences (
 				shop_id, schedule_id, due_on, status, completed_at, notes
 			)
 			SELECT $1, sc.id, $3::date, $4, $5, $6
 			FROM service_schedules sc
 			WHERE sc.shop_id = $1 AND sc.external_id = $2
-			ON CONFLICT (shop_id, schedule_id, due_on) DO NOTHING`,
+			ON CONFLICT (shop_id, schedule_id, due_on) DO NOTHING`, `INSERT INTO dbo.service_occurrences(shop_id,schedule_id,due_on,status,completed_at,notes) SELECT CONVERT(uniqueidentifier,@p1),sc.id,CONVERT(date,@p3),@p4,@p5,@p6 FROM dbo.service_schedules sc WHERE sc.shop_id=CONVERT(uniqueidentifier,@p1) AND sc.external_id=@p2 AND DATALENGTH(sc.external_id)=DATALENGTH(@p2) AND NOT EXISTS(SELECT 1 FROM dbo.service_occurrences o WHERE o.shop_id=sc.shop_id AND o.schedule_id=sc.id AND o.due_on=CONVERT(date,@p3))`),
 			shopID, "demo-service-"+history.ScheduleKey, now.AddDate(0, 0, -history.DaysAgo),
 			history.Status, completedAt, history.Notes)
 		if err != nil {
@@ -213,7 +216,7 @@ func (s *Store) curatePublicDemoSeasonalHistory(ctx context.Context, shopID stri
 		if history.Outcome == "scheduled" {
 			auditTime = now
 		}
-		tag, err := s.db.Pool.Exec(ctx, `
+		tag, err := s.db.Pool.Exec(ctx, database.Statement(s.db.Pool.Dialect(), `
 			UPDATE visit_dues vd
 			SET status = $3,
 				scheduled_at = CASE WHEN $3 = 'scheduled' THEN $4::timestamptz ELSE NULL END,
@@ -223,7 +226,7 @@ func (s *Store) curatePublicDemoSeasonalHistory(ctx context.Context, shopID stri
 					ELSE 'Assigned on the fictional demo route' END
 			FROM agreements a
 			WHERE vd.shop_id = $1 AND vd.agreement_id = a.id AND a.shop_id = vd.shop_id
-			  AND a.external_id = $2 AND vd.season = $5`,
+			  AND a.external_id = $2 AND vd.season = $5`, `UPDATE vd SET status=@p3,scheduled_at=CASE WHEN @p3=N'scheduled' THEN @p4 ELSE NULL END,completed_at=CASE WHEN @p3=N'completed' THEN @p4 ELSE NULL END,notes=CASE WHEN @p3=N'completed' THEN N'Completed in the fictional demo' ELSE N'Assigned on the fictional demo route' END FROM dbo.visit_dues vd JOIN dbo.agreements a ON a.id=vd.agreement_id AND a.shop_id=vd.shop_id WHERE vd.shop_id=CONVERT(uniqueidentifier,@p1) AND a.external_id=@p2 AND DATALENGTH(a.external_id)=DATALENGTH(@p2) AND vd.season=@p5`),
 			shopID, "demo-agreement-"+history.AgreementKey, history.Outcome, auditTime, season)
 		if err != nil {
 			return fmt.Errorf("curate public demo seasonal visit %q: %w", history.AgreementKey, err)
@@ -232,9 +235,9 @@ func (s *Store) curatePublicDemoSeasonalHistory(ctx context.Context, shopID stri
 			return fmt.Errorf("public demo seasonal visit %q was not curated", history.AgreementKey)
 		}
 		if history.Outcome == "completed" {
-			tag, err := s.db.Pool.Exec(ctx, `
+			tag, err := s.db.Pool.Exec(ctx, database.Statement(s.db.Pool.Dialect(), `
 				UPDATE agreements SET visits_used = visits_used + 1, updated_at = now()
-				WHERE shop_id = $1 AND external_id = $2 AND visits_used < visits_entitled`,
+				WHERE shop_id = $1 AND external_id = $2 AND visits_used < visits_entitled`, `UPDATE dbo.agreements SET visits_used=visits_used+1,updated_at=SYSUTCDATETIME() WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND external_id=@p2 AND DATALENGTH(external_id)=DATALENGTH(@p2) AND visits_used<visits_entitled`),
 				shopID, "demo-agreement-"+history.AgreementKey)
 			if err != nil {
 				return fmt.Errorf("update public demo seasonal entitlement %q: %w", history.AgreementKey, err)
@@ -249,12 +252,12 @@ func (s *Store) curatePublicDemoSeasonalHistory(ctx context.Context, shopID stri
 
 func (s *Store) curatePublicDemoRenewalHistory(ctx context.Context, shopID string) error {
 	for _, history := range publicDemoFixture.RenewalHistory {
-		tag, err := s.db.Pool.Exec(ctx, `
+		tag, err := s.db.Pool.Exec(ctx, database.Statement(s.db.Pool.Dialect(), `
 			UPDATE renewal_tasks t
 			SET status = $3, notes = $4, updated_at = now()
 			FROM agreements a
 			WHERE t.shop_id = $1 AND t.agreement_id = a.id AND a.shop_id = t.shop_id
-			  AND a.external_id = $2 AND t.milestone_days = $5`,
+			  AND a.external_id = $2 AND t.milestone_days = $5`, `UPDATE t SET status=@p3,notes=@p4,updated_at=SYSUTCDATETIME() FROM dbo.renewal_tasks t JOIN dbo.agreements a ON a.id=t.agreement_id AND a.shop_id=t.shop_id WHERE t.shop_id=CONVERT(uniqueidentifier,@p1) AND a.external_id=@p2 AND DATALENGTH(a.external_id)=DATALENGTH(@p2) AND t.milestone_days=@p5`),
 			shopID, "demo-agreement-"+history.AgreementKey, history.Status,
 			history.Notes, history.MilestoneDays)
 		if err != nil {
@@ -287,14 +290,14 @@ func publicDemoSeasonalState(now time.Time) (completedSeason string, allowComple
 
 func (s *Store) verifyPublicDemoRuntimeBounds(ctx context.Context, shopID string, now time.Time) error {
 	var totalOccurrences, dueOccurrences int
-	if err := s.db.Pool.QueryRow(ctx, `
+	if err := s.db.Pool.QueryRow(ctx, database.Statement(s.db.Pool.Dialect(), `
 		SELECT count(*), count(*) FILTER (
 			WHERE o.status = 'due' AND sc.active AND a.status = 'active'
 		)
 		FROM service_occurrences o
 		JOIN service_schedules sc ON sc.id = o.schedule_id AND sc.shop_id = o.shop_id
 		JOIN agreements a ON a.id = sc.agreement_id AND a.shop_id = sc.shop_id
-		WHERE o.shop_id = $1`, shopID).Scan(&totalOccurrences, &dueOccurrences); err != nil {
+		WHERE o.shop_id = $1`, `SELECT COUNT_BIG(*),COUNT_BIG(CASE WHEN o.status=N'due' AND sc.active=1 AND a.status=N'active' THEN 1 END) FROM dbo.service_occurrences o JOIN dbo.service_schedules sc ON sc.id=o.schedule_id AND sc.shop_id=o.shop_id JOIN dbo.agreements a ON a.id=sc.agreement_id AND a.shop_id=sc.shop_id WHERE o.shop_id=CONVERT(uniqueidentifier,@p1)`), shopID).Scan(&totalOccurrences, &dueOccurrences); err != nil {
 		return fmt.Errorf("measure public demo recurring work: %w", err)
 	}
 	if totalOccurrences == 0 || totalOccurrences > publicDemoBaseOccurrenceCeiling {
@@ -305,15 +308,15 @@ func (s *Store) verifyPublicDemoRuntimeBounds(ctx context.Context, shopID string
 	}
 
 	var visitCount, visibleRenewalTasks int
-	if err := s.db.Pool.QueryRow(ctx, `SELECT count(*) FROM visit_dues WHERE shop_id = $1`, shopID).Scan(&visitCount); err != nil {
+	if err := s.db.Pool.QueryRow(ctx, database.Statement(s.db.Pool.Dialect(), `SELECT count(*) FROM visit_dues WHERE shop_id = $1`, `SELECT COUNT_BIG(*) FROM dbo.visit_dues WHERE shop_id=CONVERT(uniqueidentifier,@p1)`), shopID).Scan(&visitCount); err != nil {
 		return fmt.Errorf("measure public demo seasonal work: %w", err)
 	}
 	if visitCount != publicDemoSeasonalVisitCount {
 		return fmt.Errorf("public demo generated %d seasonal visits", visitCount)
 	}
-	if err := s.db.Pool.QueryRow(ctx, `
+	if err := s.db.Pool.QueryRow(ctx, database.Statement(s.db.Pool.Dialect(), `
 		SELECT count(*) FROM renewal_tasks
-		WHERE shop_id = $1 AND (due_at <= $2::date OR status <> 'open')`,
+		WHERE shop_id = $1 AND (due_at <= $2::date OR status <> 'open')`, `SELECT COUNT_BIG(*) FROM dbo.renewal_tasks WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND (due_at<=CONVERT(date,@p2) OR status<>N'open')`),
 		shopID, now).Scan(&visibleRenewalTasks); err != nil {
 		return fmt.Errorf("measure public demo renewal work: %w", err)
 	}

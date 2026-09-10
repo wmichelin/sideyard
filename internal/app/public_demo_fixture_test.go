@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/wmichelin/clubdue/internal/database"
 )
 
 func TestPublicDemoFixtureContract(t *testing.T) {
@@ -31,15 +33,19 @@ func TestPublicDemoFixtureContract(t *testing.T) {
 }
 
 func TestPublicDemoHydratesRealisticLandscapingBook(t *testing.T) {
-	databaseURL := integrationDatabaseURL(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	db, err := openDB(ctx, databaseURL)
+	db, err := openDB(context.Background(), integrationDatabaseURL(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
-
+	testPublicDemoHydratesRealisticLandscapingBook(t, db)
+}
+func TestSQLServerPublicDemoHydratesRealisticLandscapingBook(t *testing.T) {
+	testPublicDemoHydratesRealisticLandscapingBook(t, sqlServerTestDB(t))
+}
+func testPublicDemoHydratesRealisticLandscapingBook(t *testing.T, db *DB) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
 	now := time.Date(2035, time.September, 2, 12, 0, 0, 0, time.UTC)
 	store := &Store{db: db, clock: fixedClock{now: now}}
 	result, err := store.SeedPublicDemo(ctx)
@@ -63,8 +69,9 @@ func TestPublicDemoHydratesRealisticLandscapingBook(t *testing.T) {
 	}
 
 	statusCounts := make(map[AgreementStatus]int)
-	rows, err := db.Pool.Query(ctx, `
-		SELECT status, count(*) FROM agreements WHERE shop_id = $1 GROUP BY status`, result.ShopID)
+	rows, err := db.Pool.Query(ctx, database.Statement(db.Pool.Dialect(), `
+		SELECT status, count(*) FROM agreements WHERE shop_id = $1 GROUP BY status`, `
+		SELECT status, count(*) FROM agreements WHERE shop_id = CONVERT(uniqueidentifier,@p1) GROUP BY status`), result.ShopID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,28 +95,40 @@ func TestPublicDemoHydratesRealisticLandscapingBook(t *testing.T) {
 	}
 
 	var cityCount, customerOnlyCount, multiLocationCount, sentinelCount int
-	if err := db.Pool.QueryRow(ctx, `SELECT count(DISTINCT city) FROM properties WHERE shop_id = $1`, result.ShopID).Scan(&cityCount); err != nil {
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `SELECT count(DISTINCT city) FROM properties WHERE shop_id = $1`, `SELECT count(DISTINCT city) FROM properties WHERE shop_id = CONVERT(uniqueidentifier,@p1)`), result.ShopID).Scan(&cityCount); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Pool.QueryRow(ctx, `
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `
 		SELECT count(*) FROM customers c
 		WHERE c.shop_id = $1 AND NOT EXISTS (
 			SELECT 1 FROM properties p WHERE p.shop_id = c.shop_id AND p.customer_id = c.id
-		)`, result.ShopID).Scan(&customerOnlyCount); err != nil {
+		)`, `
+		SELECT count(*) FROM customers c
+		WHERE c.shop_id = CONVERT(uniqueidentifier,@p1) AND NOT EXISTS (
+			SELECT 1 FROM properties p WHERE p.shop_id = c.shop_id AND p.customer_id = c.id
+		)`), result.ShopID).Scan(&customerOnlyCount); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Pool.QueryRow(ctx, `
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `
 		SELECT count(*) FROM (
 			SELECT customer_id FROM properties WHERE shop_id = $1
 			GROUP BY customer_id HAVING count(*) > 1
-		) multi_location`, result.ShopID).Scan(&multiLocationCount); err != nil {
+		) multi_location`, `
+		SELECT count(*) FROM (
+			SELECT customer_id FROM properties WHERE shop_id = CONVERT(uniqueidentifier,@p1)
+			GROUP BY customer_id HAVING count(*) > 1
+		) multi_location`), result.ShopID).Scan(&multiLocationCount); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Pool.QueryRow(ctx, `
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `
 		SELECT count(*) FROM customers
 		WHERE shop_id = $1 AND name IN (
 			'Maya Thompson', 'Willowmere Commons HOA', 'Buckeye Key Property Management'
-		)`, result.ShopID).Scan(&sentinelCount); err != nil {
+		)`, `
+		SELECT count(*) FROM customers
+		WHERE shop_id = CONVERT(uniqueidentifier,@p1) AND name IN (
+			'Maya Thompson', 'Willowmere Commons HOA', 'Buckeye Key Property Management'
+		)`), result.ShopID).Scan(&sentinelCount); err != nil {
 		t.Fatal(err)
 	}
 	if cityCount < 4 || customerOnlyCount != 4 || multiLocationCount != 3 || sentinelCount != 3 {
@@ -117,7 +136,7 @@ func TestPublicDemoHydratesRealisticLandscapingBook(t *testing.T) {
 			cityCount, customerOnlyCount, multiLocationCount, sentinelCount)
 	}
 
-	contacts, err := db.Pool.Query(ctx, `SELECT email, phone FROM customers WHERE shop_id = $1`, result.ShopID)
+	contacts, err := db.Pool.Query(ctx, database.Statement(db.Pool.Dialect(), `SELECT email, phone FROM customers WHERE shop_id = $1`, `SELECT email, phone FROM customers WHERE shop_id = CONVERT(uniqueidentifier,@p1)`), result.ShopID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +171,7 @@ func TestPublicDemoHydratesRealisticLandscapingBook(t *testing.T) {
 	}
 
 	var activeSchedules, pausedSchedules, inactiveAgreementSchedules, activeCadences int
-	if err := db.Pool.QueryRow(ctx, `
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `
 		SELECT
 			count(*) FILTER (WHERE sc.active AND a.status = 'active'),
 			count(*) FILTER (WHERE NOT sc.active),
@@ -161,7 +180,7 @@ func TestPublicDemoHydratesRealisticLandscapingBook(t *testing.T) {
 				FILTER (WHERE sc.active AND a.status = 'active')
 		FROM service_schedules sc
 		JOIN agreements a ON a.id = sc.agreement_id AND a.shop_id = sc.shop_id
-		WHERE sc.shop_id = $1`, result.ShopID).Scan(
+		WHERE sc.shop_id = $1`, `SELECT COUNT(CASE WHEN sc.active=1 AND a.status=N'active' THEN 1 END),COUNT(CASE WHEN sc.active=0 THEN 1 END),COUNT(CASE WHEN sc.active=1 AND a.status<>N'active' THEN 1 END),COUNT(DISTINCT CASE WHEN sc.active=1 AND a.status=N'active' THEN sc.cadence_unit+N'/'+CONVERT(nvarchar(12),sc.cadence_interval) END) FROM dbo.service_schedules sc JOIN dbo.agreements a ON a.id=sc.agreement_id AND a.shop_id=sc.shop_id WHERE sc.shop_id=CONVERT(uniqueidentifier,@p1)`), result.ShopID).Scan(
 		&activeSchedules, &pausedSchedules, &inactiveAgreementSchedules, &activeCadences,
 	); err != nil {
 		t.Fatal(err)
@@ -173,7 +192,7 @@ func TestPublicDemoHydratesRealisticLandscapingBook(t *testing.T) {
 	}
 
 	var totalOccurrences, dueOccurrences, overdueOccurrences, completedOccurrences, skippedOccurrences, upcomingOccurrences, dueThroughToday int
-	if err := db.Pool.QueryRow(ctx, `
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `
 		SELECT count(*),
 			count(*) FILTER (WHERE o.status = 'due' AND sc.active AND a.status = 'active'),
 			count(*) FILTER (WHERE o.status = 'due' AND sc.active AND a.status = 'active' AND o.due_on < $2::date),
@@ -184,7 +203,18 @@ func TestPublicDemoHydratesRealisticLandscapingBook(t *testing.T) {
 		FROM service_occurrences o
 		JOIN service_schedules sc ON sc.id = o.schedule_id AND sc.shop_id = o.shop_id
 		JOIN agreements a ON a.id = sc.agreement_id AND a.shop_id = sc.shop_id
-		WHERE o.shop_id = $1`, result.ShopID, now).Scan(
+		WHERE o.shop_id = $1`, `
+		SELECT count(*),
+			COUNT(CASE WHEN o.status = 'due' AND sc.active=1 AND a.status = 'active' THEN 1 END),
+			COUNT(CASE WHEN o.status = 'due' AND sc.active=1 AND a.status = 'active' AND o.due_on < CONVERT(date,@p2) THEN 1 END),
+			COUNT(CASE WHEN o.status = 'completed' THEN 1 END),
+			COUNT(CASE WHEN o.status = 'skipped' THEN 1 END),
+			COUNT(CASE WHEN o.status = 'due' AND sc.active=1 AND a.status = 'active' AND o.due_on >= CONVERT(date,@p2) THEN 1 END),
+			COUNT(CASE WHEN o.status = 'due' AND sc.active=1 AND a.status = 'active' AND o.due_on <= CONVERT(date,@p2) THEN 1 END)
+		FROM service_occurrences o
+		JOIN service_schedules sc ON sc.id = o.schedule_id AND sc.shop_id = o.shop_id
+		JOIN agreements a ON a.id = sc.agreement_id AND a.shop_id = sc.shop_id
+		WHERE o.shop_id = CONVERT(uniqueidentifier,@p1)`), result.ShopID, now).Scan(
 		&totalOccurrences, &dueOccurrences, &overdueOccurrences,
 		&completedOccurrences, &skippedOccurrences, &upcomingOccurrences, &dueThroughToday,
 	); err != nil {
@@ -217,15 +247,20 @@ func TestPublicDemoHydratesRealisticLandscapingBook(t *testing.T) {
 	}
 
 	var completedVisits, scheduledVisits, dueVisits, visitsUsed int
-	if err := db.Pool.QueryRow(ctx, `
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `
 		SELECT
 			count(*) FILTER (WHERE status = 'completed'),
 			count(*) FILTER (WHERE status = 'scheduled'),
 			count(*) FILTER (WHERE status = 'due')
-		FROM visit_dues WHERE shop_id = $1`, result.ShopID).Scan(&completedVisits, &scheduledVisits, &dueVisits); err != nil {
+		FROM visit_dues WHERE shop_id = $1`, `
+		SELECT
+			COUNT(CASE WHEN status = 'completed' THEN 1 END),
+			COUNT(CASE WHEN status = 'scheduled' THEN 1 END),
+			COUNT(CASE WHEN status = 'due' THEN 1 END)
+		FROM visit_dues WHERE shop_id = CONVERT(uniqueidentifier,@p1)`), result.ShopID).Scan(&completedVisits, &scheduledVisits, &dueVisits); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Pool.QueryRow(ctx, `SELECT sum(visits_used) FROM agreements WHERE shop_id = $1`, result.ShopID).Scan(&visitsUsed); err != nil {
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `SELECT sum(visits_used) FROM agreements WHERE shop_id = $1`, `SELECT sum(visits_used) FROM agreements WHERE shop_id = CONVERT(uniqueidentifier,@p1)`), result.ShopID).Scan(&visitsUsed); err != nil {
 		t.Fatal(err)
 	}
 	if completedVisits != 3 || scheduledVisits != 1 || dueVisits != 4 || visitsUsed != 3 {
@@ -263,15 +298,18 @@ func TestPublicDemoHydratesRealisticLandscapingBook(t *testing.T) {
 	}
 
 	var mutationsUsed, importRowsUsed, importOccurrencesUsed, sampleOnlyCustomers int
-	if err := db.Pool.QueryRow(ctx, `
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `
 		SELECT demo_mutations_used, demo_import_rows_used, demo_import_occurrences_used
-		FROM shops WHERE id = $1`, result.ShopID).Scan(
+		FROM shops WHERE id = $1`, `
+		SELECT demo_mutations_used, demo_import_rows_used, demo_import_occurrences_used
+		FROM shops WHERE id = CONVERT(uniqueidentifier,@p1)`), result.ShopID).Scan(
 		&mutationsUsed, &importRowsUsed, &importOccurrencesUsed,
 	); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Pool.QueryRow(ctx, `
-		SELECT count(*) FROM customers WHERE shop_id = $1 AND name = 'Jordan Green'`,
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `
+		SELECT count(*) FROM customers WHERE shop_id = $1 AND name = 'Jordan Green'`, `
+		SELECT count(*) FROM customers WHERE shop_id = CONVERT(uniqueidentifier,@p1) AND name = 'Jordan Green'`),
 		result.ShopID).Scan(&sampleOnlyCustomers); err != nil {
 		t.Fatal(err)
 	}
@@ -282,15 +320,19 @@ func TestPublicDemoHydratesRealisticLandscapingBook(t *testing.T) {
 }
 
 func TestPublicDemoSeasonalHistoryFollowsCalendar(t *testing.T) {
-	databaseURL := integrationDatabaseURL(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	db, err := openDB(ctx, databaseURL)
+	db, err := openDB(context.Background(), integrationDatabaseURL(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
-
+	testPublicDemoSeasonalHistoryFollowsCalendar(t, db)
+}
+func TestSQLServerPublicDemoSeasonalHistoryFollowsCalendar(t *testing.T) {
+	testPublicDemoSeasonalHistoryFollowsCalendar(t, sqlServerTestDB(t))
+}
+func testPublicDemoSeasonalHistoryFollowsCalendar(t *testing.T, db *DB) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
 	tests := []struct {
 		name                    string
 		now                     time.Time
@@ -312,15 +354,20 @@ func TestPublicDemoSeasonalHistoryFollowsCalendar(t *testing.T) {
 				t.Fatal(err)
 			}
 			var completed, scheduled, agreementVisits int
-			if err := db.Pool.QueryRow(ctx, `
+			if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `
 				SELECT
 					count(*) FILTER (WHERE status = 'completed'),
 					count(*) FILTER (WHERE status = 'scheduled')
-				FROM visit_dues WHERE shop_id = $1`, result.ShopID).Scan(&completed, &scheduled); err != nil {
+				FROM visit_dues WHERE shop_id = $1`, `
+				SELECT
+					COUNT(CASE WHEN status = 'completed' THEN 1 END),
+					COUNT(CASE WHEN status = 'scheduled' THEN 1 END)
+				FROM visit_dues WHERE shop_id = CONVERT(uniqueidentifier,@p1)`), result.ShopID).Scan(&completed, &scheduled); err != nil {
 				t.Fatal(err)
 			}
-			if err := db.Pool.QueryRow(ctx, `
-				SELECT sum(visits_used) FROM agreements WHERE shop_id = $1`, result.ShopID).Scan(&agreementVisits); err != nil {
+			if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `
+				SELECT sum(visits_used) FROM agreements WHERE shop_id = $1`, `
+				SELECT sum(visits_used) FROM agreements WHERE shop_id = CONVERT(uniqueidentifier,@p1)`), result.ShopID).Scan(&agreementVisits); err != nil {
 				t.Fatal(err)
 			}
 			if completed != tc.completed || scheduled != tc.scheduled || agreementVisits != tc.expectedAgreementVisits {
@@ -328,7 +375,7 @@ func TestPublicDemoSeasonalHistoryFollowsCalendar(t *testing.T) {
 			}
 			if tc.completed > 0 {
 				var wrongSeason, outOfWindow int
-				if err := db.Pool.QueryRow(ctx, `
+				if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `
 					SELECT
 						count(*) FILTER (WHERE season <> $2),
 						count(*) FILTER (
@@ -336,7 +383,7 @@ func TestPublicDemoSeasonalHistoryFollowsCalendar(t *testing.T) {
 							   OR completed_at >= make_date(due_year, CASE season WHEN 'spring' THEN 6 ELSE 12 END, 1)
 						)
 					FROM visit_dues
-					WHERE shop_id = $1 AND status = 'completed'`, result.ShopID, tc.completedSeason).Scan(&wrongSeason, &outOfWindow); err != nil {
+					WHERE shop_id = $1 AND status = 'completed'`, `SELECT COUNT(CASE WHEN season<>@p2 THEN 1 END),COUNT(CASE WHEN completed_at<DATEFROMPARTS(due_year,CASE season WHEN N'spring' THEN 3 ELSE 9 END,1) OR completed_at>=DATEFROMPARTS(due_year,CASE season WHEN N'spring' THEN 6 ELSE 12 END,1) THEN 1 END) FROM dbo.visit_dues WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND status=N'completed'`), result.ShopID, tc.completedSeason).Scan(&wrongSeason, &outOfWindow); err != nil {
 					t.Fatal(err)
 				}
 				if wrongSeason != 0 || outOfWindow != 0 {
@@ -345,9 +392,11 @@ func TestPublicDemoSeasonalHistoryFollowsCalendar(t *testing.T) {
 			}
 			var scheduledSeason string
 			var scheduledAt time.Time
-			if err := db.Pool.QueryRow(ctx, `
+			if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `
 				SELECT season, scheduled_at FROM visit_dues
-				WHERE shop_id = $1 AND status = 'scheduled'`, result.ShopID).Scan(&scheduledSeason, &scheduledAt); err != nil {
+				WHERE shop_id = $1 AND status = 'scheduled'`, `
+				SELECT season, scheduled_at FROM visit_dues
+				WHERE shop_id = CONVERT(uniqueidentifier,@p1) AND status = 'scheduled'`), result.ShopID).Scan(&scheduledSeason, &scheduledAt); err != nil {
 				t.Fatal(err)
 			}
 			if scheduledSeason != tc.scheduledSeason || !scheduledAt.Equal(tc.now) {

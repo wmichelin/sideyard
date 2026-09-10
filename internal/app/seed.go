@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
+	"strings"
 	"time"
 
 	"github.com/wmichelin/clubdue/internal/database"
@@ -82,14 +84,25 @@ func (s *Store) SeedPublicDemo(ctx context.Context) (PublicDemoResult, error) {
 	// Serialize rich fixture creation inside this process so concurrent visitors
 	// do not occupy the small database pool while waiting on the cross-process
 	// advisory lock. The database lock still protects capacity during deploys.
-	s.publicDemoSeedMu.Lock()
-	defer s.publicDemoSeedMu.Unlock()
+	s.publicDemoSeedOnce.Do(func() { s.publicDemoSeedGate = make(chan struct{}, 1) })
+	if err := ctx.Err(); err != nil {
+		return PublicDemoResult{}, err
+	}
+	select {
+	case s.publicDemoSeedGate <- struct{}{}:
+	case <-ctx.Done():
+		return PublicDemoResult{}, ctx.Err()
+	}
+	defer func() { <-s.publicDemoSeedGate }()
 
-	now := s.nowUTC()
+	now := s.nowUTC().Truncate(time.Microsecond)
 	if err := publicDemoFixture.validate(now); err != nil {
 		return PublicDemoResult{}, err
 	}
 	expiresAt := now.Add(publicDemoTTL)
+	if now.Year() < 1 || expiresAt.Year() > 9999 {
+		return PublicDemoResult{}, fmt.Errorf("public demo date outside supported range")
+	}
 	suffix, err := randomToken(8)
 	if err != nil {
 		return PublicDemoResult{}, err
@@ -100,14 +113,22 @@ func (s *Store) SeedPublicDemo(ctx context.Context) (PublicDemoResult, error) {
 		return PublicDemoResult{}, err
 	}
 	defer tx.Rollback(ctx)
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('clubdue-public-demo-sandboxes'))`); err != nil {
+	if tx.Dialect() == database.SQLServer {
+		var result int
+		if err := tx.QueryRow(ctx, `DECLARE @result int; EXEC @result=sys.sp_getapplock @Resource=N'clubdue-public-demo-sandboxes',@LockMode=N'Exclusive',@LockOwner=N'Transaction',@LockTimeout=15000; SELECT @result;`).Scan(&result); err != nil {
+			return PublicDemoResult{}, err
+		}
+		if result < 0 {
+			return PublicDemoResult{}, fmt.Errorf("public demo admission unavailable")
+		}
+	} else if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('clubdue-public-demo-sandboxes'))`); err != nil {
 		return PublicDemoResult{}, err
 	}
-	if _, err := tx.Exec(ctx, `DELETE FROM shops WHERE kind = 'demo_sandbox' AND expires_at <= $1`, now); err != nil {
+	if _, err := tx.Exec(ctx, database.Statement(tx.Dialect(), `DELETE FROM shops WHERE kind = 'demo_sandbox' AND expires_at <= $1`, `DELETE FROM dbo.shops WHERE kind='demo_sandbox' AND expires_at<=@p1`), now); err != nil {
 		return PublicDemoResult{}, err
 	}
 	var activeDemos int
-	if err := tx.QueryRow(ctx, `SELECT count(*) FROM shops WHERE kind = 'demo_sandbox'`).Scan(&activeDemos); err != nil {
+	if err := tx.QueryRow(ctx, database.Statement(tx.Dialect(), `SELECT count(*) FROM shops WHERE kind = 'demo_sandbox'`, `SELECT COUNT_BIG(*) FROM dbo.shops WHERE kind='demo_sandbox'`)).Scan(&activeDemos); err != nil {
 		return PublicDemoResult{}, err
 	}
 	if activeDemos >= 100 {
@@ -116,16 +137,21 @@ func (s *Store) SeedPublicDemo(ctx context.Context) (PublicDemoResult, error) {
 
 	var result PublicDemoResult
 	result.ExpiresAt = expiresAt
-	if err := tx.QueryRow(ctx, `
+	if err := tx.QueryRow(ctx, database.Statement(tx.Dialect(), `
 		INSERT INTO shops (name, slug, kind, expires_at)
 		VALUES ('Evergreen Lawn & Landscape', $1, 'demo_sandbox', $2)
-		RETURNING id`, "public-demo-"+suffix, expiresAt).Scan(&result.ShopID); err != nil {
+		RETURNING id`, `INSERT INTO dbo.shops(name,slug,kind,expires_at) OUTPUT LOWER(CONVERT(char(36),inserted.id)) VALUES(N'Evergreen Lawn & Landscape',@p1,'demo_sandbox',@p2)`), "public-demo-"+suffix, expiresAt).Scan(&result.ShopID); err != nil {
 		return PublicDemoResult{}, err
 	}
-	if err := tx.QueryRow(ctx, `
+	demoEmail := "demo-" + suffix + "@clubdue.local"
+	userArgs := []any{result.ShopID, demoEmail}
+	if tx.Dialect() == database.SQLServer {
+		userArgs = append(userArgs, strings.ToLower(demoEmail))
+	}
+	if err := tx.QueryRow(ctx, database.Statement(tx.Dialect(), `
 		INSERT INTO users (shop_id, email, password_hash, role)
 		VALUES ($1, $2, '!public-demo-password-login-disabled', 'owner')
-		RETURNING id`, result.ShopID, "demo-"+suffix+"@clubdue.local").Scan(&result.UserID); err != nil {
+		RETURNING id`, `INSERT INTO dbo.users(shop_id,email,email_normalized,password_hash,role) OUTPUT LOWER(CONVERT(char(36),inserted.id)) VALUES(CONVERT(uniqueidentifier,@p1),@p2,@p3,N'!public-demo-password-login-disabled','owner')`), userArgs...).Scan(&result.UserID); err != nil {
 		return PublicDemoResult{}, err
 	}
 
@@ -133,14 +159,17 @@ func (s *Store) SeedPublicDemo(ctx context.Context) (PublicDemoResult, error) {
 		return PublicDemoResult{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
+		_ = tx.Rollback(ctx)
+		s.cleanupFailedPublicDemo(ctx, result.ShopID)
 		return PublicDemoResult{}, err
 	}
 
 	cleanup := func(cause error) (PublicDemoResult, error) {
-		_, _ = s.db.Pool.Exec(context.WithoutCancel(ctx), `DELETE FROM shops WHERE id = $1 AND kind = 'demo_sandbox'`, result.ShopID)
+		s.cleanupFailedPublicDemo(ctx, result.ShopID)
 		return PublicDemoResult{}, cause
 	}
-	if err := s.hydratePublicDemoDerivedData(ctx, result.ShopID, now); err != nil {
+	seedStore := &Store{db: s.db, clock: seedClock{now: now}, photoObjects: s.photoObjects}
+	if err := seedStore.hydratePublicDemoDerivedData(ctx, result.ShopID, now); err != nil {
 		return cleanup(err)
 	}
 	return result, nil
@@ -154,8 +183,11 @@ func (s *Store) SeedDemo(ctx context.Context) (SeedResult, error) {
 	)
 
 	var shopID string
-	err := s.db.Pool.QueryRow(ctx, `SELECT id FROM shops WHERE slug = $1`, shopSlug).Scan(&shopID)
-	if err != nil {
+	err := s.db.Pool.QueryRow(ctx, database.Statement(s.db.Pool.Dialect(), `SELECT id FROM shops WHERE slug = $1`, `SELECT LOWER(CONVERT(char(36),id)) FROM dbo.shops WHERE slug=@p1 AND DATALENGTH(slug)=DATALENGTH(@p1)`), shopSlug).Scan(&shopID)
+	if err != nil && !errors.Is(err, database.ErrNoRows) {
+		return SeedResult{}, err
+	}
+	if errors.Is(err, database.ErrNoRows) {
 		hash, err := bcryptGenerate(password)
 		if err != nil {
 			return SeedResult{}, err
@@ -168,14 +200,14 @@ func (s *Store) SeedDemo(ctx context.Context) (SeedResult, error) {
 		defer tx.Rollback(ctx)
 
 		if err := tx.QueryRow(ctx,
-			`INSERT INTO shops (name, slug) VALUES ($1, $2) RETURNING id`,
+			database.Statement(tx.Dialect(), `INSERT INTO shops (name, slug) VALUES ($1, $2) RETURNING id`, `INSERT INTO dbo.shops(name,slug) OUTPUT LOWER(CONVERT(char(36),inserted.id)) VALUES(@p1,@p2)`),
 			"Demo HVAC Shop", shopSlug,
 		).Scan(&shopID); err != nil {
 			return SeedResult{}, err
 		}
 
 		if _, err := tx.Exec(ctx,
-			`INSERT INTO users (shop_id, email, password_hash, role) VALUES ($1, $2, $3, 'owner')`,
+			database.Statement(tx.Dialect(), `INSERT INTO users (shop_id, email, password_hash, role) VALUES ($1, $2, $3, 'owner')`, `INSERT INTO dbo.users(shop_id,email,email_normalized,password_hash,role) VALUES(CONVERT(uniqueidentifier,@p1),@p2,@p2,@p3,'owner')`),
 			shopID, email, hash,
 		); err != nil {
 			return SeedResult{}, err
@@ -187,7 +219,9 @@ func (s *Store) SeedDemo(ctx context.Context) (SeedResult, error) {
 	}
 
 	var agreementCount int
-	_ = s.db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM agreements WHERE shop_id = $1`, shopID).Scan(&agreementCount)
+	if err := s.db.Pool.QueryRow(ctx, database.Statement(s.db.Pool.Dialect(), `SELECT COUNT(*) FROM agreements WHERE shop_id = $1`, `SELECT COUNT(*) FROM dbo.agreements WHERE shop_id=CONVERT(uniqueidentifier,@p1)`), shopID).Scan(&agreementCount); err != nil {
+		return SeedResult{}, err
+	}
 	if agreementCount >= 3 {
 		if err := s.SyncVisitDues(ctx, shopID); err != nil {
 			return SeedResult{}, err
@@ -214,7 +248,7 @@ func (s *Store) SeedDemo(ctx context.Context) (SeedResult, error) {
 		return SeedResult{}, err
 	}
 
-	now := time.Now().UTC()
+	now := s.nowUTC()
 	agreements := []struct {
 		extID       string
 		customerID  string
@@ -249,10 +283,13 @@ func (s *Store) SeedDemo(ctx context.Context) (SeedResult, error) {
 func (s *Store) ensurePlanTemplate(ctx context.Context, shopID, name, desc string, priceCents, visits int) (string, error) {
 	var id string
 	err := s.db.Pool.QueryRow(ctx,
-		`SELECT id FROM plan_templates WHERE shop_id = $1 AND name = $2`, shopID, name,
+		database.Statement(s.db.Pool.Dialect(), `SELECT id FROM plan_templates WHERE shop_id = $1 AND name = $2`, `SELECT LOWER(CONVERT(char(36),id)) FROM dbo.plan_templates WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND name=@p2 AND DATALENGTH(name)=DATALENGTH(@p2)`), shopID, name,
 	).Scan(&id)
 	if err == nil {
 		return id, nil
+	}
+	if !errors.Is(err, database.ErrNoRows) {
+		return "", err
 	}
 	return s.CreatePlanTemplate(ctx, shopID, name, desc, priceCents, 12, visits)
 }
@@ -260,16 +297,19 @@ func (s *Store) ensurePlanTemplate(ctx context.Context, shopID, name, desc strin
 func (s *Store) ensureCustomer(ctx context.Context, shopID, extID, name, email, phone string) (string, error) {
 	var id string
 	err := s.db.Pool.QueryRow(ctx,
-		`SELECT id FROM customers WHERE shop_id = $1 AND external_id = $2`, shopID, extID,
+		database.Statement(s.db.Pool.Dialect(), `SELECT id FROM customers WHERE shop_id = $1 AND external_id = $2`, `SELECT LOWER(CONVERT(char(36),id)) FROM dbo.customers WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND external_id=@p2 AND DATALENGTH(external_id)=DATALENGTH(@p2)`), shopID, extID,
 	).Scan(&id)
 	if err == nil {
 		return id, nil
 	}
 
-	err = s.db.Pool.QueryRow(ctx, `
+	if !errors.Is(err, database.ErrNoRows) {
+		return "", err
+	}
+	err = s.db.Pool.QueryRow(ctx, database.Statement(s.db.Pool.Dialect(), `
 		INSERT INTO customers (shop_id, external_id, name, email, phone)
 		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id`, shopID, extID, name, email, phone).Scan(&id)
+		RETURNING id`, `INSERT INTO dbo.customers(shop_id,external_id,name,email,phone) OUTPUT LOWER(CONVERT(char(36),inserted.id)) VALUES(CONVERT(uniqueidentifier,@p1),@p2,@p3,@p4,@p5)`), shopID, extID, name, email, phone).Scan(&id)
 	return id, err
 }
 
@@ -282,7 +322,7 @@ func (s *Store) ensureAgreement(
 ) error {
 	var exists bool
 	if err := s.db.Pool.QueryRow(ctx,
-		`SELECT EXISTS(SELECT 1 FROM agreements WHERE shop_id = $1 AND external_id = $2)`,
+		database.Statement(s.db.Pool.Dialect(), `SELECT EXISTS(SELECT 1 FROM agreements WHERE shop_id = $1 AND external_id = $2)`, `SELECT CONVERT(bit,CASE WHEN EXISTS(SELECT 1 FROM dbo.agreements WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND external_id=@p2 AND DATALENGTH(external_id)=DATALENGTH(@p2)) THEN 1 ELSE 0 END)`),
 		shopID, extID,
 	).Scan(&exists); err != nil {
 		return err
@@ -303,3 +343,17 @@ func (s *Store) ensureAgreement(
 	})
 	return err
 }
+
+// Cleanup remains independent of a cancelled request, but cannot wait forever.
+func (s *Store) cleanupFailedPublicDemo(ctx context.Context, shop string) {
+	cleanup, stop := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer stop()
+	_, err := s.db.Pool.Exec(cleanup, database.Statement(s.db.Pool.Dialect(), `DELETE FROM shops WHERE id=$1 AND kind='demo_sandbox'`, `DELETE FROM dbo.shops WHERE id=CONVERT(uniqueidentifier,@p1) AND kind='demo_sandbox'`), shop)
+	if err != nil {
+		log.Printf("public demo cleanup incomplete: %v", err)
+	}
+}
+
+type seedClock struct{ now time.Time }
+
+func (c seedClock) Now() time.Time { return c.now }
