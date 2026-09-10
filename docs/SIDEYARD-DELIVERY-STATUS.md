@@ -702,3 +702,37 @@ paid integrations or live customer payment collection are configured by this cha
   before cold-start SQL traffic is enabled. No live Azure data has been transferred.
 - Staging: https://clubdue-staging.michelindigitalmedia.com (verified at `8346ace`;
   this customer-book slice is pending deployment). Production remains unchanged.
+
+
+- Customer-book source `9246dea71c8e2b7cf6a1b570236757ae8a7e92ca` passed CI
+  [34419791745](https://github.com/wmichelin/clubdue/actions/runs/34419791745) and
+  staging [34419791739](https://github.com/wmichelin/clubdue/actions/runs/34419791739).
+  Running revision/image readback and manual staging smoke passed:
+  `ghcr.io/wmichelin/clubdue@sha256:c371abda1eaee074a628dc20a85a6f7c9536d155784773fcc4f38499aaf9a39f`.
+  Browser login/owner-preserving demo entry/customer book passed at 390/1440px
+  with no page errors. PostgreSQL remains the active application database.
+
+### Native property records — implementation
+
+- Migration 006 and explicit native statements add site details, decimal
+  measurements and dated notes. One composite property cascade preserves tenant
+  boundaries. Native latest-100 history uses canonical UUID text for ties,
+  preserving PostgreSQL's selection despite different native UUID ordering.
+- Architect/staff: serialize initial site-detail saves and note submission keys
+  with transaction/range locks; compare note retries exactly in Go. Preserve
+  original authorship, date and timestamp; differing retries conflict. Keep
+  decimal strings through decimal(14,3) storage. Historical PG-only dates and
+  numeric NaN require migration preflight even though app validation rejects them.
+- Unit-testing/QA: existing property-history and note-retry tests run on both
+  engines; native tests cover first-save/update races, revision overflow rollback,
+  changed retry body/author/date/property, cross-shop keys, decimal extremes and
+  101 notes with tied timestamps. HTTP tests distinguish missing records from
+  unavailable reads and reject failed writes without redirects or leaked errors.
+- Product: property-read outages return 503 instead of missing-record feedback;
+  failed note/details/measurement saves return 503, with 422 for invalid input and
+  409 for conflicts. No new product page or external integration is introduced.
+- DevOps: SQL runtime selection remains disabled; no live data is transferred.
+  Full Go suite with both engines, vet, static build and isolated SQL rehearsal
+  passed. Staging verification is the remaining check for this slice.
+- Staging: https://clubdue-staging.michelindigitalmedia.com (verified `9246dea`;
+  property-record changes pending). Production is unchanged.

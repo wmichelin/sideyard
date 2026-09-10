@@ -16,6 +16,11 @@ func TestPropertyNotesPreserveAuthorshipAndDeduplicateRetries(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(db.Close)
+	testPropertyNotesPreserveAuthorshipAndDeduplicateRetries(t, db)
+}
+
+func testPropertyNotesPreserveAuthorshipAndDeduplicateRetries(t *testing.T, db *DB) {
+	ctx := context.Background()
 	s := &Store{db: db}
 	stamp := time.Now().Format("150405.000000000")
 	shop := createTestShop(t, ctx, db, "notes-"+stamp)

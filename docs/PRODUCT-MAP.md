@@ -13,13 +13,13 @@ for the distinction between provisioned resources and deployed app behavior.
 
 ## Availability snapshot
 
-Reviewed September 9, 2026 against staging release `8346ace` and the recorded
+Reviewed September 9, 2026 against staging release `9246dea` and the recorded
 release verification. These are verified release states, not a live deployment monitor.
 
 | Label | Meaning |
 | --- | --- |
 | **Live** | Available in production at [getsideyard.com](https://getsideyard.com), source `ae6f16a`, and on staging. The legacy ClubDue hostname remains supported. |
-| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), release `8346ace`: standalone jobs/site surveys, the single-line work-status badge fix, and configured private Azure photo storage. |
+| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), release `9246dea`: standalone jobs/site surveys, the single-line work-status badge fix, and configured private Azure photo storage. |
 | **Conditional** | Implemented but requires explicit deployment configuration; not a promise of availability to clients. |
 
 Unless marked otherwise, catalog nodes are **Live**. “Signed in” means a user
@@ -77,7 +77,7 @@ flowchart TB
   subgraph RECORDS["Customers, properties and assets"]
     CUSTOMERS["CUSTOMERS · Customer list / add"]
     CUSTOMER["CUSTOMER · Contact, properties, vehicles"]
-    PROPERTY["PROPERTY · Site notes / measurements"]
+    PROPERTY["PROPERTY · Site notes / measurements<br/>Availability feedback pending staging"]
     ADDRESS["ADDRESS · Correct property address"]
     PHOTOS["PHOTOS · Private property photos<br/>Azure storage on staging"]
     IMAGE["IMAGE · Private image viewer"]
@@ -270,6 +270,7 @@ This is the starting point for manual client-data entry; bulk entry uses IMPORT.
 - Record measurements by named zone: turf, beds, driveway, walkway, patio, roof, building footprint, floor, exterior wall, perimeter, other area or other length.
 - Store value, matching area/length unit, source, measured date and estimated flag. Measurement history preserves prior entries; unknown measurements remain absent. Notes/measurements show the latest 100 entries while retaining older records.
 - Open address correction, private photos or equipment; return to the customer to add equipment.
+- **Pending staging verification:** database failures return temporary-unavailability feedback; missing records, invalid input and conflicting edits remain distinct.
 - Launch Google or Apple Maps directions using the address. No route optimization, aerial measurement or Deep Lawn connection.
 
 ### ADDRESS — Correct property address

@@ -4,10 +4,14 @@ import (
 	"context"
 	"errors"
 	"html/template"
+	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/wmichelin/clubdue/internal/database"
 )
 
 func TestPropertyMeasurementValidation(t *testing.T) {
@@ -41,6 +45,94 @@ func TestPropertyMeasurementValidation(t *testing.T) {
 	}
 }
 
+func TestPropertyRecordReadFailureIsUnavailableWithoutLeakingDetails(t *testing.T) {
+	for _, tc := range []struct {
+		err    error
+		status int
+	}{
+		{errors.New("synthetic internal database failure"), 503},
+		{database.ErrNoRows, 404},
+	} {
+		s := &Server{store: &Store{db: &DB{Pool: &unavailableAuthPool{err: tc.err}}}}
+		r := httptest.NewRequest("GET", "/properties/12345678-1234-1234-1234-123456789012", nil)
+		r.SetPathValue("id", "12345678-1234-1234-1234-123456789012")
+		r = r.WithContext(contextWithUser(context.Background(), &User{ShopID: "12345678-1234-1234-1234-123456789013", Role: "owner"}))
+		w := httptest.NewRecorder()
+		s.handlePropertyRecord(w, r)
+		if w.Code != tc.status || strings.Contains(w.Body.String(), tc.err.Error()) {
+			t.Fatalf("property failure: %d %s", w.Code, w.Body.String())
+		}
+	}
+}
+
+type propertyFailingWritesPool struct {
+	database.Pool
+	err error
+}
+
+func (p propertyFailingWritesPool) QueryRow(ctx context.Context, q string, args ...any) database.Row {
+	if strings.HasPrefix(q, "INSERT") || strings.HasPrefix(q, "UPDATE") {
+		return unavailableAuthRow{p.err}
+	}
+	return p.Pool.QueryRow(ctx, q, args...)
+}
+func (p propertyFailingWritesPool) Exec(context.Context, string, ...any) (database.Result, error) {
+	return nil, p.err
+}
+func (p propertyFailingWritesPool) Begin(context.Context) (database.Tx, error) { return nil, p.err }
+
+func testPropertyRecordWritesReportUnavailable(t *testing.T, db *DB) {
+	ctx := context.Background()
+	shop := createTestShop(t, ctx, db, "property-write-outage-"+time.Now().Format("150405.000000000"))
+	customer := createTestCustomer(t, ctx, db, shop, "Customer")
+	id := createTestProperty(t, ctx, db, shop, customer, "Address")
+	failure := errors.New("synthetic internal write failure")
+	s := &Server{store: &Store{db: &DB{Pool: propertyFailingWritesPool{Pool: db.Pool, err: failure}}}}
+	for _, form := range []url.Values{
+		{"action": {"details"}, "revision": {"0"}, "access_notes": {"Keep this note"}},
+		{"action": {"measurement"}, "kind": {"turf"}, "zone": {"Front"}, "value": {"12.500"}, "unit": {"sq_ft"}, "source": {"Survey"}, "measured_on": {"2026-01-01"}},
+		{"action": {"note"}, "note_key": {strings.Repeat("a", 32)}, "note_body": {"Site visit"}, "occurred_on": {"2026-01-01"}},
+	} {
+		r := httptest.NewRequest(http.MethodPost, "/properties/"+id, strings.NewReader(form.Encode()))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		r.SetPathValue("id", id)
+		r = r.WithContext(contextWithUser(ctx, &User{ShopID: shop, Role: "owner", Email: "owner@example.test"}))
+		w := httptest.NewRecorder()
+		s.handlePropertyRecord(w, r)
+		if w.Code != 503 || w.Header().Get("Location") != "" || strings.Contains(w.Body.String(), failure.Error()) {
+			t.Fatalf("%s failure: %d %s", form.Get("action"), w.Code, w.Body.String())
+		}
+	}
+
+	s.store = &Store{db: db}
+	if err := s.store.SavePropertyDetails(ctx, shop, id, "Original", 0); err != nil {
+		t.Fatal(err)
+	}
+	note := propertyNote{SubmissionKey: strings.Repeat("b", 32), Body: "Original note", OccurredOn: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), RecordedBy: "owner@example.test"}
+	if err := s.store.AddPropertyNote(ctx, shop, id, note); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		form   url.Values
+		status int
+	}{
+		{url.Values{"action": {"details"}, "revision": {"0"}, "access_notes": {"Stale"}}, 409},
+		{url.Values{"action": {"details"}, "revision": {"1"}, "access_notes": {strings.Repeat("x", 2001)}}, 422},
+		{url.Values{"action": {"note"}, "note_key": {note.SubmissionKey}, "note_body": {"Changed note"}, "occurred_on": {"2026-01-01"}}, 409},
+		{url.Values{"action": {"note"}, "note_key": {"invalid"}, "note_body": {"Invalid submission"}, "occurred_on": {"2026-01-01"}}, 422},
+	} {
+		r := httptest.NewRequest(http.MethodPost, "/properties/"+id, strings.NewReader(tc.form.Encode()))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		r.SetPathValue("id", id)
+		r = r.WithContext(contextWithUser(ctx, &User{ShopID: shop, Role: "owner", Email: "owner@example.test"}))
+		w := httptest.NewRecorder()
+		s.handlePropertyRecord(w, r)
+		if w.Code != tc.status || w.Header().Get("Location") != "" {
+			t.Fatalf("input/conflict: got%d want%d", w.Code, tc.status)
+		}
+	}
+}
+
 func TestPropertyRecordsKeepHistoryAndTenantBoundaries(t *testing.T) {
 	ctx := context.Background()
 	db, err := openDB(ctx, integrationDatabaseURL(t))
@@ -48,6 +140,12 @@ func TestPropertyRecordsKeepHistoryAndTenantBoundaries(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(db.Close)
+	testPropertyRecordsKeepHistoryAndTenantBoundaries(t, db)
+	testPropertyRecordWritesReportUnavailable(t, db)
+}
+
+func testPropertyRecordsKeepHistoryAndTenantBoundaries(t *testing.T, db *DB) {
+	ctx := context.Background()
 	s := &Store{db: db}
 	stamp := time.Now().Format("150405.000000000")
 	shop := createTestShop(t, ctx, db, "property-record-"+stamp)
@@ -86,10 +184,10 @@ func TestPropertyRecordsKeepHistoryAndTenantBoundaries(t *testing.T) {
 		t.Fatalf("measurement precision/history: %+v", history)
 	}
 	// Database guards protect tenant ownership and dimension integrity as well.
-	if _, err := db.Pool.Exec(ctx, `INSERT INTO property_details(shop_id,property_id) VALUES ($1,$2)`, other, property); err == nil {
+	if _, err := db.Pool.Exec(ctx, database.Statement(db.Pool.Dialect(), `INSERT INTO property_details(shop_id,property_id) VALUES ($1,$2)`, `INSERT INTO dbo.property_details(shop_id,property_id) VALUES(CONVERT(uniqueidentifier,@p1),CONVERT(uniqueidentifier,@p2))`), other, property); err == nil {
 		t.Fatal("database permitted foreign property details")
 	}
-	if _, err := db.Pool.Exec(ctx, `UPDATE property_measurements SET unit='ft' WHERE shop_id=$1`, shop); err == nil {
+	if _, err := db.Pool.Exec(ctx, database.Statement(db.Pool.Dialect(), `UPDATE property_measurements SET unit='ft' WHERE shop_id=$1`, `UPDATE dbo.property_measurements SET unit='ft' WHERE shop_id=CONVERT(uniqueidentifier,@p1)`), shop); err == nil {
 		t.Fatal("database permitted area in linear feet")
 	}
 	server := &Server{store: s, tmpl: template.Must(template.ParseFS(templateFS, "templates/*.html"))}

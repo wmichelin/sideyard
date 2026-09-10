@@ -13,6 +13,8 @@ import (
 	"github.com/wmichelin/clubdue/internal/database"
 )
 
+var errPropertyDetailsInput = errors.New("Site details must be valid text of at most 2,000 bytes.")
+
 var errPropertyConflict = errors.New("These site details changed in another tab. Reload and review your changes.")
 
 var propertyMeasurementKinds = []struct{ ID, Name string }{
@@ -52,6 +54,9 @@ func (m propertyMeasurement) UnitLabel() string {
 var measurementDecimal = regexp.MustCompile(`^(0|[1-9][0-9]{0,10})(\.[0-9]{1,3})?$`)
 
 func validatePropertyMeasurement(m propertyMeasurement, today time.Time) error {
+	if !validStoredText(m.Kind, m.Zone, m.Value, m.Unit, m.Source, m.RecordedBy) {
+		return errInvalidStoredText
+	}
 	known := false
 	for _, k := range propertyMeasurementKinds {
 		if k.ID == m.Kind {
@@ -69,21 +74,24 @@ func validatePropertyMeasurement(m propertyMeasurement, today time.Time) error {
 	if m.Zone == "" || len(m.Zone) > 120 || m.Source == "" || len(m.Source) > 120 || strings.ContainsRune(m.Zone+m.Source, '\x00') {
 		return errors.New("Enter a zone and measurement source, each up to 120 bytes.")
 	}
-	if m.MeasuredOn.IsZero() || m.MeasuredOn.Format("2006-01-02") > today.Format("2006-01-02") {
+	if m.MeasuredOn.IsZero() || m.MeasuredOn.Year() < 1 || m.MeasuredOn.Year() > 9999 || m.MeasuredOn.Format("2006-01-02") > today.Format("2006-01-02") {
 		return errors.New("Choose a measurement date no later than today.")
 	}
 	return nil
 }
 
 func (s *Store) GetPropertyRecord(ctx context.Context, shopID, id string) (Property, string, int, []propertyMeasurement, error) {
+	if err := validateRecordIDs(shopID, id); err != nil {
+		return Property{}, "", 0, nil, err
+	}
 	var p Property
 	var notes string
 	var revision int
-	err := s.db.Pool.QueryRow(ctx, `SELECT p.id,p.customer_id,p.address_line1,COALESCE(p.address_line2,''),p.city,p.state,p.postal_code,COALESCE(d.access_notes,''),COALESCE(d.revision,0) FROM properties p LEFT JOIN property_details d ON d.property_id=p.id AND d.shop_id=p.shop_id WHERE p.shop_id=$1 AND p.id=$2`, shopID, id).Scan(&p.ID, &p.CustomerID, &p.AddressLine1, &p.AddressLine2, &p.City, &p.State, &p.PostalCode, &notes, &revision)
+	err := s.db.Pool.QueryRow(ctx, database.Statement(s.db.Pool.Dialect(), `SELECT p.id,p.customer_id,p.address_line1,COALESCE(p.address_line2,''),p.city,p.state,p.postal_code,COALESCE(d.access_notes,''),COALESCE(d.revision,0) FROM properties p LEFT JOIN property_details d ON d.property_id=p.id AND d.shop_id=p.shop_id WHERE p.shop_id=$1 AND p.id=$2`, `SELECT LOWER(CONVERT(char(36),p.id)),LOWER(CONVERT(char(36),p.customer_id)),p.address_line1,COALESCE(p.address_line2,N''),p.city,p.state,p.postal_code,COALESCE(d.access_notes,N''),COALESCE(d.revision,0) FROM dbo.properties p LEFT JOIN dbo.property_details d ON d.property_id=p.id AND d.shop_id=p.shop_id WHERE p.shop_id=CONVERT(uniqueidentifier,@p1) AND p.id=CONVERT(uniqueidentifier,@p2)`), shopID, id).Scan(&p.ID, &p.CustomerID, &p.AddressLine1, &p.AddressLine2, &p.City, &p.State, &p.PostalCode, &notes, &revision)
 	if err != nil {
 		return p, notes, revision, nil, err
 	}
-	rows, err := s.db.Pool.Query(ctx, `SELECT kind,zone,value::text,unit,source,measured_on,estimated,recorded_by FROM property_measurements WHERE shop_id=$1 AND property_id=$2 ORDER BY recorded_at DESC,id DESC LIMIT 100`, shopID, id)
+	rows, err := s.db.Pool.Query(ctx, database.Statement(s.db.Pool.Dialect(), `SELECT kind,zone,value::text,unit,source,measured_on,estimated,recorded_by FROM property_measurements WHERE shop_id=$1 AND property_id=$2 ORDER BY recorded_at DESC,id DESC LIMIT 100`, `SELECT TOP(100) kind,zone,CONVERT(varchar(32),value),unit,source,measured_on,estimated,recorded_by FROM dbo.property_measurements WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND property_id=CONVERT(uniqueidentifier,@p2) ORDER BY recorded_at DESC,CONVERT(char(36),id) COLLATE Latin1_General_100_BIN2 DESC`), shopID, id)
 	if err != nil {
 		return p, notes, revision, nil, err
 	}
@@ -100,15 +108,18 @@ func (s *Store) GetPropertyRecord(ctx context.Context, shopID, id string) (Prope
 }
 
 func (s *Store) SavePropertyDetails(ctx context.Context, shopID, id, notes string, revision int) error {
-	if len(notes) > 2000 || strings.ContainsRune(notes, '\x00') {
-		return errors.New("Site details must be at most 2,000 bytes.")
+	if err := validateRecordIDs(shopID, id); err != nil {
+		return err
+	}
+	if len(notes) > 2000 || !validStoredText(notes) {
+		return errPropertyDetailsInput
 	}
 	var saved int
 	var err error
 	if revision == 0 {
-		err = s.db.Pool.QueryRow(ctx, `INSERT INTO property_details(shop_id,property_id,access_notes) SELECT $1,id,$3 FROM properties WHERE shop_id=$1 AND id=$2 ON CONFLICT DO NOTHING RETURNING revision`, shopID, id, notes).Scan(&saved)
+		err = s.db.Pool.QueryRow(ctx, database.Statement(s.db.Pool.Dialect(), `INSERT INTO property_details(shop_id,property_id,access_notes) SELECT $1,id,$3 FROM properties WHERE shop_id=$1 AND id=$2 ON CONFLICT DO NOTHING RETURNING revision`, `INSERT INTO dbo.property_details(shop_id,property_id,access_notes) OUTPUT inserted.revision SELECT CONVERT(uniqueidentifier,@p1),p.id,@p3 FROM dbo.properties p WHERE p.shop_id=CONVERT(uniqueidentifier,@p1) AND p.id=CONVERT(uniqueidentifier,@p2) AND NOT EXISTS (SELECT 1 FROM dbo.property_details WITH(UPDLOCK,HOLDLOCK) WHERE property_id=CONVERT(uniqueidentifier,@p2))`), shopID, id, notes).Scan(&saved)
 	} else {
-		err = s.db.Pool.QueryRow(ctx, `UPDATE property_details SET access_notes=$3,revision=revision+1 WHERE shop_id=$1 AND property_id=$2 AND revision=$4 RETURNING revision`, shopID, id, notes, revision).Scan(&saved)
+		err = s.db.Pool.QueryRow(ctx, database.Statement(s.db.Pool.Dialect(), `UPDATE property_details SET access_notes=$3,revision=revision+1 WHERE shop_id=$1 AND property_id=$2 AND revision=$4 RETURNING revision`, `UPDATE dbo.property_details SET access_notes=@p3,revision=revision+1 OUTPUT inserted.revision WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND property_id=CONVERT(uniqueidentifier,@p2) AND revision=@p4`), shopID, id, notes, revision).Scan(&saved)
 	}
 	if errors.Is(err, database.ErrNoRows) {
 		return errPropertyConflict
@@ -117,10 +128,13 @@ func (s *Store) SavePropertyDetails(ctx context.Context, shopID, id, notes strin
 }
 
 func (s *Store) AddPropertyMeasurement(ctx context.Context, shopID, id string, m propertyMeasurement) error {
+	if err := validateRecordIDs(shopID, id); err != nil {
+		return err
+	}
 	if err := validatePropertyMeasurement(m, s.nowUTC()); err != nil {
 		return err
 	}
-	tag, err := s.db.Pool.Exec(ctx, `INSERT INTO property_measurements(shop_id,property_id,kind,zone,value,unit,source,measured_on,estimated,recorded_by) SELECT $1,id,$3,$4,$5::numeric,$6,$7,$8,$9,$10 FROM properties WHERE shop_id=$1 AND id=$2`, shopID, id, m.Kind, m.Zone, m.Value, m.Unit, m.Source, m.MeasuredOn, m.Estimated, m.RecordedBy)
+	tag, err := s.db.Pool.Exec(ctx, database.Statement(s.db.Pool.Dialect(), `INSERT INTO property_measurements(shop_id,property_id,kind,zone,value,unit,source,measured_on,estimated,recorded_by) SELECT $1,id,$3,$4,$5::numeric,$6,$7,$8,$9,$10 FROM properties WHERE shop_id=$1 AND id=$2`, `INSERT INTO dbo.property_measurements(shop_id,property_id,kind,zone,value,unit,source,measured_on,estimated,recorded_by) SELECT CONVERT(uniqueidentifier,@p1),id,@p3,@p4,CONVERT(decimal(14,3),@p5),@p6,@p7,@p8,@p9,@p10 FROM dbo.properties WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND id=CONVERT(uniqueidentifier,@p2)`), shopID, id, m.Kind, m.Zone, m.Value, m.Unit, m.Source, m.MeasuredOn, m.Estimated, m.RecordedBy)
 	if err != nil {
 		return err
 	}
@@ -140,7 +154,11 @@ func (s *Server) handlePropertyRecord(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	p, notes, revision, measurements, err := s.store.GetPropertyRecord(r.Context(), u.ShopID, id)
 	if err != nil {
-		http.Error(w, "Property record unavailable.", 404)
+		if errors.Is(err, database.ErrNoRows) || errors.Is(err, errInvalidRecordID) {
+			http.NotFound(w, r)
+		} else {
+			http.Error(w, "Property record unavailable. Please retry.", http.StatusServiceUnavailable)
+		}
 		return
 	}
 	if r.Method == http.MethodPost {
@@ -182,8 +200,10 @@ func (s *Server) handlePropertyRecord(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			if errors.Is(err, errPropertyConflict) {
 				http.Error(w, err.Error(), 409)
+			} else if errors.Is(err, errPropertyNoteInput) || errors.Is(err, errPropertyDetailsInput) || errors.Is(err, errInvalidStoredText) {
+				http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 			} else {
-				http.Error(w, "Could not save property details. Check your entry and retry.", 422)
+				http.Error(w, "Could not save property details. Please retry.", http.StatusServiceUnavailable)
 			}
 			return
 		}
