@@ -855,3 +855,60 @@ paid integrations or live customer payment collection are configured by this cha
   foreign keys like PostgreSQL. No live database data has been transferred.
 - Staging: https://clubdue-staging.michelindigitalmedia.com (verified `71042df`;
   this jobs slice pending deployment). Production remains unchanged.
+
+
+### Native business setup — review and plan
+
+- Product: preserve opt-in, read-only previews, canonical selected trade ordering,
+  existing custom/disabled services and no automatic plans/jobs/prices.
+- Architect/staff: store ordered trades as JSON strings, validating exact primary
+  membership with OPENJSON; use OUTPUT INTO for triggered settings writes. Keep
+  unbounded historical text, hash-indexed preset keys with exact comparisons and
+  collision failure, and service ordering by exact name/canonical UUID in Go.
+- Unit-testing/QA: share existing behavior across engines; verify concurrent first
+  saves/service edits, duplicate selection, rollback after a later preset fails,
+  Unicode and exact membership. Distinguish 422 invalid input, 409 stale state and
+  503 unconfirmed saves; verify real owner demo browser behavior.
+- DevOps: lock the shop before settings/preset writes; retain independent shop
+  cascades, with no services-to-settings relationship that would delete custom
+  services when trades change. Keep SQL runtime disabled. Transfer must audit
+  PG array dimensions/lower bounds/NULL members, preserve unknown string IDs and
+  duplicates, and verify target OPENJSON compatibility and trigger enablement.
+  Confirm source text ordering rather than inferring it from a locale name.
+- Staging: https://clubdue-staging.michelindigitalmedia.com (jobs slice deploying;
+  business setup port not yet implemented). Production remains unchanged.
+
+
+- Jobs source `35e076041999422930212b57d511f22e9b760326` passed all CI jobs
+  [34423284223](https://github.com/wmichelin/clubdue/actions/runs/34423284223) and
+  staging [34423284258](https://github.com/wmichelin/clubdue/actions/runs/34423284258).
+  Running revision/image readback and manual staging smoke passed:
+  `ghcr.io/wmichelin/clubdue@sha256:9724b380eafe966123ac45e9f00e7fb9de63b1fcb24b2bd717c897244ec2aed4`.
+  Browser jobs checks passed creation, optional date, stale edits, completion,
+  reopening, separate jobs, history and filters at 390/1440px without page errors.
+  Production remains unchanged; this source is not approved for promotion.
+
+### Native business setup — implementation
+
+- Migrations 014/015 add ordered JSON trades with set-based exact primary membership
+  and independently retained services. MAX text preserves historical values; preset
+  identity uses a hash plus full binary/length comparison. Native reads sort services
+  by exact name then canonical UUID, preserving the tested source ordering.
+- Reviewed shared behavior and native failure tests pass: opt-in/read-only preview,
+  preserved edits, duplicate keys, competing first saves and service edits, later
+  preset failure rolling back settings and earlier inserts, overflow, independent
+  settings deletion, whole-shop cleanup, long Unicode identities/descriptions,
+  multirow JSON rejection and text/UUID ordering. Initial test compilation referenced
+  an absent comparison library; using existing standard-library slice comparisons
+  fixed the test harness without a new dependency.
+- Business forms now distinguish 422 validation, 409 stale state and 503 unconfirmed
+  saves. A connection lost after commit cannot prove failure; the message asks the
+  owner to reload and check before retrying. Failed forms do not redirect or expose
+  database errors. Both engines pass the HTTP behavior tests.
+- Staging: https://clubdue-staging.michelindigitalmedia.com (verified `35e0760`;
+  business setup implementation pending). SQL runtime remains disabled.
+
+- Final checks: full Go suite with both real engines, vet, static build and isolated
+  native SQL rehearsal passed. Architect/staff and product/unit/QA actual-code
+  reviews found no blockers. Graph syntax/catalog remains 36 nodes and 64 edges.
+  Actual source ordering and PG array preflight remain required before SQL cutover.

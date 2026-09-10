@@ -1,7 +1,9 @@
 package app
 
 import (
+	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"slices"
@@ -67,25 +69,39 @@ func validateBusinessSelection(primary string, trades []string) (businessSetting
 		}
 	}
 	if !b.Selected(primary) {
-		return b, errors.New("Choose a primary trade.")
+		return b, errBusinessInput
 	}
 	for _, id := range trades {
 		if !b.Selected(id) {
-			return b, errors.New("Choose a listed trade.")
+			return b, errBusinessInput
 		}
 	}
 	return b, nil
 }
 
 var errBusinessConflict = errors.New("These settings changed in another tab. Reload and review your changes.")
+var errBusinessInput = errors.New("Check the selected trades and service details.")
 
 func (s *Store) GetBusinessSettings(ctx context.Context, shopID string) (businessSettings, []businessService, error) {
 	b := businessSettings{Primary: "general", Trades: []string{"general"}}
-	err := s.db.Pool.QueryRow(ctx, `SELECT primary_trade, trades, revision FROM business_settings WHERE shop_id=$1`, shopID).Scan(&b.Primary, &b.Trades, &b.Revision)
+	if err := validateRecordIDs(shopID); err != nil {
+		return b, nil, err
+	}
+	var tradesJSON string
+	var tradesDest any = &b.Trades
+	if s.db.Pool.Dialect() == database.SQLServer {
+		tradesDest = &tradesJSON
+	}
+	err := s.db.Pool.QueryRow(ctx, database.Statement(s.db.Pool.Dialect(), `SELECT primary_trade, trades, revision FROM business_settings WHERE shop_id=$1`, `SELECT primary_trade,trades,revision FROM dbo.business_settings WHERE shop_id=CONVERT(uniqueidentifier,@p1)`), shopID).Scan(&b.Primary, tradesDest, &b.Revision)
 	if err != nil && !errors.Is(err, database.ErrNoRows) {
 		return b, nil, err
 	}
-	rows, err := s.db.Pool.Query(ctx, `SELECT id, preset_key, name, description, enabled, revision FROM business_services WHERE shop_id=$1 ORDER BY name, id`, shopID)
+	if err == nil && s.db.Pool.Dialect() == database.SQLServer {
+		if err := json.Unmarshal([]byte(tradesJSON), &b.Trades); err != nil {
+			return b, nil, err
+		}
+	}
+	rows, err := s.db.Pool.Query(ctx, database.Statement(s.db.Pool.Dialect(), `SELECT id, preset_key, name, description, enabled, revision FROM business_services WHERE shop_id=$1 ORDER BY name, id`, `SELECT LOWER(CONVERT(char(36),id)),preset_key,name,description,enabled,revision FROM dbo.business_services WHERE shop_id=CONVERT(uniqueidentifier,@p1)`), shopID)
 	if err != nil {
 		return b, nil, err
 	}
@@ -98,10 +114,22 @@ func (s *Store) GetBusinessSettings(ctx context.Context, shopID string) (busines
 		}
 		services = append(services, v)
 	}
+	if s.db.Pool.Dialect() == database.SQLServer {
+		// SQL's UUID and UTF-16 collation order differ from the current PG list.
+		slices.SortFunc(services, func(a, b businessService) int {
+			if n := cmp.Compare(a.Name, b.Name); n != 0 {
+				return n
+			}
+			return cmp.Compare(a.ID, b.ID)
+		})
+	}
 	return b, services, rows.Err()
 }
 
 func (s *Store) ApplyBusinessSettings(ctx context.Context, shopID string, b businessSettings, keys []string) error {
+	if err := validateRecordIDs(shopID); err != nil {
+		return err
+	}
 	selection, err := validateBusinessSelection(b.Primary, b.Trades)
 	if err != nil {
 		return err
@@ -116,7 +144,7 @@ func (s *Store) ApplyBusinessSettings(ctx context.Context, shopID string, b busi
 	}
 	for _, key := range keys {
 		if _, ok := allowed[key]; !ok {
-			return errors.New("Choose a service from the selected trades.")
+			return errBusinessInput
 		}
 	}
 	tx, err := s.db.Pool.Begin(ctx)
@@ -124,12 +152,31 @@ func (s *Store) ApplyBusinessSettings(ctx context.Context, shopID string, b busi
 		return err
 	}
 	defer tx.Rollback(ctx)
+	var tradesValue any = selection.Trades
+	if s.db.Pool.Dialect() == database.SQLServer {
+		// Keep the parent through commit before settings/preset locks, matching
+		// whole-shop deletion's lock order. Do not hold an exclusive shop lock.
+		var exists int
+		if err := tx.QueryRow(ctx, `SELECT 1 FROM dbo.shops WITH(HOLDLOCK) WHERE id=CONVERT(uniqueidentifier,@p1)`, shopID).Scan(&exists); err != nil {
+			return err
+		}
+		encoded, err := json.Marshal(selection.Trades)
+		if err != nil {
+			return err
+		}
+		tradesValue = string(encoded)
+	}
 	// INSERT/UPDATE serialize competing saves, including first-time setup.
 	var revision int
 	if b.Revision == 0 {
-		err = tx.QueryRow(ctx, `INSERT INTO business_settings (shop_id, primary_trade, trades) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING RETURNING revision`, shopID, selection.Primary, selection.Trades).Scan(&revision)
+		err = tx.QueryRow(ctx, database.Statement(s.db.Pool.Dialect(), `INSERT INTO business_settings (shop_id, primary_trade, trades) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING RETURNING revision`, `DECLARE @saved TABLE(revision int);
+INSERT INTO dbo.business_settings(shop_id,primary_trade,trades) OUTPUT inserted.revision INTO @saved
+SELECT CONVERT(uniqueidentifier,@p1),@p2,@p3 WHERE NOT EXISTS(SELECT 1 FROM dbo.business_settings WITH(UPDLOCK,HOLDLOCK) WHERE shop_id=CONVERT(uniqueidentifier,@p1));
+SELECT revision FROM @saved;`), shopID, selection.Primary, tradesValue).Scan(&revision)
 	} else {
-		err = tx.QueryRow(ctx, `UPDATE business_settings SET primary_trade=$2,trades=$3,revision=revision+1 WHERE shop_id=$1 AND revision=$4 RETURNING revision`, shopID, selection.Primary, selection.Trades, b.Revision).Scan(&revision)
+		err = tx.QueryRow(ctx, database.Statement(s.db.Pool.Dialect(), `UPDATE business_settings SET primary_trade=$2,trades=$3,revision=revision+1 WHERE shop_id=$1 AND revision=$4 RETURNING revision`, `DECLARE @saved TABLE(revision int);
+UPDATE dbo.business_settings SET primary_trade=@p2,trades=@p3,revision=revision+1 OUTPUT inserted.revision INTO @saved WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND revision=@p4;
+SELECT revision FROM @saved;`), shopID, selection.Primary, tradesValue, b.Revision).Scan(&revision)
 	}
 	if errors.Is(err, database.ErrNoRows) {
 		return errBusinessConflict
@@ -139,7 +186,11 @@ func (s *Store) ApplyBusinessSettings(ctx context.Context, shopID string, b busi
 	}
 	for _, key := range keys {
 		v := allowed[key]
-		_, err = tx.Exec(ctx, `INSERT INTO business_services (shop_id,preset_key,preset_version,name,description) VALUES ($1,$2,1,$3,$4) ON CONFLICT (shop_id,preset_key) DO NOTHING`, shopID, key, v.Name, v.Description)
+		_, err = tx.Exec(ctx, database.Statement(s.db.Pool.Dialect(), `INSERT INTO business_services (shop_id,preset_key,preset_version,name,description) VALUES ($1,$2,1,$3,$4) ON CONFLICT (shop_id,preset_key) DO NOTHING`, `INSERT INTO dbo.business_services(shop_id,preset_key,preset_version,name,description)
+SELECT CONVERT(uniqueidentifier,@p1),@p2,1,@p3,@p4 WHERE NOT EXISTS(
+ SELECT 1 FROM dbo.business_services WITH(UPDLOCK,HOLDLOCK)
+ WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND preset_key_hash=CONVERT(binary(32),HASHBYTES('SHA2_256',CONVERT(varbinary(max),CONVERT(nvarchar(max),@p2))))
+ AND preset_key=@p2 COLLATE Latin1_General_100_BIN2 AND DATALENGTH(preset_key)=DATALENGTH(@p2));`), shopID, key, v.Name, v.Description)
 		if err != nil {
 			return err
 		}
@@ -148,11 +199,14 @@ func (s *Store) ApplyBusinessSettings(ctx context.Context, shopID string, b busi
 }
 
 func (s *Store) UpdateBusinessService(ctx context.Context, shopID, id, name, description string, enabled bool, revision int) error {
-	name, description = strings.TrimSpace(name), strings.TrimSpace(description)
-	if name == "" || len(name) > 120 || len(description) > 2000 || strings.ContainsRune(name+description, '\x00') {
-		return errors.New("Enter a service name up to 120 bytes and a description up to 2,000 bytes.")
+	if err := validateRecordIDs(shopID, id); err != nil {
+		return err
 	}
-	tag, err := s.db.Pool.Exec(ctx, `UPDATE business_services SET name=$3,description=$4,enabled=$5,revision=revision+1 WHERE shop_id=$1 AND id=$2 AND revision=$6`, shopID, id, name, description, enabled, revision)
+	name, description = strings.TrimSpace(name), strings.TrimSpace(description)
+	if name == "" || len(name) > 120 || len(description) > 2000 || !validStoredText(name, description) {
+		return errBusinessInput
+	}
+	tag, err := s.db.Pool.Exec(ctx, database.Statement(s.db.Pool.Dialect(), `UPDATE business_services SET name=$3,description=$4,enabled=$5,revision=revision+1 WHERE shop_id=$1 AND id=$2 AND revision=$6`, `UPDATE dbo.business_services SET name=@p3,description=@p4,enabled=@p5,revision=revision+1 WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND id=CONVERT(uniqueidentifier,@p2) AND revision=@p6`), shopID, id, name, description, enabled, revision)
 	if err != nil {
 		return err
 	}
@@ -223,8 +277,12 @@ func (s *Server) handleBusinessSettings(w http.ResponseWriter, r *http.Request) 
 				http.Error(w, err.Error(), 409)
 				return
 			}
-			// Do not expose database errors or submitted values.
-			http.Error(w, "Could not save. Check the selected trades and service details, then retry.", 422)
+			if errors.Is(err, errBusinessInput) || errors.Is(err, errInvalidRecordID) {
+				http.Error(w, "Could not save. Check the selected trades and service details, then retry.", 422)
+			} else {
+				// Do not claim an unavailable write was invalid or expose database details.
+				http.Error(w, "Could not confirm the save. Reload business setup to check your changes before trying again.", 503)
+			}
 			return
 		}
 		if action != "preview" {

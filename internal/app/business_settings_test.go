@@ -10,6 +10,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/wmichelin/clubdue/internal/database"
 )
 
 func TestBusinessSelection(t *testing.T) {
@@ -42,6 +44,12 @@ func TestBusinessSetupPreservesEditsAndSerializesSaves(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(db.Close)
+	testBusinessSetupPreservesEditsAndSerializesSaves(t, db)
+}
+
+func testBusinessSetupPreservesEditsAndSerializesSaves(t *testing.T, db *DB) {
+	t.Helper()
+	ctx := context.Background()
 	s := &Store{db: db}
 	shop := createTestShop(t, ctx, db, "business-"+time.Now().Format("150405.000000000"))
 	other := createTestShop(t, ctx, db, "business-other-"+time.Now().Format("150405.000000000"))
@@ -50,7 +58,7 @@ func TestBusinessSetupPreservesEditsAndSerializesSaves(t *testing.T) {
 		t.Fatalf("initial: %+v %v", b, err)
 	}
 	var rows int
-	if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM business_settings WHERE shop_id=$1`, shop).Scan(&rows); err != nil || rows != 0 {
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `SELECT count(*) FROM business_settings WHERE shop_id=$1`, `SELECT COUNT(*) FROM dbo.business_settings WHERE shop_id=CONVERT(uniqueidentifier,@p1)`), shop).Scan(&rows); err != nil || rows != 0 {
 		t.Fatalf("reading setup wrote data: %v", err)
 	}
 	b, _ = validateBusinessSelection("landscaping", []string{"house_washing"})
@@ -131,9 +139,11 @@ func TestBusinessSetupPreservesEditsAndSerializesSaves(t *testing.T) {
 	if err != nil || len(otherServices) != 0 {
 		t.Fatal("tenant leaked services")
 	}
-	for _, table := range []string{"agreements", "plan_templates", "service_schedules"} {
-		if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM `+table+` WHERE shop_id=$1`, shop).Scan(&rows); err != nil || rows != 0 {
-			t.Fatalf("setup changed %s: %v", table, err)
+	if db.Pool.Dialect() == database.Postgres {
+		for _, table := range []string{"agreements", "plan_templates", "service_schedules"} {
+			if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM `+table+` WHERE shop_id=$1`, shop).Scan(&rows); err != nil || rows != 0 {
+				t.Fatalf("setup changed %s: %v", table, err)
+			}
 		}
 	}
 }
@@ -145,6 +155,12 @@ func TestBusinessSetupPreviewIsReadOnlyAndOwnerOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(db.Close)
+	testBusinessSetupPreviewIsReadOnlyAndOwnerOnly(t, db)
+}
+
+func testBusinessSetupPreviewIsReadOnlyAndOwnerOnly(t *testing.T, db *DB) {
+	t.Helper()
+	ctx := context.Background()
 	shop := createTestShop(t, ctx, db, "business-preview-"+time.Now().Format("150405.000000000"))
 	s := &Server{store: &Store{db: db}, tmpl: template.Must(template.ParseFS(templateFS, "templates/*.html"))}
 	values := url.Values{"action": {"preview"}, "primary": {"auto_detailing"}, "trade": {"house_washing"}, "revision": {"0"}}
@@ -165,5 +181,62 @@ func TestBusinessSetupPreviewIsReadOnlyAndOwnerOnly(t *testing.T) {
 	b, services, err := s.store.GetBusinessSettings(ctx, shop)
 	if err != nil || b.Revision != 0 || len(services) != 0 {
 		t.Fatal("preview changed records")
+	}
+}
+
+func TestBusinessSetupAvailability(t *testing.T) {
+	ctx := context.Background()
+	db, err := openDB(ctx, integrationDatabaseURL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(db.Close)
+	testBusinessSetupAvailability(t, db)
+}
+
+func testBusinessSetupAvailability(t *testing.T, db *DB) {
+	t.Helper()
+	ctx := context.Background()
+	shop := createTestShop(t, ctx, db, "business-availability-"+time.Now().Format("150405.000000000"))
+	store := &Store{db: db}
+	b, _ := validateBusinessSelection("hvac", nil)
+	if err := store.ApplyBusinessSettings(ctx, shop, b, []string{"hvac/repair"}); err != nil {
+		t.Fatal(err)
+	}
+	_, services, err := store.GetBusinessSettings(ctx, shop)
+	if err != nil || len(services) != 1 {
+		t.Fatal("fixture", err)
+	}
+	failure := errors.New("synthetic internal setup failure")
+	server := &Server{store: store}
+	for _, tc := range []struct {
+		form   url.Values
+		outage bool
+		status int
+	}{
+		{url.Values{"action": {"apply"}, "primary": {"hvac"}, "revision": {"1"}}, true, 503},
+		{url.Values{"action": {"service"}, "id": {services[0].ID}, "name": {"Edited"}, "revision": {"1"}}, true, 503},
+		{url.Values{"action": {"apply"}, "primary": {"invalid"}, "revision": {"1"}}, false, 422},
+		{url.Values{"action": {"service"}, "id": {services[0].ID}, "name": {"bad\xff"}, "revision": {"1"}}, false, 422},
+		{url.Values{"action": {"service"}, "id": {services[0].ID + "suffix"}, "name": {"Edited"}, "revision": {"1"}}, false, 422},
+		{url.Values{"action": {"apply"}, "primary": {"hvac"}, "revision": {"0"}}, false, 409},
+		{url.Values{"action": {"service"}, "id": {services[0].ID}, "name": {"Edited"}, "revision": {"0"}}, false, 409},
+	} {
+		server.store = store
+		if tc.outage {
+			server.store = &Store{db: &DB{Pool: propertyFailingWritesPool{Pool: db.Pool, err: failure}}}
+		}
+		r := httptest.NewRequest("POST", "/business", strings.NewReader(tc.form.Encode()))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		r = r.WithContext(contextWithUser(ctx, &User{ShopID: shop, Role: "owner"}))
+		w := httptest.NewRecorder()
+		server.handleBusinessSettings(w, r)
+		if w.Code != tc.status || w.Header().Get("Location") != "" || strings.Contains(w.Body.String(), failure.Error()) {
+			t.Fatalf("%s: %d %s", tc.form.Get("action"), w.Code, w.Body.String())
+		}
+	}
+	got, services, err := store.GetBusinessSettings(ctx, shop)
+	if err != nil || got.Revision != 1 || len(services) != 1 || services[0].Revision != 1 {
+		t.Fatal("unsuccessful forms changed setup")
 	}
 }

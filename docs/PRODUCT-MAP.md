@@ -13,13 +13,13 @@ for the distinction between provisioned resources and deployed app behavior.
 
 ## Availability snapshot
 
-Reviewed September 9, 2026 against staging release `71042df` and the recorded
+Reviewed September 9, 2026 against staging release `35e0760` and the recorded
 release verification. These are verified release states, not a live deployment monitor.
 
 | Label | Meaning |
 | --- | --- |
 | **Live** | Available in production at [getsideyard.com](https://getsideyard.com), source `ae6f16a`, and on staging. The legacy ClubDue hostname remains supported. |
-| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), release `71042df`: standalone jobs/site surveys, the single-line work-status badge fix, and configured private Azure photo storage. |
+| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), release `35e0760`: standalone jobs/site surveys, the single-line work-status badge fix, and configured private Azure photo storage. |
 | **Conditional** | Implemented but requires explicit deployment configuration; not a promise of availability to clients. |
 
 Unless marked otherwise, catalog nodes are **Live**. “Signed in” means a user
@@ -60,7 +60,7 @@ flowchart TB
   subgraph WORKSPACE["Workspace and setup"]
     NAV{{"NAV · Shared navigation"}}
     DASH["DASH · Dashboard + calendar"]
-    BUSINESS["BUSINESS · Trade / service setup"]
+    BUSINESS["BUSINESS · Trade / service setup<br/>Save feedback pending staging"]
     PLANS["PLANS · Plan templates"]
     PLAN["PLAN · Edit template"]
     IMPORT["IMPORT · CSV upload"]
@@ -76,7 +76,7 @@ flowchart TB
 
   subgraph RECORDS["Customers, properties and assets"]
     CUSTOMERS["CUSTOMERS · Customer list / add"]
-    CUSTOMER["CUSTOMER · Contact, properties, vehicles<br/>Availability feedback pending staging"]
+    CUSTOMER["CUSTOMER · Contact, properties, vehicles<br/>Availability feedback on staging"]
     PROPERTY["PROPERTY · Site notes / measurements<br/>Availability feedback on staging"]
     ADDRESS["ADDRESS · Correct property address"]
     PHOTOS["PHOTOS · Private property photos<br/>Azure storage on staging<br/>Availability feedback on staging"]
@@ -112,7 +112,7 @@ flowchart TB
 
   subgraph ONETIME["One-time work · staging"]
     JOBS["JOBS · Open / all jobs (staging)"]
-    NEWJOB["NEWJOB · Choose customer / create (staging)<br/>Availability feedback pending verification"]
+    NEWJOB["NEWJOB · Choose customer / create (staging)<br/>Availability feedback on staging"]
     JOB["JOB · Details / outcome / history (staging)"]
     JOBS --> NEWJOB & JOB
     NEWJOB -->|Save| JOB
@@ -242,6 +242,10 @@ custom edits; conflicting saves are rejected. Links to plan templates.
 Starter services are unpriced preparation records. They do not automatically
 create plans, jobs, schedules, pricing, checklists or configurable fields.
 
+**Pending staging verification:** failed saves distinguish unavailable storage
+(503) from invalid input (422) and stale edits (409). Unconfirmed saves ask the
+owner to reload and check their changes before retrying.
+
 ### CUSTOMERS — Customer list and creation
 
 **Route:** `GET/POST /customers`. **Access:** Signed in.
@@ -259,7 +263,7 @@ This is the starting point for manual client-data entry; bulk entry uses IMPORT.
 - Add/list multiple service addresses, including unit/suite, via `POST /customers/{id}/properties`. Add/list equipment per property via `POST /properties/{id}/equipment`.
 - Owners open property details, equipment editing and private histories. Vehicle creation/editing is inline via `POST /customers/{id}/vehicles`: multiple vehicles, name, make/model/year, optional identifier and internal standing notes. Vehicles do not require a property.
 - **Staging:** create a job/site survey already associated with this customer.
-- **Pending staging verification:** customer-detail read failures return temporary-unavailability feedback (503); missing or malformed customer IDs return 404.
+- **Staging:** customer-detail read failures return temporary-unavailability feedback (503); missing or malformed customer IDs return 404.
 - No combined customer-wide authored activity timeline yet. Property/asset/visit notes have their own pages.
 
 ### PROPERTY — Property details, site notes and measurements
@@ -542,7 +546,7 @@ details. An empty customer list links to customer creation. Repeated identical
 submissions do not duplicate the job. Save opens JOB; no agreement or invoice is
 created, and starter services are not automatically applied.
 
-**Pending staging verification:** customer lookup distinguishes unavailable storage
+**Staging:** customer lookup distinguishes unavailable storage
 (503) from missing or malformed customer IDs (404).
 
 ### JOB — Job details, outcome and history
