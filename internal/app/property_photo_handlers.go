@@ -22,7 +22,11 @@ func (s *Server) handlePropertyPhotos(w http.ResponseWriter, r *http.Request) {
 	}
 	p, err := s.store.GetPropertyAddress(r.Context(), u.ShopID, r.PathValue("id"))
 	if err != nil {
-		http.NotFound(w, r)
+		if errors.Is(err, database.ErrNoRows) || errors.Is(err, errInvalidRecordID) {
+			http.NotFound(w, r)
+		} else {
+			http.Error(w, "Property photos unavailable. Please retry.", http.StatusServiceUnavailable)
+		}
 		return
 	}
 	key, caption, category, message, status := "", "", "general", "", http.StatusOK
@@ -120,7 +124,7 @@ func (s *Server) handlePropertyPhotoImage(w http.ResponseWriter, r *http.Request
 	}
 	photo, err := s.store.GetPropertyPhoto(r.Context(), u.ShopID, r.PathValue("id"))
 	if err != nil {
-		if errors.Is(err, database.ErrNoRows) {
+		if errors.Is(err, database.ErrNoRows) || errors.Is(err, errInvalidRecordID) {
 			http.NotFound(w, r)
 		} else {
 			http.Error(w, "Photo unavailable. Please retry.", 503)
@@ -150,7 +154,7 @@ func (s *Server) handlePropertyPhotoDelete(w http.ResponseWriter, r *http.Reques
 	}
 	id, err := s.store.DeletePropertyPhoto(r.Context(), u.ShopID, r.PathValue("id"))
 	if err != nil {
-		if errors.Is(err, database.ErrNoRows) {
+		if errors.Is(err, database.ErrNoRows) || errors.Is(err, errInvalidRecordID) {
 			http.NotFound(w, r)
 		} else {
 			log.Printf("delete property photo: %v", err)

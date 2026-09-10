@@ -736,3 +736,42 @@ paid integrations or live customer payment collection are configured by this cha
   passed. Staging verification is the remaining check for this slice.
 - Staging: https://clubdue-staging.michelindigitalmedia.com (verified `9246dea`;
   property-record changes pending). Production is unchanged.
+
+
+- Property-record source `4ac47f801dea99c8b4fc41566fa308c091c45a29` passed CI
+  [34420502263](https://github.com/wmichelin/clubdue/actions/runs/34420502263) and
+  staging [34420502319](https://github.com/wmichelin/clubdue/actions/runs/34420502319).
+  Running revision/image readback and manual smoke passed:
+  `ghcr.io/wmichelin/clubdue@sha256:7050de3263cfb1c6887427c061390c0b9c20a957079649b69b83d59a66f87928`.
+  Browser property/details/note/decimal-history/Maps checks passed at 390/1440px,
+  with no browser errors or document overflow. The initial QA assertion checked
+  a note inside collapsed history; opening it fixed the assertion, with no app
+  change. Mobile screenshot reviewed. Native note-insert rollback/retry and HTTP
+  validation/conflict review additions also passed before staging.
+
+### Native photo storage records — implementation
+
+- Migrations 007/008 and explicit native statements preserve private photos,
+  pending uploads, quota accounting and inline recovery bytes. Version inventory
+  survives property/customer/shop deletion; set-based retirement covers every
+  deleted row, including cascades, and retains its earliest retirement timestamp.
+- Architect/staff: shop-before-photo quota locks; photo-before-inventory retirement;
+  commit key/inventory before Blob IO, then independently commit the returned
+  version before publishing the photo. Trigger-bearing returns use OUTPUT INTO.
+  Exact version comparison includes binary collation and byte length.
+- Product/QA: pending uploads remain hidden/count toward quota; failed backfills
+  retain existing visibility; foreign access never reaches Blob; cloud read failures
+  stay failures. Gallery outages return 503, missing/malformed photo IDs 404.
+  Existing photo retention and deletion limits are unchanged; no purge is added.
+- Unit-testing: shared real-engine tests cover duplicate/concurrent uploads, both
+  quotas, private handlers, failed storage, recovery reads and late deletion.
+  Native tests cover multirow property/customer/shop cascade rollback, retained
+  versions/timestamps, exact version conflicts and release of all four connections
+  during Blob calls. Inventory-insert failure rolls back rows/quota before Blob;
+  publication failure retains the version/pending photo and retries without a
+  duplicate. Bounded SyncPhotoObjects resumes one pending row and then drains.
+- DevOps: full Go suite with both engines, vet and static build passed. Focused
+  phase-failure and handler regressions and final isolated SQL rehearsal passed. Runtime SQL selection and sync command wiring remain disabled/pending
+  until the full port and transfer/restore gates pass.
+- Staging: https://clubdue-staging.michelindigitalmedia.com (verified `4ac47f8`;
+  native photo slice pending). Production remains unchanged.

@@ -12,6 +12,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
+	"github.com/wmichelin/clubdue/internal/database"
 	"github.com/wmichelin/clubdue/internal/photostore"
 )
 
@@ -85,6 +86,9 @@ func runSyncPhotos(config Config) error {
 // Inline bytes are a recovery copy during migration and let a retry resume even
 // when the first upload's HTTP response or the final SQL commit was lost.
 func (s *Store) syncPropertyPhotoObject(ctx context.Context, shopID, photoID string) error {
+	if err := validateRecordIDs(shopID, photoID); err != nil {
+		return err
+	}
 	if s.photoObjects == nil {
 		return nil
 	}
@@ -95,7 +99,7 @@ func (s *Store) syncPropertyPhotoObject(ctx context.Context, shopID, photoID str
 	defer tx.Rollback(ctx)
 	var photo normalizedPhoto
 	var key, version, hash string
-	err = tx.QueryRow(ctx, `SELECT content_type,image_data,COALESCE(object_key,''),COALESCE(object_version,''),content_hash FROM property_photos WHERE shop_id=$1 AND id=$2 AND deleted_at IS NULL FOR UPDATE`, shopID, photoID).Scan(&photo.ContentType, &photo.Data, &key, &version, &hash)
+	err = tx.QueryRow(ctx, database.Statement(s.db.Pool.Dialect(), `SELECT content_type,image_data,COALESCE(object_key,''),COALESCE(object_version,''),content_hash FROM property_photos WHERE shop_id=$1 AND id=$2 AND deleted_at IS NULL FOR UPDATE`, `SELECT content_type,image_data,COALESCE(object_key,N''),COALESCE(object_version,N''),content_hash FROM dbo.property_photos WITH(UPDLOCK,HOLDLOCK) WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND id=CONVERT(uniqueidentifier,@p2) AND deleted_at IS NULL`), shopID, photoID).Scan(&photo.ContentType, &photo.Data, &key, &version, &hash)
 	if err != nil {
 		return err
 	}
@@ -107,10 +111,10 @@ func (s *Store) syncPropertyPhotoObject(ctx context.Context, shopID, photoID str
 	}
 	if key == "" {
 		key = fmt.Sprintf("%x", sha256.Sum256([]byte("sideyard-photo/"+shopID+"/"+photoID)))
-		if _, err := tx.Exec(ctx, `UPDATE property_photos SET object_key=$3 WHERE shop_id=$1 AND id=$2`, shopID, photoID, key); err != nil {
+		if _, err := tx.Exec(ctx, database.Statement(s.db.Pool.Dialect(), `UPDATE property_photos SET object_key=$3 WHERE shop_id=$1 AND id=$2`, `UPDATE dbo.property_photos SET object_key=@p3 WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND id=CONVERT(uniqueidentifier,@p2)`), shopID, photoID, key); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO property_photo_objects(object_key,shop_id,photo_id,content_hash,content_type,byte_length) VALUES ($1,$2,$3,$4,$5,$6)`, key, shopID, photoID, hash, photo.ContentType, len(photo.Data)); err != nil {
+		if _, err := tx.Exec(ctx, database.Statement(s.db.Pool.Dialect(), `INSERT INTO property_photo_objects(object_key,shop_id,photo_id,content_hash,content_type,byte_length) VALUES ($1,$2,$3,$4,$5,$6)`, `INSERT INTO dbo.property_photo_objects(object_key,shop_id,photo_id,content_hash,content_type,byte_length) VALUES(@p1,CONVERT(uniqueidentifier,@p2),CONVERT(uniqueidentifier,@p3),@p4,@p5,@p6)`), key, shopID, photoID, hash, photo.ContentType, len(photo.Data)); err != nil {
 			return err
 		}
 	}
@@ -122,21 +126,21 @@ func (s *Store) syncPropertyPhotoObject(ctx context.Context, shopID, photoID str
 	if err != nil {
 		return err
 	}
-	if ref.Key != key || ref.VersionID == "" || ref.SHA256 != hash || ref.Size != len(photo.Data) || ref.ContentType != photo.ContentType {
+	if ref.Key != key || ref.VersionID == "" || !validStoredText(ref.VersionID) || ref.SHA256 != hash || ref.Size != len(photo.Data) || ref.ContentType != photo.ContentType {
 		return errors.New("photo storage returned an invalid reference")
 	}
 	// Record a late upload even if the photo was deleted during the network call.
 	// This inventory survives cascades and allows future version-aware collection.
 	// Commit inventory independently: deletion locks photo then inventory, so
 	// holding inventory while acquiring a photo lock would invert lock order.
-	tag, err := s.db.Pool.Exec(ctx, `UPDATE property_photo_objects SET version_id=$2 WHERE object_key=$1 AND (version_id IS NULL OR version_id=$2)`, key, ref.VersionID)
+	tag, err := s.db.Pool.Exec(ctx, database.Statement(s.db.Pool.Dialect(), `UPDATE property_photo_objects SET version_id=$2 WHERE object_key=$1 AND (version_id IS NULL OR version_id=$2)`, `UPDATE dbo.property_photo_objects SET version_id=@p2 WHERE object_key=@p1 AND DATALENGTH(object_key)=DATALENGTH(@p1) AND (version_id IS NULL OR (version_id=@p2 COLLATE Latin1_General_100_BIN2 AND DATALENGTH(version_id)=DATALENGTH(@p2)))`), key, ref.VersionID)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() != 1 {
 		return errPhotoConflict
 	}
-	tag, err = s.db.Pool.Exec(ctx, `UPDATE property_photos SET object_version=$4,object_pending=false WHERE shop_id=$1 AND id=$2 AND object_key=$3 AND deleted_at IS NULL AND (object_version IS NULL OR object_version=$4)`, shopID, photoID, key, ref.VersionID)
+	tag, err = s.db.Pool.Exec(ctx, database.Statement(s.db.Pool.Dialect(), `UPDATE property_photos SET object_version=$4,object_pending=false WHERE shop_id=$1 AND id=$2 AND object_key=$3 AND deleted_at IS NULL AND (object_version IS NULL OR object_version=$4)`, `UPDATE dbo.property_photos SET object_version=@p4,object_pending=0 WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND id=CONVERT(uniqueidentifier,@p2) AND object_key=@p3 AND DATALENGTH(object_key)=DATALENGTH(@p3) AND deleted_at IS NULL AND (object_version IS NULL OR (object_version=@p4 COLLATE Latin1_General_100_BIN2 AND DATALENGTH(object_version)=DATALENGTH(@p4)))`), shopID, photoID, key, ref.VersionID)
 	if err != nil {
 		return err
 	}
@@ -155,7 +159,7 @@ func (s *Store) SyncPhotoObjects(ctx context.Context, limit int) (int, error) {
 	if limit < 1 || limit > 100 {
 		return 0, errors.New("photo sync batch must be between 1 and 100")
 	}
-	rows, err := s.db.Pool.Query(ctx, `SELECT shop_id,id FROM property_photos WHERE deleted_at IS NULL AND object_version IS NULL ORDER BY recorded_at,id LIMIT $1`, limit)
+	rows, err := s.db.Pool.Query(ctx, database.Statement(s.db.Pool.Dialect(), `SELECT shop_id,id FROM property_photos WHERE deleted_at IS NULL AND object_version IS NULL ORDER BY recorded_at,id LIMIT $1`, `SELECT TOP(@p1) LOWER(CONVERT(char(36),shop_id)),LOWER(CONVERT(char(36),id)) FROM dbo.property_photos WHERE deleted_at IS NULL AND object_version IS NULL ORDER BY recorded_at,CONVERT(char(36),id) COLLATE Latin1_General_100_BIN2`), limit)
 	if err != nil {
 		return 0, err
 	}

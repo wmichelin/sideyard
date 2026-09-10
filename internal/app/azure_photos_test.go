@@ -66,6 +66,11 @@ func TestAzurePhotoHandoffRetriesAndPrivateReads(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(db.Close)
+	testAzurePhotoHandoffRetriesAndPrivateReads(t, db)
+}
+
+func testAzurePhotoHandoffRetriesAndPrivateReads(t *testing.T, db *DB) {
+	ctx := context.Background()
 	shop := createTestShop(t, ctx, db, fmt.Sprintf("azure-photo-%d", time.Now().UnixNano()))
 	other := createTestShop(t, ctx, db, fmt.Sprintf("azure-other-%d", time.Now().UnixNano()))
 	customer := createTestCustomer(t, ctx, db, shop, "Photo fixture")
@@ -144,6 +149,11 @@ func TestAzurePhotoBackfillPreservesExistingPhotos(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(db.Close)
+	testAzurePhotoBackfillPreservesExistingPhotos(t, db)
+}
+
+func testAzurePhotoBackfillPreservesExistingPhotos(t *testing.T, db *DB) {
+	ctx := context.Background()
 	shop := createTestShop(t, ctx, db, fmt.Sprintf("azure-backfill-%d", time.Now().UnixNano()))
 	customer := createTestCustomer(t, ctx, db, shop, "Photo fixture")
 	property := createTestProperty(t, ctx, db, shop, customer, "125 Fixture St")
@@ -185,52 +195,58 @@ func TestAzurePhotoDeleteDuringUploadRetainsVersionInventory(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(db.Close)
-			shop := createTestShop(t, ctx, db, fmt.Sprintf("azure-delete-%d", time.Now().UnixNano()))
-			customer := createTestCustomer(t, ctx, db, shop, "Photo fixture")
-			property := createTestProperty(t, ctx, db, shop, customer, "127 Fixture St")
-			photo, err := normalizePhoto(photoFixture(t))
-			if err != nil {
-				t.Fatal(err)
-			}
-			started, release := make(chan struct{}), make(chan struct{})
-			objects := &fakePhotoObjects{beforePut: func() { close(started); <-release }}
-			s := &Store{db: db, photoObjects: objects}
-			finished := make(chan error, 1)
-			go func() {
-				_, err := s.AddPropertyPhoto(ctx, shop, property, strings.Repeat("c", 32), "Delete race", "general", "owner", photo)
-				finished <- err
-			}()
-			select {
-			case <-started:
-			case <-ctx.Done():
-				t.Fatal("upload never started")
-			}
-			var id, key string
-			if err := db.Pool.QueryRow(ctx, `SELECT id,object_key FROM property_photos WHERE shop_id=$1`, shop).Scan(&id, &key); err != nil {
-				close(release)
-				t.Fatal(err)
-			}
-			if cascade {
-				_, err = db.Pool.Exec(ctx, `DELETE FROM customers WHERE shop_id=$1 AND id=$2`, shop, customer)
-			} else {
-				_, err = s.DeletePropertyPhoto(ctx, shop, id)
-			}
-			close(release)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := <-finished; !errors.Is(err, errPhotoConflict) {
-				t.Fatalf("late completion: %v", err)
-			}
-			if _, err := s.GetPropertyPhoto(ctx, shop, id); !errors.Is(err, database.ErrNoRows) {
-				t.Fatal("late upload resurrected photo")
-			}
-			var retired bool
-			var version string
-			if err := db.Pool.QueryRow(ctx, `SELECT retired_at IS NOT NULL,COALESCE(version_id,'') FROM property_photo_objects WHERE object_key=$1`, key).Scan(&retired, &version); err != nil || !retired || version != "saved-version" {
-				t.Fatalf("late version inventory lost: %v %s %v", retired, version, err)
-			}
+			testAzurePhotoDeleteDuringUploadRetainsVersionInventory(t, db, cascade)
 		})
+	}
+}
+
+func testAzurePhotoDeleteDuringUploadRetainsVersionInventory(t *testing.T, db *DB, cascade bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	shop := createTestShop(t, ctx, db, fmt.Sprintf("azure-delete-%d", time.Now().UnixNano()))
+	customer := createTestCustomer(t, ctx, db, shop, "Photo fixture")
+	property := createTestProperty(t, ctx, db, shop, customer, "127 Fixture St")
+	photo, err := normalizePhoto(photoFixture(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, release := make(chan struct{}), make(chan struct{})
+	objects := &fakePhotoObjects{beforePut: func() { close(started); <-release }}
+	s := &Store{db: db, photoObjects: objects}
+	finished := make(chan error, 1)
+	go func() {
+		_, err := s.AddPropertyPhoto(ctx, shop, property, strings.Repeat("c", 32), "Delete race", "general", "owner", photo)
+		finished <- err
+	}()
+	select {
+	case <-started:
+	case <-ctx.Done():
+		t.Fatal("upload never started")
+	}
+	var id, key string
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `SELECT id,object_key FROM property_photos WHERE shop_id=$1`, `SELECT LOWER(CONVERT(char(36),id)),object_key FROM dbo.property_photos WHERE shop_id=CONVERT(uniqueidentifier,@p1)`), shop).Scan(&id, &key); err != nil {
+		close(release)
+		t.Fatal(err)
+	}
+	if cascade {
+		_, err = db.Pool.Exec(ctx, database.Statement(db.Pool.Dialect(), `DELETE FROM customers WHERE shop_id=$1 AND id=$2`, `DELETE FROM dbo.customers WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND id=CONVERT(uniqueidentifier,@p2)`), shop, customer)
+	} else {
+		_, err = s.DeletePropertyPhoto(ctx, shop, id)
+	}
+	close(release)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := <-finished; !errors.Is(err, errPhotoConflict) {
+		t.Fatalf("late completion: %v", err)
+	}
+	if _, err := s.GetPropertyPhoto(ctx, shop, id); !errors.Is(err, database.ErrNoRows) {
+		t.Fatal("late upload resurrected photo")
+	}
+	var retired bool
+	var version string
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `SELECT retired_at IS NOT NULL,COALESCE(version_id,'') FROM property_photo_objects WHERE object_key=$1`, `SELECT CONVERT(bit,CASE WHEN retired_at IS NULL THEN 0 ELSE 1 END),COALESCE(version_id,N'') FROM dbo.property_photo_objects WHERE object_key=@p1`), key).Scan(&retired, &version); err != nil || !retired || version != "saved-version" {
+		t.Fatalf("late version inventory lost: %v %s %v", retired, version, err)
 	}
 }
 

@@ -21,6 +21,9 @@ func TestMalformedRecordRequestsDoNotReadDatabaseOrReportOutage(t *testing.T) {
 	}{
 		{"equipment", "GET", shop + "suffix", nil, s.handleEquipmentRecord, 404},
 		{"address", "GET", shop + " ", nil, s.handlePropertyAddress, 404},
+		{"photo gallery", "GET", shop + "suffix", nil, s.handlePropertyPhotos, 404},
+		{"photo image", "GET", shop + "suffix", nil, s.handlePropertyPhotoImage, 404},
+		{"photo delete", "POST", shop + "suffix", url.Values{"confirm": {"1"}}, s.handlePropertyPhotoDelete, 404},
 		{"vehicle", "POST", shop, url.Values{"vehicle_id": {shop + "suffix"}, "name": {"Truck"}, "revision": {"1"}}, s.handleCustomerVehicle, 400},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

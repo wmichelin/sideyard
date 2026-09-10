@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html/template"
 	"mime/multipart"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
@@ -16,6 +17,33 @@ import (
 	"github.com/wmichelin/clubdue/internal/database"
 )
 
+func TestPropertyPhotoFailuresRemainPrivateAndUnavailable(t *testing.T) {
+	for _, tc := range []struct {
+		name, method string
+		handler      func(*Server) http.HandlerFunc
+		form         url.Values
+	}{
+		{"gallery", "GET", func(s *Server) http.HandlerFunc { return s.handlePropertyPhotos }, nil},
+		{"image", "GET", func(s *Server) http.HandlerFunc { return s.handlePropertyPhotoImage }, nil},
+		{"delete", "POST", func(s *Server) http.HandlerFunc { return s.handlePropertyPhotoDelete }, url.Values{"confirm": {"1"}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			failure := errors.New("synthetic private database failure")
+			objects := &fakePhotoObjects{}
+			s := &Server{store: &Store{db: &DB{Pool: &unavailableAuthPool{err: failure}}, photoObjects: objects}}
+			r := httptest.NewRequest(tc.method, "/photo", strings.NewReader(tc.form.Encode()))
+			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			r.SetPathValue("id", "12345678-1234-1234-1234-123456789012")
+			r = r.WithContext(contextWithUser(context.Background(), &User{ShopID: "12345678-1234-1234-1234-123456789013", Role: "owner"}))
+			w := httptest.NewRecorder()
+			tc.handler(s)(w, r)
+			if w.Code != 503 || w.Header().Get("Location") != "" || strings.Contains(w.Body.String(), failure.Error()) || objects.puts != 0 || objects.gets != 0 {
+				t.Fatalf("private outage: %d %s", w.Code, w.Body.String())
+			}
+		})
+	}
+}
+
 func TestPropertyPhotosIsolationRetriesQuotasAndDeletion(t *testing.T) {
 	ctx := context.Background()
 	db, err := openDB(ctx, integrationDatabaseURL(t))
@@ -23,6 +51,11 @@ func TestPropertyPhotosIsolationRetriesQuotasAndDeletion(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(db.Close)
+	testPropertyPhotosIsolationRetriesQuotasAndDeletion(t, db)
+}
+
+func testPropertyPhotosIsolationRetriesQuotasAndDeletion(t *testing.T, db *DB) {
+	ctx := context.Background()
 	s := &Store{db: db}
 	stamp := time.Now().Format("150405.000000000")
 	shop := createTestShop(t, ctx, db, "photos-"+stamp)
@@ -71,7 +104,7 @@ func TestPropertyPhotosIsolationRetriesQuotasAndDeletion(t *testing.T) {
 		t.Fatal("photo list/usage incorrect")
 	}
 	// Leave one count slot; concurrent uploads cannot both consume it.
-	_, err = db.Pool.Exec(ctx, `INSERT INTO property_photos(shop_id,property_id,submission_key,content_hash,caption,category,content_type,image_data,recorded_by) SELECT $1,$2,md5(i::text),repeat('b',64),'','general','image/png',$3,'quota fixture' FROM generate_series(1,98) i`, shop, property, photo.Data)
+	_, err = db.Pool.Exec(ctx, database.Statement(db.Pool.Dialect(), `INSERT INTO property_photos(shop_id,property_id,submission_key,content_hash,caption,category,content_type,image_data,recorded_by) SELECT $1,$2,md5(i::text),repeat('b',64),'','general','image/png',$3,'quota fixture' FROM generate_series(1,98) i`, `WITH numbers AS (SELECT 1 i UNION ALL SELECT i+1 FROM numbers WHERE i<98) INSERT INTO dbo.property_photos(shop_id,property_id,submission_key,content_hash,caption,category,content_type,image_data,recorded_by) SELECT CONVERT(uniqueidentifier,@p1),CONVERT(uniqueidentifier,@p2),LOWER(CONVERT(char(32),HASHBYTES('MD5',CONVERT(varchar(3),i)),2)),REPLICATE(N'b',64),N'',N'general',N'image/png',@p3,N'quota fixture' FROM numbers`), shop, property, photo.Data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +143,7 @@ func TestPropertyPhotosIsolationRetriesQuotasAndDeletion(t *testing.T) {
 		t.Fatal("retry resurrected deleted photo")
 	}
 	var empty bool
-	if err := db.Pool.QueryRow(ctx, `SELECT image_data IS NULL AND caption='' AND recorded_by='' FROM property_photos WHERE id=$1`, id).Scan(&empty); err != nil || !empty {
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `SELECT image_data IS NULL AND caption='' AND recorded_by='' FROM property_photos WHERE id=$1`, `SELECT CONVERT(bit,CASE WHEN image_data IS NULL AND DATALENGTH(caption)=0 AND DATALENGTH(recorded_by)=0 THEN 1 ELSE 0 END) FROM dbo.property_photos WHERE id=CONVERT(uniqueidentifier,@p1)`), id).Scan(&empty); err != nil || !empty {
 		t.Fatal("deleted content retained in live row")
 	}
 	if _, err := s.DeletePropertyPhoto(ctx, shop, id); err != nil {
@@ -122,7 +155,7 @@ func TestPropertyPhotosIsolationRetriesQuotasAndDeletion(t *testing.T) {
 	// Byte quota is independent of the count quota; use a separate tenant fixture.
 	otherCustomer := createTestCustomer(t, ctx, db, other, "Byte quota customer")
 	otherProperty := createTestProperty(t, ctx, db, other, otherCustomer, "14 Photo St")
-	_, err = db.Pool.Exec(ctx, `INSERT INTO property_photos(shop_id,property_id,submission_key,content_hash,caption,category,content_type,image_data,recorded_by) SELECT $1,$2,md5(i::text),repeat('b',64),'','general','image/png',decode(repeat('00',4194304),'hex'),'quota fixture' FROM generate_series(1,12) i`, other, otherProperty)
+	_, err = db.Pool.Exec(ctx, database.Statement(db.Pool.Dialect(), `INSERT INTO property_photos(shop_id,property_id,submission_key,content_hash,caption,category,content_type,image_data,recorded_by) SELECT $1,$2,md5(i::text),repeat('b',64),'','general','image/png',decode(repeat('00',4194304),'hex'),'quota fixture' FROM generate_series(1,12) i`, `WITH numbers AS (SELECT 1 i UNION ALL SELECT i+1 FROM numbers WHERE i<12) INSERT INTO dbo.property_photos(shop_id,property_id,submission_key,content_hash,caption,category,content_type,image_data,recorded_by) SELECT CONVERT(uniqueidentifier,@p1),CONVERT(uniqueidentifier,@p2),LOWER(CONVERT(char(32),HASHBYTES('MD5',CONVERT(varchar(3),i)),2)),REPLICATE(N'b',64),N'',N'general',N'image/png',CONVERT(varbinary(max),REPLICATE(CONVERT(varchar(max),'0'),4194304)),N'quota fixture' FROM numbers`), other, otherProperty)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +163,7 @@ func TestPropertyPhotosIsolationRetriesQuotasAndDeletion(t *testing.T) {
 	if _, err := s.AddPropertyPhoto(ctx, other, otherProperty, key, "", "general", "owner", large); !errors.Is(err, errPhotoQuota) {
 		t.Fatalf("byte quota: %v", err)
 	}
-	if _, err := db.Pool.Exec(ctx, `INSERT INTO property_photos(shop_id,property_id,submission_key,content_hash,caption,category,content_type,image_data,recorded_by) VALUES ($1,$2,repeat('f',32),repeat('a',64),'','general','image/png',$3,'owner')`, other, property, photo.Data); err == nil {
+	if _, err := db.Pool.Exec(ctx, database.Statement(db.Pool.Dialect(), `INSERT INTO property_photos(shop_id,property_id,submission_key,content_hash,caption,category,content_type,image_data,recorded_by) VALUES ($1,$2,repeat('f',32),repeat('a',64),'','general','image/png',$3,'owner')`, `INSERT INTO dbo.property_photos(shop_id,property_id,submission_key,content_hash,caption,category,content_type,image_data,recorded_by) VALUES(CONVERT(uniqueidentifier,@p1),CONVERT(uniqueidentifier,@p2),REPLICATE(N'f',32),REPLICATE(N'a',64),N'',N'general',N'image/png',@p3,N'owner')`), other, property, photo.Data); err == nil {
 		t.Fatal("database accepted foreign property")
 	}
 }
@@ -142,6 +175,11 @@ func TestPropertyPhotoHandlersKeepImagesPrivate(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(db.Close)
+	testPropertyPhotoHandlersKeepImagesPrivate(t, db)
+}
+
+func testPropertyPhotoHandlersKeepImagesPrivate(t *testing.T, db *DB) {
+	ctx := context.Background()
 	s := &Store{db: db}
 	stamp := time.Now().Format("150405.000000000")
 	shop := createTestShop(t, ctx, db, "photo-http-"+stamp)
