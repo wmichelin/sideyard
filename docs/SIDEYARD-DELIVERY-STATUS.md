@@ -1664,7 +1664,7 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   expiration, import, work, renewal and CSV checks. Staging still uses
   PostgreSQL and production remains unchanged.
 
-### Host-owned work and backend rollback fence — implementation in review
+### Host-owned work and backend rollback fence — staging verified
 
 - The first direct-from-paused demo POST against reviewed source `e7d1019`
   correctly stayed inside its request handler but returned 503 after 80.492
@@ -1683,7 +1683,8 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   backend/data-generation fence. Ordinary promotion and rollback cannot cross
   that fence. The unified database window deliberately remains unusable on
   Azure until slice 5 implements and rehearses native logical export/restore.
-  Staging and production remain on PostgreSQL while this source is reviewed.
+  Staging and production remain on PostgreSQL; these controls stay disabled
+  until the native backup, transfer and activation gates pass.
 - Final review then found and drove fixes for post-nginx Docker failures,
   world-accessible lock placement, retained notification retry wakes and stale
   backup markers. Fault injection covers every promotion/rollback update, stop
@@ -1712,4 +1713,14 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   actionable findings. Fresh PostgreSQL and native SQL Server suites, vet,
   formatting, static build, production recovery, Python backup checks, systemd
   unit verification, shell syntax and fault-injection contracts all pass. This
-  slice is ready for publication to staging with PostgreSQL still authoritative.
+  evidence cleared the staging publication gate with PostgreSQL authoritative.
+- Source `307a4ca9bb70564231178aa1a3531bf1cdd62740` passed CI
+  [34516464887](https://github.com/wmichelin/clubdue/actions/runs/34516464887),
+  including PostgreSQL integration, the complete Go suite, build, production
+  recovery, onboarding and native SQL Server rehearsals. Staging deployment
+  [34516464848](https://github.com/wmichelin/clubdue/actions/runs/34516464848)
+  published immutable image
+  `ghcr.io/wmichelin/clubdue@sha256:4749b33dd7b952b4f9aff70fbabb1ec30e787c9b81b4ef46b449b3892292c908`.
+  The workflow smoke and a separate complete live smoke both passed. Staging's
+  new backend/generation fence selects PostgreSQL, conditional host units remain
+  disabled, and production is unchanged.
