@@ -988,3 +988,65 @@ paid integrations or live customer payment collection are configured by this cha
   notes retained, and plan-edit 422 responses declare HTML before sending headers.
   All six review perspectives are recorded above; graph renders 36 nodes/64 edges.
   CI and staging verification are the remaining gates for this slice.
+
+### Native seasonal visits — review and plan
+
+- Product: preserve current-year seasonal generation, Go normalization of captured
+  windows, empty-array fallback, existing inactive-agreement visits and distinct
+  handoff/completion behavior. No appointment or billing behavior is added.
+- Architect/staff: one composite agreement cascade; keep signed years and nullable
+  timestamps. Collect/close source rows before nested work. Native writes retain
+  shared shop, then agreement update locks, then visit rows/keys. Bulk resolves
+  validated JSON IDs, locks unique agreements in canonical order, then visits,
+  and rejects changed mappings instead of acquiring parents out of order.
+- Unit-testing/QA: verify both engines' normalization/defaults, retry timestamps,
+  one-time entitlement increments, atomic mixed/exhausted batches and activation
+  failures. Native tests cover concurrent sync/completion, reversed batches,
+  tenant/parent deletion and one available connection. Fixed clocks preserve the
+  existing end-of-season boundary. Notes, CSV and combined work depend on later ports.
+- DevOps: shared agreement locks are insufficient during sync because completion
+  later upgrades its agreement lock. Use update locks consistently. Remove the
+  duplicate count-path sync; preserve global demo exclusion and per-demo local
+  generation. Add no timer. Transfer original visit IDs/history and usage directly;
+  audit legacy visit/agreement tenant mismatches. Startup/background/readiness and
+  browser request budgets remain separate native activation gates.
+- Staging: https://clubdue-staging.michelindigitalmedia.com (templates/agreements
+  deploying; seasonal implementation pending). Production remains unchanged.
+
+
+- Templates/agreements source `06d09534aefcb54a4123531ee0d6c8304a26cc65` passed CI
+  [34425689742](https://github.com/wmichelin/clubdue/actions/runs/34425689742) and
+  staging [34425689728](https://github.com/wmichelin/clubdue/actions/runs/34425689728).
+  Running revision/image readback and manual staging smoke passed:
+  `ghcr.io/wmichelin/clubdue@sha256:f4d2d0b08518b2def1873e5395c10273164f084f16bf50b6e62f0c893d00acbe`.
+  Browser plan creation/edit, captured agreement name and independent price,
+  malformed numeric rejection without data change, agreement edit, list display
+  and malformed-ID rejection passed at 390/1440px without browser errors.
+
+### Native seasonal visits — implementation
+
+- Migration 020 and explicit native statements preserve the seasonal workflow.
+  JSON windows use the existing Go normalization; empty arrays alone get fallback
+  seasons. Both source queries close before follow-up database work. Count no longer
+  performs a redundant sync. Generation still reads candidates then commits each
+  missing seasonal insertion independently; it is not a shop-wide atomic snapshot.
+- Native sync and outcome writes retain shop/shared then agreement/update locks
+  before visit keys/rows. Bulk resolves validated JSON IDs without retained child
+  locks, locks all distinct agreements in canonical order, then rechecks each
+  visit mapping. Changed mappings fail without acquiring new parents out of order.
+- Shared behavior passes for Unicode whitespace/case, duplicate/unknown/empty
+  windows, concurrent generation, inactive existing work, handoff/completion retries,
+  end-of-season boundaries, exhausted entitlement, mixed missing batches, retained
+  prior years and export shape. Native tests pass one remaining pool connection,
+  global demo exclusion/local demo generation, waiting cancellation, competing final
+  entitlement, reversed batches, activation-failure rollback, later exhaustion and
+  foreign selection rollback, direct reparent races, signed years and tenant cascades.
+- The controlled sync/completion test initially counted only direct blockers. SQL
+  can queue one waiter behind another; following the entire lock wait chain fixed
+  the test. The engine-observed lock races then passed, without a code change.
+- Full both-engine Go suite, vet, static build and isolated SQL rehearsal passed.
+  Actual-code architect/staff, DevOps and product/unit/QA reviews found no blockers.
+  No new timer or runtime SQL selection is enabled. Native recurring work, combined
+  views, notes and activation/transfer gates remain unfinished.
+- Staging: https://clubdue-staging.michelindigitalmedia.com (verified `06d0953`;
+  seasonal slice pending deployment). Production remains unchanged.

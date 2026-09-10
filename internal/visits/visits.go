@@ -3,7 +3,9 @@ package visits
 import (
 	"context"
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -93,63 +95,97 @@ func isVisitOverdue(season string, year int, status VisitStatus, now time.Time) 
 }
 
 func (s *Service) SyncVisitDues(ctx context.Context, shopID string) error {
+	if !recordIDPattern.MatchString(shopID) {
+		return fmt.Errorf("invalid shop identifier")
+	}
 	year := s.now().Year()
-	rows, err := s.pool.Query(ctx, `
-		SELECT a.id, a.plan_snapshot_visit_windows
-		FROM agreements a
-		WHERE a.shop_id = $1
-		  AND a.status = 'active'
-		  AND a.visits_used < a.visits_entitled`, shopID)
+	rows, err := s.pool.Query(ctx, database.Statement(s.pool.Dialect(), `
+ SELECT a.id,a.plan_snapshot_visit_windows FROM agreements a
+ WHERE a.shop_id=$1 AND a.status='active' AND a.visits_used<a.visits_entitled`,
+		`SELECT LOWER(CONVERT(char(36),a.id)),a.plan_snapshot_visit_windows FROM dbo.agreements a
+ WHERE a.shop_id=CONVERT(uniqueidentifier,@p1) AND a.status=N'active' AND a.visits_used<a.visits_entitled`), shopID)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
-
+	type candidate struct {
+		id      string
+		seasons []string
+	}
+	var candidates []candidate
 	for rows.Next() {
-		var agreementID string
-		var seasons []string
-		if err := rows.Scan(&agreementID, &seasons); err != nil {
-			return err
+		var c candidate
+		if s.pool.Dialect() == database.SQLServer {
+			var encoded string
+			if err := rows.Scan(&c.id, &encoded); err != nil {
+				rows.Close()
+				return err
+			}
+			if err := json.Unmarshal([]byte(encoded), &c.seasons); err != nil {
+				rows.Close()
+				return err
+			}
+		} else {
+			if err := rows.Scan(&c.id, &c.seasons); err != nil {
+				rows.Close()
+				return err
+			}
 		}
-		if len(seasons) == 0 {
-			seasons = []string{"spring", "fall"}
+		candidates = append(candidates, c)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	// Release the source connection before inserts, including global maintenance.
+	for _, c := range candidates {
+		if len(c.seasons) == 0 {
+			c.seasons = []string{"spring", "fall"}
 		}
-		for _, season := range seasons {
+		for _, season := range c.seasons {
 			season = strings.TrimSpace(strings.ToLower(season))
 			if season != "spring" && season != "fall" {
 				continue
 			}
-			_, err := s.pool.Exec(ctx, `
-				INSERT INTO visit_dues (shop_id, agreement_id, season, due_year, status)
-				VALUES ($1, $2, $3, $4, 'due')
-				ON CONFLICT (shop_id, agreement_id, season, due_year) DO NOTHING`,
-				shopID, agreementID, season, year,
-			)
+			if s.pool.Dialect() == database.SQLServer {
+				err = s.insertSQLServerVisit(ctx, shopID, c.id, season, year)
+			} else {
+				_, err = s.pool.Exec(ctx, `INSERT INTO visit_dues(shop_id,agreement_id,season,due_year,status)
+     VALUES($1,$2,$3,$4,'due') ON CONFLICT(shop_id,agreement_id,season,due_year) DO NOTHING`, shopID, c.id, season, year)
+			}
 			if err != nil {
 				return err
 			}
 		}
 	}
-	return rows.Err()
+	return nil
 }
 
 func (s *Service) SyncAllVisitDues(ctx context.Context) error {
-	rows, err := s.pool.Query(ctx, `SELECT id FROM shops WHERE kind <> 'demo_sandbox'`)
+	rows, err := s.pool.Query(ctx, database.Statement(s.pool.Dialect(), `SELECT id FROM shops WHERE kind <> 'demo_sandbox'`, `SELECT LOWER(CONVERT(char(36),id)) FROM dbo.shops WHERE kind<>N'demo_sandbox'`))
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
-
+	var shops []string
 	for rows.Next() {
-		var shopID string
-		if err := rows.Scan(&shopID); err != nil {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
 			return err
 		}
-		if err := s.SyncVisitDues(ctx, shopID); err != nil {
+		shops = append(shops, id)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	for _, id := range shops {
+		if err := s.SyncVisitDues(ctx, id); err != nil {
 			return err
 		}
 	}
-	return rows.Err()
+	return nil
 }
 
 func (s *Service) ListVisitDues(ctx context.Context, shopID string, dueOnly bool) ([]VisitDueRow, error) {
@@ -157,7 +193,7 @@ func (s *Service) ListVisitDues(ctx context.Context, shopID string, dueOnly bool
 		return nil, err
 	}
 
-	query := `
+	query := database.Statement(s.pool.Dialect(), `
 		SELECT
 			vd.id,
 			vd.agreement_id,
@@ -175,7 +211,7 @@ func (s *Service) ListVisitDues(ctx context.Context, shopID string, dueOnly bool
 		JOIN agreements a ON a.id = vd.agreement_id
 		JOIN customers c ON c.id = a.customer_id
 		LEFT JOIN properties p ON p.id = a.property_id
-		WHERE vd.shop_id = $1`
+		WHERE vd.shop_id = $1`, sqlServerListVisits)
 	if dueOnly {
 		query += ` AND vd.status IN ('due', 'scheduled')`
 	}
@@ -204,13 +240,24 @@ func (s *Service) ListVisitDues(ctx context.Context, shopID string, dueOnly bool
 		v.IsOverdue = isVisitOverdue(v.Season, v.DueYear, v.Status, now)
 		out = append(out, v)
 	}
+	if s.pool.Dialect() == database.SQLServer {
+		slices.SortStableFunc(out, func(a, b VisitDueRow) int {
+			if a.DueYear < b.DueYear {
+				return -1
+			}
+			if a.DueYear > b.DueYear {
+				return 1
+			}
+			if n := strings.Compare(a.Season, b.Season); n != 0 {
+				return n
+			}
+			return strings.Compare(a.CustomerName, b.CustomerName)
+		})
+	}
 	return out, rows.Err()
 }
 
 func (s *Service) CountVisitsOverdue(ctx context.Context, shopID string) (int, error) {
-	if err := s.SyncVisitDues(ctx, shopID); err != nil {
-		return 0, err
-	}
 
 	rows, err := s.ListVisitDues(ctx, shopID, true)
 	if err != nil {
@@ -230,11 +277,32 @@ func (s *Service) BulkUpdateVisitStatus(ctx context.Context, shopID string, visi
 		return nil
 	}
 
+	if !recordIDPattern.MatchString(shopID) {
+		return fmt.Errorf("invalid shop identifier")
+	}
+	for _, id := range visitIDs {
+		if !recordIDPattern.MatchString(id) {
+			return fmt.Errorf("invalid visit identifier")
+		}
+	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
+	var expectedAgreements map[string]string
+	if s.pool.Dialect() == database.SQLServer {
+		resolved, err := prepareSQLServerVisits(ctx, tx, shopID, visitIDs)
+		if err != nil {
+			return err
+		}
+		expectedAgreements = make(map[string]string, len(resolved))
+		visitIDs = make([]string, 0, len(resolved))
+		for _, v := range resolved {
+			visitIDs = append(visitIDs, v.id)
+			expectedAgreements[v.id] = v.agreement
+		}
+	}
 
 	now := s.now()
 
@@ -242,13 +310,24 @@ func (s *Service) BulkUpdateVisitStatus(ctx context.Context, shopID string, visi
 		var agreementID string
 		var currentStatus string
 		var visitsUsed, visitsEntitled int
-		err := tx.QueryRow(ctx, `
+		var err error
+		if s.pool.Dialect() == database.SQLServer {
+			err = tx.QueryRow(ctx, `SELECT LOWER(CONVERT(char(36),agreement_id)),status FROM dbo.visit_dues WITH(UPDLOCK,HOLDLOCK) WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND id=CONVERT(uniqueidentifier,@p2)`, shopID, visitID).Scan(&agreementID, &currentStatus)
+			if err == nil && agreementID != expectedAgreements[visitID] {
+				return fmt.Errorf("visit changed while selecting its agreement")
+			}
+			if err == nil {
+				err = tx.QueryRow(ctx, `SELECT visits_used,visits_entitled FROM dbo.agreements WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND id=CONVERT(uniqueidentifier,@p2)`, shopID, agreementID).Scan(&visitsUsed, &visitsEntitled)
+			}
+		} else {
+			err = tx.QueryRow(ctx, `
 			SELECT v.agreement_id, v.status, a.visits_used, a.visits_entitled
 			FROM visit_dues v
 			JOIN agreements a ON a.id = v.agreement_id AND a.shop_id = v.shop_id
 			WHERE v.shop_id = $1 AND v.id = $2
 			FOR UPDATE OF v, a`, shopID, visitID,
-		).Scan(&agreementID, &currentStatus, &visitsUsed, &visitsEntitled)
+			).Scan(&agreementID, &currentStatus, &visitsUsed, &visitsEntitled)
+		}
 		if err != nil {
 			return fmt.Errorf("visit not found: %w", err)
 		}
@@ -258,9 +337,9 @@ func (s *Service) BulkUpdateVisitStatus(ctx context.Context, shopID string, visi
 			if currentStatus == string(VisitCompleted) {
 				return fmt.Errorf("completed visit cannot be handed off")
 			}
-			_, err = tx.Exec(ctx, `
+			_, err = tx.Exec(ctx, database.Statement(s.pool.Dialect(), `
 				UPDATE visit_dues SET status = 'scheduled', scheduled_at = $3
-				WHERE shop_id = $1 AND id = $2 AND status = 'due'`,
+				WHERE shop_id = $1 AND id = $2 AND status = 'due'`, `UPDATE dbo.visit_dues SET status=N'scheduled',scheduled_at=@p3 WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND id=CONVERT(uniqueidentifier,@p2) AND status=N'due'`),
 				shopID, visitID, now,
 			)
 		case "completed":
@@ -270,17 +349,17 @@ func (s *Service) BulkUpdateVisitStatus(ctx context.Context, shopID string, visi
 			if visitsUsed >= visitsEntitled {
 				return fmt.Errorf("agreement visit entitlement is exhausted")
 			}
-			_, err = tx.Exec(ctx, `
+			_, err = tx.Exec(ctx, database.Statement(s.pool.Dialect(), `
 				UPDATE visit_dues SET status = 'completed', completed_at = $3
-				WHERE shop_id = $1 AND id = $2`,
+				WHERE shop_id = $1 AND id = $2`, `UPDATE dbo.visit_dues SET status=N'completed',completed_at=@p3 WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND id=CONVERT(uniqueidentifier,@p2)`),
 				shopID, visitID, now,
 			)
 			if err != nil {
 				return err
 			}
-			tag, err := tx.Exec(ctx, `
+			tag, err := tx.Exec(ctx, database.Statement(s.pool.Dialect(), `
 				UPDATE agreements SET visits_used = visits_used + 1, updated_at = now()
-				WHERE shop_id = $1 AND id = $2 AND visits_used < visits_entitled`,
+				WHERE shop_id = $1 AND id = $2 AND visits_used < visits_entitled`, `UPDATE dbo.agreements SET visits_used=visits_used+1,updated_at=SYSUTCDATETIME() WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND id=CONVERT(uniqueidentifier,@p2) AND visits_used<visits_entitled`),
 				shopID, agreementID,
 			)
 			if err != nil {
