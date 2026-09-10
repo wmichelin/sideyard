@@ -1300,3 +1300,91 @@ paid integrations or live customer payment collection are configured by this cha
   suite182.086s), `go vet ./...`, static build and isolated SQL rehearsal. Both
   counter-race variants and all reviewed rollback/digest/date/HTTP cases passed.
   Staging deployment and browser verification are next; production unchanged.
+
+### Native demo controls — review and plan
+
+- Scope: preview storage and consumption, demo mutation admission, expired-sandbox
+  cleanup and exact legacy-demo retirement. Public fixture creation/hydration,
+  legacy seed and CSV domain upserts remain separate upcoming slices.
+- Product: preserve one preview per demo, 15-minute TTL capped by four-hour shop
+  expiry, 128KiB/100-row bounds,500 charged rows,20,000 projected visits and30
+  admitted mutation attempts. Customer previews remain stateless; no new limits.
+- Architect/staff: migration028 uses exact unbounded keyed-hash identity and one
+  shop cascade. Existing native shop counters are reused. Preview replace/consume
+  locks shop before preview; payload deletion and capacity increments are atomic.
+  Invalid UUID/text/date arguments fail before native conversion.
+- Unit testing: run the existing expiry/isolation/budget/replacement/concurrent
+  consume store contract on both engines with minimal sandbox fixtures. Add exact
+  long token identity, rollback after delete/reservation, expiry/UTC boundaries,
+  mutation exhaustion and full native shop cascade checks.
+- DevOps: cleanup remains caller-triggered; no new polling or Blob deletion.
+  Identity/key and photo recovery inventory survive according to existing schema.
+  Actual SQL public-demo admission/hydration performance remains a later gate.
+- QA: no page changes in this slice. Renewal browser verification remains active.
+  The later import handler slice must distinguish validation from ambiguous saves;
+  it must not expose database errors or claim a failed commit certainly rolled back.
+- Staging: https://clubdue-staging.michelindigitalmedia.com (renewal0be9e1e deploying;
+  demo controls pending). Production unchanged.
+
+
+- Renewal source `0be9e1e87601332804754c5545e3e8d5c52205bc` passed CI
+  [34431245915](https://github.com/wmichelin/clubdue/actions/runs/34431245915) and
+  staging [34431245851](https://github.com/wmichelin/clubdue/actions/runs/34431245851).
+  Manual smoke and independent running revision/image readback passed:
+  `ghcr.io/wmichelin/clubdue@sha256:1aa6b9f059fd468751da88d44be5c918b7b3dccc2480d7f507697b3a8377083d`.
+  Browser checks passed contacted/renewed outcomes, exact retry, opposing final
+  conflict, retained draft, unchanged saved outcome after a fresh GET, live terms
+  through existing public links, private JSON/redirect destinations and simulated
+  unavailable-link guidance.390/1440px screenshots passed without browser errors.
+  Harness corrections matched the rendered punctuation/greeting, awaited styles,
+  and used GET to inspect saved data rather than replaying the prior conflict POST.
+
+### Native demo controls — focused verification
+
+- Shared existing preview-store contract passes on both engines with minimal
+  sandbox fixtures: expiry, isolation, replacement, concurrent creation/consumption,
+  one-time claim and exact row/occurrence allowances. Rich fixture and HTTP tests
+  remain in the PostgreSQL suite until public seeding/domain imports are ported.
+- Native checks pass opaque long/case/space/Unicode token identity, raw binary
+  bytes, UTC projection across midnight, sandbox-capped microsecond expiry,
+  failed replacement/reservation rollback, late budget rollback, six competing
+  final mutation requests, cancellation and reuse with one available connection.
+- Expired-shop cleanup removes its sessions, previews, work, jobs and visit notes;
+  real customer shops survive. Photo recovery inventory remains retired/retained.
+  Legacy retirement rejects case/trailing-space near-matches and removes only the
+  exact historical slug plus normalized owner identity.
+- Deliberate parity: expiry admission uses the clock captured before pool/lock
+  waits, as the existing PostgreSQL methods do. No fresh post-lock expiry check is
+  added; an already admitted in-flight request may finish after that instant.
+- Architect/staff, DevOps and product/unit/QA final actual-code reviews found no
+  blocker. Full Go/vet/build and isolated rehearsal running. Staging is verified
+  at0be9e1e; demo controls pending. Production remains unchanged.
+
+### Native public demo seeding — next-slice review and plan
+
+- Product: preserve the authored30-customer/31-property/26-agreement/22-schedule,
+  six-template/eight-equipment fixture, four-hour tenant/session expiry, zero
+  initial budgets and curated seasonal/recurring/renewal history. The sample
+  remains landscaping-focused; trade expansion is unrelated to this port.
+- Architect/staff: every fixture insert uses its supplied transaction; never
+  call a Store method that opens another transaction for the uncommitted shop.
+  Native returned IDs use OUTPUT INTO for triggered tables; plan windows are
+  explicit JSON and fixture dates/instants stay UTC. Hydrate only after base commit.
+- Unit testing: share realistic-book and calendar-season tests on both engines;
+  add base/hydration/session failure cleanup, exact capacity across Store instances,
+  cancellation at local/database admission and one available connection.
+- DevOps: replace the uncancellable local mutex wait with context-aware admission.
+  Native admission uses a transaction-owned application lock with checked result;
+  cleanup/count/create remain within it. Failure cleanup has its own bounded
+  context, removes only the new demo and creates no periodic polling.
+- QA: keep GET/demo database-free, return no session for a partial fixture, retain
+  logout after exhaustion and real-route behavior. Native warm concurrent-demo
+  timings are local evidence only; Azure warm/cold capacity needs separate gates.
+- Guarded development seeding remains inaccessible on staging/production; insert
+  only on confirmed missing rows, preserve exact identities and existing datasets.
+- Staging: https://clubdue-staging.michelindigitalmedia.com (verified renewal0be9e1e;
+  demo controls in final checks, public seeding not started). Production unchanged.
+
+- Demo-controls full checks passed: fresh both-engine Go suite (app190.831s),
+  vet, static build and isolated SQL rehearsal. Graph validation passed36/64.
+  Staging deployment next; native fixture/CSV runtime remain gated.

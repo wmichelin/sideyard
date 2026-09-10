@@ -16,6 +16,8 @@ import (
 	"testing"
 	"testing/fstest"
 	"time"
+
+	"github.com/wmichelin/clubdue/internal/database"
 )
 
 var demoPreviewTokenPattern = regexp.MustCompile(`name="preview_token" value="([^"]+)"`)
@@ -165,21 +167,32 @@ func TestPublicDemoWorstCaseDailyImportMaterializesWithinRequestBudget(t *testin
 }
 
 func TestPublicDemoImportPreviewStoreEnforcesExpiryIsolationAndBudgets(t *testing.T) {
-	databaseURL := integrationDatabaseURL(t)
-	ctx := context.Background()
-	db, err := openDB(ctx, databaseURL)
+	db, err := openDB(context.Background(), integrationDatabaseURL(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
-
+	testPublicDemoImportPreviewStoreEnforcesExpiryIsolationAndBudgets(t, db)
+}
+func TestSQLServerPublicDemoImportPreviewStoreEnforcesExpiryIsolationAndBudgets(t *testing.T) {
+	testPublicDemoImportPreviewStoreEnforcesExpiryIsolationAndBudgets(t, sqlServerTestDB(t))
+}
+func seedDemoControlsFixture(t *testing.T, db *DB, s *Store) (PublicDemoResult, error) {
+	t.Helper()
+	id := createTestShop(t, context.Background(), db, "demo-controls-"+time.Now().Format("150405.000000000"))
+	expiry := s.nowUTC().Add(publicDemoTTL)
+	_, err := db.Pool.Exec(context.Background(), database.Statement(db.Pool.Dialect(), `UPDATE shops SET kind='demo_sandbox',expires_at=$2 WHERE id=$1`, `UPDATE dbo.shops SET kind='demo_sandbox',expires_at=@p2 WHERE id=CONVERT(uniqueidentifier,@p1)`), id, expiry)
+	return PublicDemoResult{ShopID: id, ExpiresAt: expiry}, err
+}
+func testPublicDemoImportPreviewStoreEnforcesExpiryIsolationAndBudgets(t *testing.T, db *DB) {
+	ctx := context.Background()
 	now := time.Date(2026, time.September, 2, 12, 0, 0, 0, time.UTC)
 	store := &Store{db: db, clock: fixedClock{now: now}}
-	first, err := store.SeedPublicDemo(ctx)
+	first, err := seedDemoControlsFixture(t, db, store)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := store.SeedPublicDemo(ctx)
+	second, err := seedDemoControlsFixture(t, db, store)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +230,7 @@ func TestPublicDemoImportPreviewStoreEnforcesExpiryIsolationAndBudgets(t *testin
 		t.Fatalf("preview beyond row budget = %v", err)
 	}
 	var rowsUsed int
-	if err := db.Pool.QueryRow(ctx, `SELECT demo_import_rows_used FROM shops WHERE id = $1`, first.ShopID).Scan(&rowsUsed); err != nil {
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `SELECT demo_import_rows_used FROM shops WHERE id = $1`, `SELECT demo_import_rows_used FROM dbo.shops WHERE id=CONVERT(uniqueidentifier,@p1)`), first.ShopID).Scan(&rowsUsed); err != nil {
 		t.Fatal(err)
 	}
 	if rowsUsed != publicDemoImportRowBudget {
@@ -278,7 +291,7 @@ func TestPublicDemoImportPreviewStoreEnforcesExpiryIsolationAndBudgets(t *testin
 		t.Fatalf("expired preview = %v", err)
 	}
 
-	third, err := store.SeedPublicDemo(ctx)
+	third, err := seedDemoControlsFixture(t, db, store)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -321,7 +334,7 @@ func TestPublicDemoImportPreviewStoreEnforcesExpiryIsolationAndBudgets(t *testin
 		t.Fatalf("occurrence budget overflow = %v", err)
 	}
 	var occurrencesUsed int
-	if err := db.Pool.QueryRow(ctx, `SELECT demo_import_occurrences_used FROM shops WHERE id = $1`, third.ShopID).Scan(&occurrencesUsed); err != nil {
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `SELECT demo_import_occurrences_used FROM shops WHERE id = $1`, `SELECT demo_import_occurrences_used FROM dbo.shops WHERE id=CONVERT(uniqueidentifier,@p1)`), third.ShopID).Scan(&occurrencesUsed); err != nil {
 		t.Fatal(err)
 	}
 	if occurrencesUsed != publicDemoOccurrenceBudget {

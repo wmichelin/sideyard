@@ -13,13 +13,13 @@ for the distinction between provisioned resources and deployed app behavior.
 
 ## Availability snapshot
 
-Reviewed September 9, 2026 against staging release `5fdf1fe` and the recorded
+Reviewed September 9, 2026 against staging release `0be9e1e` and the recorded
 release verification. These are verified release states, not a live deployment monitor.
 
 | Label | Meaning |
 | --- | --- |
 | **Live** | Available in production at [getsideyard.com](https://getsideyard.com), source `ae6f16a`, and on staging. The legacy ClubDue hostname remains supported. |
-| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), release `5fdf1fe`: standalone jobs/site surveys, the single-line work-status badge fix, and configured private Azure photo storage. |
+| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), release `0be9e1e`: standalone jobs/site surveys, the single-line work-status badge fix, and configured private Azure photo storage. |
 | **Conditional** | Implemented but requires explicit deployment configuration; not a promise of availability to clients. |
 
 Unless marked otherwise, catalog nodes are **Live**. “Signed in” means a user
@@ -48,7 +48,7 @@ flowchart TB
     LOGIN["LOGIN · Sign in<br/>Availability feedback on staging"]
     DEMO["DEMO · Start isolated demo<br/>Public entry availability on staging"]
     SIGNUP["SIGNUP · Account enrollment (conditional)<br/>Availability feedback on staging"]
-    RENEW["RENEW · Customer renewal link<br/>Privacy / availability prepared for staging"]
+    RENEW["RENEW · Customer renewal link<br/>Privacy / availability on staging"]
     LAND -->|Submit interest| THANKS
     LAND --> LOGIN
     LAND --> DEMO
@@ -95,7 +95,7 @@ flowchart TB
     AGREEMENTS["AGREEMENTS · Agreement book<br/>Availability feedback on staging"]
     NEWAGREEMENT["NEWAGREEMENT · Create agreement<br/>Save / number feedback on staging"]
     AGREEMENT["AGREEMENT · Terms / recurring services<br/>Save / number feedback on staging"]
-    RENEWALS["RENEWALS · Renewal follow-up queue<br/>Save feedback prepared for staging"]
+    RENEWALS["RENEWALS · Renewal follow-up queue<br/>Save feedback on staging"]
     WORK["WORK · Service work<br/>Save availability on staging"]
     SCHEDULE["SCHEDULE · Last / next service<br/>Availability on staging"]
     DATE["DATE · Change one recurring visit date<br/>Availability on staging"]
@@ -434,7 +434,7 @@ before retrying. Creation has no general duplicate-submission key.
 - Add named recurring work with daily/weekly/monthly cadence, interval, start/end dates and optional entitlement consumption via `POST /agreements/{id}/service-schedules`.
 - Review last/next service; pause/resume via `POST /service-schedules/{id}`, move the next occurrence or open SCHEDULE. Pausing or importing changed service terms resets pending future visits, including manual moves.
 - Generate a 30-day customer renewal link via `POST /agreements/{id}/renewal-link`, then copy/share it manually. No automatic email/SMS is sent by this action.
-- **Prepared for staging:** link creation and the agreement page containing its bearer link use private/no-store responses. Unconfirmed creation returns 503 with instructions to check the agreement before retrying; missing agreements return 404.
+- **Staging:** link creation and the agreement page containing its bearer link use private/no-store responses. Unconfirmed creation returns 503 with instructions to check the agreement before retrying; missing agreements return 404.
 - Agreement pricing does not implement deposits, installments, per-treatment invoices or live payment collection.
 - **Staging:** reads distinguish missing/malformed records (404) from unavailable storage (503). Failed saves cannot redirect as successful; malformed/overflowing numbers are rejected. Stale deleted-template references conflict. Ordinary edits still have no revision check. The recurring-service creation action also distinguishes unavailable agreement lookup from a missing record.
 - **Staging:** invalid recurring-service inputs return 422 and retain the name, cadence, interval, dates and entitlement choice. Unconfirmed creation/pause/resume returns 503 with instructions to check the agreement before retrying; an agreement that became inactive before creation returns 409. [Handler](../internal/app/servicework_handlers.go).
@@ -458,7 +458,7 @@ cycle. Daily digest
 records are immutable task-membership snapshots; no digest sender is implemented.
 [Persistence](../internal/renewals/tasks.go).
 
-**Prepared for staging:** unavailable queue reads return 503. Unconfirmed writes
+**Staging:** unavailable queue reads return 503. Unconfirmed writes
 ask the user to reload and check the recorded outcome before retrying. The
 submitted status/notes are retained if the task remains in the reload result;
 if the list also fails, a plain error preserves the guidance but cannot retain
@@ -472,11 +472,11 @@ no owner login required.
 [Source](../internal/app/templates/renewal.html) · [Handler](../internal/app/renewal_handlers.go).
 
 Shows the issuing business, customer, captured plan name, current renewal date
-and current agreement price. **Prepared for staging:** the amount is labeled
+and current agreement price. **Staging:** the amount is labeled
 “Plan price” (previously “Annual price”); its value is unchanged. Link lookup is
 exact and expires after 30 days; an expired demo also invalidates its links.
 Cancelled/lost agreements and multiple issued links remain viewable until expiry.
-**Prepared for staging:** these responses use private/no-store. Missing/expired
+**Staging:** these responses use private/no-store. Missing/expired
 links return the same 404; unavailable storage returns a generic 503.
 Production directs the customer to contact the business. An explicitly enabled
 staging/development test-payment stub can acknowledge a test without charging a

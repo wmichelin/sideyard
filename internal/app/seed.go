@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/wmichelin/clubdue/internal/database"
 )
 
 type SeedResult struct {
@@ -31,13 +33,16 @@ type PublicDemoResult struct {
 // sandbox. Counting admitted attempts, including handler-level validation
 // failures, keeps the abuse boundary independent of every product mutation.
 func (s *Store) ReservePublicDemoMutation(ctx context.Context, shopID string) error {
-	result, err := s.db.Pool.Exec(ctx, `
+	if validateRecordIDs(shopID) != nil {
+		return errPublicDemoMutationBudgetReached
+	}
+	result, err := s.db.Pool.Exec(ctx, database.Statement(s.db.Pool.Dialect(), `
 		UPDATE shops
 		SET demo_mutations_used = demo_mutations_used + 1
 		WHERE id = $1
 		  AND kind = 'demo_sandbox'
 		  AND expires_at > $2
-		  AND demo_mutations_used < $3`, shopID, s.nowUTC(), publicDemoMutationBudget)
+		  AND demo_mutations_used < $3`, `UPDATE dbo.shops SET demo_mutations_used=demo_mutations_used+1 WHERE id=CONVERT(uniqueidentifier,@p1) AND kind='demo_sandbox' AND expires_at>@p2 AND demo_mutations_used<@p3`), shopID, s.nowUTC(), publicDemoMutationBudget)
 	if err != nil {
 		return fmt.Errorf("reserve public demo mutation: %w", err)
 	}
@@ -51,13 +56,13 @@ func (s *Store) ReservePublicDemoMutation(ctx context.Context, shopID string) er
 // password granted unrestricted writes. The caller restricts this cleanup to
 // staging; production customer tenants are never considered.
 func (s *Store) RetireLegacySharedDemo(ctx context.Context) (int64, error) {
-	result, err := s.db.Pool.Exec(ctx, `
+	result, err := s.db.Pool.Exec(ctx, database.Statement(s.db.Pool.Dialect(), `
 		DELETE FROM shops s
 		WHERE s.slug = 'demo-hvac-shop'
 		  AND EXISTS (
 			SELECT 1 FROM users u
 			WHERE u.shop_id = s.id AND lower(u.email) = 'owner@demo.local'
-		  )`)
+		  )`, `DELETE s FROM dbo.shops s WHERE s.slug=N'demo-hvac-shop' AND DATALENGTH(s.slug)=DATALENGTH(N'demo-hvac-shop') AND EXISTS(SELECT 1 FROM dbo.users u WHERE u.shop_id=s.id AND u.email_normalized=N'owner@demo.local' AND DATALENGTH(u.email_normalized)=DATALENGTH(N'owner@demo.local'))`))
 	if err != nil {
 		return 0, err
 	}
@@ -66,7 +71,7 @@ func (s *Store) RetireLegacySharedDemo(ctx context.Context) (int64, error) {
 
 func (s *Store) CleanupExpiredPublicDemos(ctx context.Context) error {
 	_, err := s.db.Pool.Exec(ctx,
-		`DELETE FROM shops WHERE kind = 'demo_sandbox' AND expires_at <= $1`, s.nowUTC())
+		database.Statement(s.db.Pool.Dialect(), `DELETE FROM shops WHERE kind = 'demo_sandbox' AND expires_at <= $1`, `DELETE FROM dbo.shops WHERE kind='demo_sandbox' AND expires_at<=@p1`), s.nowUTC())
 	return err
 }
 

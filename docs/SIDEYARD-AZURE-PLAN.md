@@ -4,9 +4,9 @@
 
 Status: implementing — user authorized Azure SQL, versioned Blob and seven-day backups.
 Last completed: both environments provisioned; staging Blob and connection foundation verified; both Azure exports restored; real idle/resume probe completed in 45 seconds.
-Now: native accounts, customer/property/photo records, assets, jobs, business setup, agreements, seasonal and recurring work verified in isolated engines; visit history verified on staging. Native renewals are in final verification; import/demo maintenance, transfer and idle runtime wiring remain.
+Now: native accounts, customer/property/photo records, assets, jobs, business setup, agreements, seasonal and recurring work verified in isolated engines; visit history verified on staging. Native renewals verified on staging; demo controls are in final verification. Demo fixture seeding, domain imports, transfer and idle runtime wiring remain.
 Next: verify both database backends and idle behavior before a reviewed database cutover.
-Evidence: visit-history staging release `5fdf1fe` verified; exact artifacts in the delivery status.
+Evidence: renewal staging release `0be9e1e` verified; exact artifacts in the delivery status.
 Staging: https://clubdue-staging.michelindigitalmedia.com (verified for Azure Blob; application database remains PostgreSQL).
 Blocker: no sign-in blocker. The live free SQL API requires a 60-minute idle delay; the plan below reflects that correction.
 
