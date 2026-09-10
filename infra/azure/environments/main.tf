@@ -28,7 +28,11 @@ provider "azapi" {
 data "azurerm_client_config" "current" {}
 
 locals {
-  tags = { application = "sideyard", environment = var.environment, managed_by = "terraform" }
+  tags                                = { application = "sideyard", environment = var.environment, managed_by = "terraform" }
+  runtime_object_ids                  = toset([for id in var.runtime_object_ids : lower(id)])
+  backup_object_ids                   = toset([for id in var.backup_object_ids : lower(id)])
+  logical_backup_publisher_object_ids = toset([for id in var.logical_backup_publisher_object_ids : lower(id)])
+  logical_photo_reader_object_ids     = toset([for id in var.logical_photo_reader_object_ids : lower(id)])
 }
 
 resource "azurerm_resource_group" "app" {
@@ -122,7 +126,37 @@ resource "azurerm_storage_account" "app" {
     ip_rules       = var.allowed_ipv4
   }
   tags = local.tags
-  lifecycle { prevent_destroy = true }
+  lifecycle {
+    prevent_destroy = true
+    precondition {
+      condition = (
+        var.environment == "staging" ||
+        (length(local.logical_backup_publisher_object_ids) == 0 && length(local.logical_photo_reader_object_ids) == 0)
+      )
+      error_message = "Logical recovery identities are staging-only until recovery drills pass."
+    }
+    precondition {
+      condition = (
+        length(local.logical_backup_publisher_object_ids) <= 1 &&
+        length(local.logical_photo_reader_object_ids) <= 1
+      )
+      error_message = "Each logical recovery role supports at most one lifecycle-managed principal."
+    }
+    precondition {
+      condition = length(setintersection(
+        local.logical_backup_publisher_object_ids,
+        local.logical_photo_reader_object_ids,
+      )) == 0
+      error_message = "Logical publisher and photo-reader principals must be distinct."
+    }
+    precondition {
+      condition = length(setintersection(
+        setunion(local.logical_backup_publisher_object_ids, local.logical_photo_reader_object_ids),
+        setunion(local.runtime_object_ids, local.backup_object_ids, toset([lower(var.operator_object_id)])),
+      )) == 0
+      error_message = "Logical recovery principals must not reuse operator, runtime, or legacy backup identities."
+    }
+  }
 }
 
 resource "azurerm_storage_container" "private" {
@@ -155,7 +189,7 @@ resource "azurerm_role_definition" "photo_writer" {
 }
 
 resource "azurerm_role_assignment" "photos" {
-  for_each           = var.runtime_object_ids
+  for_each           = local.runtime_object_ids
   scope              = "${azurerm_storage_account.app.id}/blobServices/default/containers/photos"
   role_definition_id = azurerm_role_definition.photo_writer.role_definition_resource_id
   principal_id       = each.value
@@ -163,10 +197,58 @@ resource "azurerm_role_assignment" "photos" {
 }
 
 resource "azurerm_role_assignment" "backups" {
-  for_each           = var.backup_object_ids
+  for_each           = local.backup_object_ids
   scope              = "${azurerm_storage_account.app.id}/blobServices/default/containers/backups"
   role_definition_id = azurerm_role_definition.photo_writer.role_definition_resource_id
   principal_id       = each.value
+  depends_on         = [azurerm_storage_container.private]
+}
+
+# Recovery publication is a separate trust domain from the legacy backup and
+# application identities. Azure RBAC grants only the data operations; the
+# authenticated recovery client enforces conditional creation and exact versions.
+resource "azurerm_role_definition" "logical_backup_publisher" {
+  for_each    = var.environment == "staging" ? toset(["staging"]) : toset([])
+  name        = "Sideyard ${var.environment} logical backup publisher"
+  scope       = azurerm_resource_group.app.id
+  description = "Publish and verify logical recovery objects in the backups container without deletion."
+  permissions {
+    data_actions = [
+      "Microsoft.Storage/storageAccounts/blobServices/containers/blobs/read",
+      "Microsoft.Storage/storageAccounts/blobServices/containers/blobs/write"
+    ]
+  }
+  assignable_scopes = [azurerm_resource_group.app.id]
+}
+
+resource "azurerm_role_assignment" "logical_backup_publisher" {
+  for_each           = local.logical_backup_publisher_object_ids
+  scope              = "${azurerm_storage_account.app.id}/blobServices/default/containers/backups"
+  role_definition_id = azurerm_role_definition.logical_backup_publisher["staging"].role_definition_resource_id
+  principal_id       = each.value
+  principal_type     = "ServicePrincipal"
+  depends_on         = [azurerm_storage_container.private]
+}
+
+resource "azurerm_role_definition" "logical_photo_reader" {
+  for_each    = var.environment == "staging" ? toset(["staging"]) : toset([])
+  name        = "Sideyard ${var.environment} logical photo reader"
+  scope       = azurerm_resource_group.app.id
+  description = "Read exact logical-recovery photo versions without write or delete access."
+  permissions {
+    data_actions = [
+      "Microsoft.Storage/storageAccounts/blobServices/containers/blobs/read"
+    ]
+  }
+  assignable_scopes = [azurerm_resource_group.app.id]
+}
+
+resource "azurerm_role_assignment" "logical_photo_reader" {
+  for_each           = local.logical_photo_reader_object_ids
+  scope              = "${azurerm_storage_account.app.id}/blobServices/default/containers/photos"
+  role_definition_id = azurerm_role_definition.logical_photo_reader["staging"].role_definition_resource_id
+  principal_id       = each.value
+  principal_type     = "ServicePrincipal"
   depends_on         = [azurerm_storage_container.private]
 }
 
@@ -250,13 +332,18 @@ resource "azurerm_monitor_metric_alert" "free_compute" {
 
 output "resources" {
   value = {
-    environment           = var.environment
-    resource_group        = azurerm_resource_group.app.name
-    sql_server            = azurerm_mssql_server.app.fully_qualified_domain_name
-    database_id           = azapi_resource.database.id
-    storage_account       = azurerm_storage_account.app.name
-    blob_endpoint         = azurerm_storage_account.app.primary_blob_endpoint
-    backup_retention_days = azapi_update_resource.backup_retention.output.properties.retentionDays
-    action_group_id       = azurerm_monitor_action_group.owner.id
+    environment                                 = var.environment
+    resource_group                              = azurerm_resource_group.app.name
+    sql_server                                  = azurerm_mssql_server.app.fully_qualified_domain_name
+    database_id                                 = azapi_resource.database.id
+    storage_account                             = azurerm_storage_account.app.name
+    storage_account_id                          = azurerm_storage_account.app.id
+    blob_endpoint                               = azurerm_storage_account.app.primary_blob_endpoint
+    backups_container_id                        = "${azurerm_storage_account.app.id}/blobServices/default/containers/backups"
+    photos_container_id                         = "${azurerm_storage_account.app.id}/blobServices/default/containers/photos"
+    logical_backup_publisher_role_definition_id = try(azurerm_role_definition.logical_backup_publisher["staging"].role_definition_resource_id, null)
+    logical_photo_reader_role_definition_id     = try(azurerm_role_definition.logical_photo_reader["staging"].role_definition_resource_id, null)
+    backup_retention_days                       = azapi_update_resource.backup_retention.output.properties.retentionDays
+    action_group_id                             = azurerm_monitor_action_group.owner.id
   }
 }

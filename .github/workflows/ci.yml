@@ -57,6 +57,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+
+      - name: Terraform recovery identity contract
+        run: |
+          terraform -chdir=infra/azure/environments fmt -check
+          terraform -chdir=infra/azure/environments init -backend=false -input=false
+          terraform -chdir=infra/azure/environments validate
+          terraform -chdir=infra/azure/environments test
+
       - name: Production-mode backup and restore rehearsal
         run: ./scripts/production-rehearsal.sh
 
@@ -65,6 +76,7 @@ jobs:
           python3 scripts/azure/test-backup-store.py
           python3 scripts/azure/test-logical-backup-store.py
           python3 scripts/azure/test-backup-monitor.py
+          python3 scripts/azure/test-recovery-identity.py
 
   sqlserver-rehearsal:
     runs-on: ubuntu-latest

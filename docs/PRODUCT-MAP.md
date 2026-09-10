@@ -713,11 +713,17 @@ package descriptor into a separately authenticated, create-only ciphertext pair,
 verifies the pair together and every exact required photo version, and writes a
 version-pinned completion marker last. It downloads only the exact completion and
 component versions, then atomically exposes both mode-0600 files through a private
-owner directory. It has no command or credentials yet and cannot activate a
-restore. The application selector therefore remains PostgreSQL.
+owner directory. A staging-only operator command can now create and rotate two
+separate Entra credentials: a backups-container read/write publisher and a
+photos-container read-only recovery reader. It derives their exact resource IDs
+from protected Terraform state, rejects identity reuse, and never activates them
+without a separately reviewed Terraform assignment and permission canary. No live
+recovery identity or publication/restore command is installed yet. The application
+selector therefore remains PostgreSQL.
 [Transfer contract](../internal/transfer/catalog.go) ·
 [Restore implementation](../internal/transfer/restore.go) ·
 [Logical Blob contract](../scripts/azure/logical-backup-store.py) ·
+[Recovery identity lifecycle](../scripts/azure/provision-recovery-identity.py) ·
 [Real-engine rehearsal](../internal/app/transfer_sqlserver_test.go).
 The runtime is restricted to the exact staging database and an explicit
 `ENABLE_AZURE_SQL_HTTP=1` configuration. Its request, HTTP read/write, graceful

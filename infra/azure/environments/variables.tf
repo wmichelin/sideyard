@@ -43,3 +43,21 @@ variable "backup_object_ids" {
   type        = set(string)
   default     = []
 }
+variable "logical_backup_publisher_object_ids" {
+  description = "Staging recovery publishers granted read/write only in the backups container."
+  type        = set(string)
+  default     = []
+  validation {
+    condition     = alltrue([for id in var.logical_backup_publisher_object_ids : can(regex("^[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$", id))])
+    error_message = "Logical backup publisher object IDs must be UUIDs."
+  }
+}
+variable "logical_photo_reader_object_ids" {
+  description = "Staging recovery readers granted read-only access to the photos container."
+  type        = set(string)
+  default     = []
+  validation {
+    condition     = alltrue([for id in var.logical_photo_reader_object_ids : can(regex("^[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$", id))])
+    error_message = "Logical photo reader object IDs must be UUIDs."
+  }
+}

@@ -1805,3 +1805,35 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   recent application logs showed the exercised requests completing without server
   errors. The runtime backend/generation fence remains on PostgreSQL and production
   is unchanged.
+
+### Staging logical recovery identity boundary — implementation complete, activation pending
+
+- Added distinct Terraform variables, custom roles and exact container scopes for
+  a logical backup publisher and photo recovery reader. The publisher has only
+  Blob read/write on `backups`; the reader has only Blob read on `photos`. Resource
+  preconditions reject production assignment and any overlap with the operator,
+  application runtime, legacy backup identity or each other.
+- Added a staging-only identity lifecycle command that derives account and
+  container IDs from initialized Terraform state, requires explicit adoption of
+  existing apps, validates exact app/SP/tenant/key metadata, stores separate
+  owner-only files, supports rollback and explicit stale-key revocation, and
+  removes a newly identified cloud key when local persistence fails. Secrets do
+  not enter Terraform or command output.
+- Thirty-two focused tests cover creation for both purposes, exact resource binding,
+  unsafe file modes, untracked or mistagged applications, live-key validation,
+  single-tenant password-only enforcement, app/SP/directory authority inventory,
+  cross-subscription effective role and live role-definition allowlisting, rotation,
+  near-expiry remediation, current-key protection, double-failure compensation, mixed-case
+  identity normalization and exact Terraform actions/scopes. Terraform formatting
+  and validation pass. Nine mocked-provider Terraform plans prove a valid distinct
+  staging configuration, reject mixed-case overlap with recovery/runtime/legacy/operator
+  principals, reject multiple principals per lifecycle-managed role, and prove
+  production creates neither recovery role nor assignment.
+- An fsynced rollback journal makes each current-file, cloud-revocation and cleanup
+  phase resumable after interruption; the test stops immediately after journal
+  creation, resumes rollback, exercises every post-revocation cleanup state and
+  proves the next ordinary audit is clean. Expired tracked replacement/prior keys
+  remain removable while the credential retained by revoke or rollback must be live.
+- Activation remains blocked on Azure sign-in, a reviewed staging plan/apply, two
+  live least-privilege canaries, and the later PostgreSQL exporter/disposable SQL
+  importer slices. Staging and production continue to use PostgreSQL.

@@ -459,10 +459,14 @@ resumable SQL restore are implemented and exercised across the current staging
 schema and frozen production migration 29 schema. They are deliberately not
 operator commands yet. The internal staging-only Blob contract now binds its
 encrypted package identity, exact object versions and required-photo inventory,
-but authenticated encryption/operator wiring, dedicated identities,
+but authenticated encryption/operator wiring, database identities,
 Terraform-derived disposable restore targets and oldest/newest recovery drills
-remain implementation work. Use the recorded PostgreSQL recovery procedure until
-all of those gates pass.
+remain implementation work. A staging-only lifecycle now prepares distinct Blob
+publisher and photo-reader credentials from exact Terraform resource IDs. Separate
+container roles grant only backup read/write or photo read, while resource
+preconditions reject production use and principal overlap. The identities remain
+unassigned until a reviewed staging plan and live positive/negative canaries pass.
+Use the recorded PostgreSQL recovery procedure until all gates pass.
 
 Authentication can require device/browser approval, but routine provisioning,
 configuration, monitoring and recovery will use CLI/API. An ephemeral Cloud
