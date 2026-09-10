@@ -169,7 +169,7 @@ func (s *Store) GetCustomer(ctx context.Context, shopID, customerID string) (*Cu
 		FROM customers WHERE shop_id = $1 AND id = $2`, `SELECT LOWER(CONVERT(char(36),id)),COALESCE(external_id,N''),name,COALESCE(email,N''),COALESCE(phone,N'') FROM dbo.customers WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND id=CONVERT(uniqueidentifier,@p2)`), shopID, customerID,
 	).Scan(&c.ID, &c.ExternalID, &c.Name, &c.Email, &c.Phone)
 	if err != nil {
-		return nil, fmt.Errorf("customer not found")
+		return nil, fmt.Errorf("load customer: %w", err)
 	}
 	return &c, nil
 }

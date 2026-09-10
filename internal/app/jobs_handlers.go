@@ -95,7 +95,11 @@ func (s *Server) handleJobNew(w http.ResponseWriter, r *http.Request) {
 	}
 	customer, err := s.store.GetCustomer(r.Context(), u.ShopID, in.CustomerID)
 	if err != nil {
-		http.NotFound(w, r)
+		if errors.Is(err, database.ErrNoRows) || errors.Is(err, errInvalidRecordID) {
+			http.NotFound(w, r)
+		} else {
+			http.Error(w, "Customer unavailable. Please retry.", http.StatusServiceUnavailable)
+		}
 		return
 	}
 	if key == "" {

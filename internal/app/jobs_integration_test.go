@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
@@ -15,6 +16,33 @@ import (
 	"github.com/wmichelin/clubdue/internal/jobs"
 )
 
+func TestCustomerAndNewJobReadsDistinguishMissingFromOutage(t *testing.T) {
+	const id = "12345678-1234-1234-1234-123456789012"
+	for _, failure := range []error{database.ErrNoRows, errors.New("synthetic private database failure")} {
+		s := &Server{store: &Store{db: &DB{Pool: &unavailableAuthPool{err: failure}}}}
+		for _, tc := range []struct {
+			path    string
+			handler http.HandlerFunc
+		}{
+			{"/customers/" + id, s.handleCustomerEdit},
+			{"/jobs/new?customer_id=" + id, s.handleJobNew},
+		} {
+			r := httptest.NewRequest("GET", tc.path, nil)
+			r.SetPathValue("id", id)
+			r = r.WithContext(contextWithUser(context.Background(), &User{ShopID: id, Role: "owner"}))
+			w := httptest.NewRecorder()
+			tc.handler(w, r)
+			want := 503
+			if errors.Is(failure, database.ErrNoRows) {
+				want = 404
+			}
+			if w.Code != want || strings.Contains(w.Body.String(), failure.Error()) {
+				t.Fatalf("customer availability: got%d want%d", w.Code, want)
+			}
+		}
+	}
+}
+
 func TestStandaloneJobsPreserveIdentityHistoryAndIsolation(t *testing.T) {
 	ctx := context.Background()
 	db, err := openDB(ctx, integrationDatabaseURL(t))
@@ -22,6 +50,11 @@ func TestStandaloneJobsPreserveIdentityHistoryAndIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(db.Close)
+	testStandaloneJobsPreserveIdentityHistoryAndIsolation(t, db)
+}
+
+func testStandaloneJobsPreserveIdentityHistoryAndIsolation(t *testing.T, db *DB) {
+	ctx := context.Background()
 	now := time.Date(2034, 6, 1, 12, 30, 0, 0, time.UTC)
 	store := &Store{db: db, clock: fixedClock{now: now}}
 	service := store.jobsService()
@@ -127,14 +160,17 @@ func TestStandaloneJobsPreserveIdentityHistoryAndIsolation(t *testing.T) {
 	if err != nil || otherID == id {
 		t.Fatal("second job", err)
 	}
-	for _, table := range []string{"agreements", "service_occurrences", "visit_dues"} {
-		var count int
-		if err := db.Pool.QueryRow(ctx, "SELECT count(*) FROM "+table+" WHERE shop_id=$1", shop).Scan(&count); err != nil || count != 0 {
-			t.Fatal("jobs created legacy work", table, count, err)
+	if db.Pool.Dialect() == database.Postgres {
+		for _, table := range []string{"agreements", "service_occurrences", "visit_dues"} {
+			var count int
+			if err := db.Pool.QueryRow(ctx, "SELECT count(*) FROM "+table+" WHERE shop_id=$1", shop).Scan(&count); err != nil || count != 0 {
+				t.Fatal("jobs created legacy work", table, count, err)
+			}
 		}
 	}
+
 	// Direct writes are constrained too; customer removal cannot silently erase jobs.
-	if _, err := db.Pool.Exec(ctx, `UPDATE jobs SET property_id=$2 WHERE id=$1`, otherID, wrongProperty); err == nil {
+	if _, err := db.Pool.Exec(ctx, database.Statement(db.Pool.Dialect(), `UPDATE jobs SET property_id=$2 WHERE id=$1`, `UPDATE dbo.jobs SET property_id=CONVERT(uniqueidentifier,@p2) WHERE id=CONVERT(uniqueidentifier,@p1)`), otherID, wrongProperty); err == nil {
 		t.Fatal("database accepted other customer's property")
 	}
 	if err := store.DeleteCustomer(ctx, shop, customer); err == nil {
@@ -190,7 +226,7 @@ func TestStandaloneJobsPreserveIdentityHistoryAndIsolation(t *testing.T) {
 		t.Fatal("private job", w.Code)
 	}
 	// Demo expiration removes the shop and its records in one transaction.
-	if _, err := db.Pool.Exec(ctx, `DELETE FROM shops WHERE id=$1`, shop); err != nil {
+	if _, err := db.Pool.Exec(ctx, database.Statement(db.Pool.Dialect(), `DELETE FROM shops WHERE id=$1`, `DELETE FROM dbo.shops WHERE id=CONVERT(uniqueidentifier,@p1)`), shop); err != nil {
 		t.Fatal("shop cleanup with jobs", err)
 	}
 }

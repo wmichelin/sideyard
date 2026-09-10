@@ -816,3 +816,42 @@ paid integrations or live customer payment collection are configured by this cha
   and [bulk trigger behavior](https://learn.microsoft.com/en-us/sql/t-sql/statements/bulk-insert-transact-sql?view=sql-server-ver17).
 - Staging: https://clubdue-staging.michelindigitalmedia.com (verified `1c7c8b7`;
   this asset-history slice pending). Production is unchanged.
+
+
+- Asset-history source `71042dfa03f567fffa4f83e9597e1e44ae0a969b` passed all CI jobs
+  [34422132769](https://github.com/wmichelin/clubdue/actions/runs/34422132769) and
+  staging [34422132733](https://github.com/wmichelin/clubdue/actions/runs/34422132733).
+  Independent running source/image readback and manual smoke passed:
+  `ghcr.io/wmichelin/clubdue@sha256:8eb0f41829ce6a938015ed23ea6aedb5cec32723b3b86619b7cde49a88a61db6`.
+  Browser asset-history checks passed separate vehicle/equipment records, date-only
+  and timed notes, daylight-saving fold/gap handling, corrections, no-JavaScript
+  fallback and delayed defaults at 390/1440px with no browser errors.
+
+### Native standalone jobs — implementation
+
+- Migration 013 and explicit native statements preserve standalone jobs and their
+  change snapshots. Jobs cascade from shops, restrict referenced customer/property
+  deletion and cascade their events. One job change and its event share a transaction.
+- Architect/staff: shared parent locks precede submission-key/job locks. A retry
+  with the original fingerprint still returns the original job after its property
+  was detached and deleted. Exact Go fingerprints remain unchanged. Native JSON
+  snapshots preserve optional empty fields and escaped Unicode; canonical UUID
+  ordering and explicit NULLS LAST preserve list windows.
+- Product/QA: existing opt-in jobs, surveys, fixed customer identity, optional
+  planned dates, stale-save feedback and open/closed transitions remain unchanged.
+  Customer-detail and new-job lookup failures now return 503 rather than a false
+  missing-record response; missing/malformed IDs remain 404. Invalid UTF-8/NUL
+  input is rejected before fingerprinting or persistence.
+- Unit-testing: shared behavior passes on both engines. Native tests cover failed
+  event writes rolling back create/edit/completion, competing revision updates,
+  revision overflow, detached-property retries, years 0001/9999, escaped snapshots
+  over 4,000 UTF-16 units, and 101-row list/history windows. Referenced customer and
+  property deletion rolls back dependent history/photos and inventory retirement;
+  whole-shop deletion removes jobs/events and retires photo inventory.
+- DevOps: full both-engine Go suite, vet, static build and isolated native SQL
+  rehearsal passed. Native SQL runtime
+  remains disabled and PostgreSQL migrations are unchanged. Import must create
+  customer/property parents, then jobs, then events: SQL Server cannot defer those
+  foreign keys like PostgreSQL. No live database data has been transferred.
+- Staging: https://clubdue-staging.michelindigitalmedia.com (verified `71042df`;
+  this jobs slice pending deployment). Production remains unchanged.

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"log"
 	"net/http"
 	"strings"
@@ -77,7 +78,11 @@ func (s *Server) handleEquipmentCreate(w http.ResponseWriter, r *http.Request) {
 func (s *Server) renderCustomerEdit(w http.ResponseWriter, r *http.Request, user *User, customerID string) {
 	customer, err := s.store.GetCustomer(r.Context(), user.ShopID, customerID)
 	if err != nil {
-		http.NotFound(w, r)
+		if errors.Is(err, database.ErrNoRows) || errors.Is(err, errInvalidRecordID) {
+			http.NotFound(w, r)
+		} else {
+			http.Error(w, "Customer unavailable. Please retry.", http.StatusServiceUnavailable)
+		}
 		return
 	}
 	properties, err := s.store.ListProperties(r.Context(), user.ShopID, customerID)
