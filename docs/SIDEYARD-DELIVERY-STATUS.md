@@ -1590,9 +1590,9 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   subsequent Azure metadata validation reported no stale keys.
 - The database was already online during this canary. Azure CLI exposes no
   manual pause operation for this SQL database, so automatic pause after the
-  configured 60-minute idle period and a measured cold resume remain open
-  acceptance evidence. No staging proxy, production resource or production
-  application behavior changed.
+  configured 60-minute idle period and a measured cold resume remained open at
+  that point and were completed in the later cold-start rehearsal below. No
+  staging proxy, production resource or production application behavior changed.
 - The complete disposable SQL Server rehearsal passed, including runtime DML,
   application locks, migration-ledger/DDL denials and readiness rejection after
   deliberate overprivilege. The ordinary unit suite, vet, static build and
@@ -1605,3 +1605,50 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   template transformation and passes `nginx -t`, while a Docker command seam
   proves graceful stop precedes removal. A forced shutdown-deadline test proves
   socket closure and exactly-once resource cleanup.
+
+- Source `224bad1d71b6b57912531f0d47faffcdaab0d8d0` passed CI
+  [34497515305](https://github.com/wmichelin/clubdue/actions/runs/34497515305),
+  including PostgreSQL integration, the complete Go suite, build, production
+  recovery, onboarding and native SQL rehearsals. Staging deployment
+  [34497515313](https://github.com/wmichelin/clubdue/actions/runs/34497515313)
+  and the complete manual smoke passed with immutable image
+  `ghcr.io/wmichelin/clubdue@sha256:a74f48fdce4d8f42436cf189f1adec480f6e53340cb6d49c46ac4f86e96ac8cf`.
+  Staging continues to use PostgreSQL; the conditional Azure HTTP runtime is not
+  enabled and production is unchanged.
+
+- At `2026-09-10T16:36:47Z`, Azure control-plane readback reported the database
+  `Paused`, `autoPauseDelay=60` and `minCapacity=0.5`. An unproxied candidate using
+  the exact least-privilege runtime identity returned 200 for `/`, `/login`,
+  `/signup`, `/interest/thanks`, `/demo` and `/livez`; a second control-plane
+  readback still reported `Paused`. The first deliberate `/readyz` probe resumed
+  the database and returned 200 in 55.031 seconds. A fresh isolated demo then
+  returned 303 in 33.089 seconds and its authenticated dashboard returned 200 in
+  15.208 seconds. All requests stayed inside the 80-second budget. Graceful stop
+  logged shutdown completion and exit 0; the canary container was removed. The
+  staging proxy still selects PostgreSQL and production remains unchanged.
+
+### Outage feedback and retained form state — September 10, 2026
+
+- Customer creation, contact edits, property/equipment creation and vehicle saves
+  now redirect only after a confirmed write. Validation, conflict and unavailable
+  outcomes retain submitted values; an unavailable related list is labeled rather
+  than presented as empty. Customer and dashboard read failures return 503, while
+  missing records and protected customer deletion remain distinct.
+- Customer deletion holds its read/check/delete in one transaction. Dependency-
+  first and delete-first races pass on both engines; native error 547 and
+  PostgreSQL 23503 are normalized to the protected-dependency conflict instead
+  of becoming a generic outage response.
+- Public demo admission distinguishes the confirmed 100-workspace limit (429)
+  from database/session failure (503). Dependency failures refund the local
+  admission attempt. Interest persistence failures likewise preserve the form,
+  describe a lost acknowledgement as unconfirmed and refund the public throttle.
+- Seasonal bulk work now exposes typed input/conflict outcomes, keeping known
+  domain rejections at 400 while unknown dependency failures return 503 and retain
+  the selected rows when the list reloads.
+- Fresh PostgreSQL `go test -count=1 ./...`, `go vet ./...`, static build,
+  production recovery rehearsal and the complete isolated native SQL Server
+  rehearsal passed. The native matrix includes
+  customer-form draft recovery, recurring/seasonal unavailable saves, demo capacity,
+  notification durability, both customer-deletion race orderings and tenant
+  isolation. Independent architecture, operations and QA final reviews found no
+  remaining publication blocker. CI and verified staging deployment remain gates.

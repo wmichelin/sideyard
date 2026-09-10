@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -55,6 +56,11 @@ type VisitExportRow struct {
 	ServiceType  string
 	Notes        string
 }
+
+var (
+	ErrOutcomeInput    = errors.New("invalid seasonal visit outcome")
+	ErrOutcomeConflict = errors.New("seasonal visit outcome conflict")
+)
 
 var seasonWindows = map[string]struct{ startMonth, endMonth time.Month }{
 	"spring": {time.March, time.May},
@@ -278,11 +284,11 @@ func (s *Service) BulkUpdateVisitStatus(ctx context.Context, shopID string, visi
 	}
 
 	if !recordIDPattern.MatchString(shopID) {
-		return fmt.Errorf("invalid shop identifier")
+		return fmt.Errorf("%w: invalid shop identifier", ErrOutcomeInput)
 	}
 	for _, id := range visitIDs {
 		if !recordIDPattern.MatchString(id) {
-			return fmt.Errorf("invalid visit identifier")
+			return fmt.Errorf("%w: invalid visit identifier", ErrOutcomeInput)
 		}
 	}
 	tx, err := s.pool.Begin(ctx)
@@ -314,7 +320,7 @@ func (s *Service) BulkUpdateVisitStatus(ctx context.Context, shopID string, visi
 		if s.pool.Dialect() == database.SQLServer {
 			err = tx.QueryRow(ctx, `SELECT LOWER(CONVERT(char(36),agreement_id)),status FROM dbo.visit_dues WITH(UPDLOCK,HOLDLOCK) WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND id=CONVERT(uniqueidentifier,@p2)`, shopID, visitID).Scan(&agreementID, &currentStatus)
 			if err == nil && agreementID != expectedAgreements[visitID] {
-				return fmt.Errorf("visit changed while selecting its agreement")
+				return fmt.Errorf("%w: visit changed while selecting its agreement", ErrOutcomeConflict)
 			}
 			if err == nil {
 				err = tx.QueryRow(ctx, `SELECT visits_used,visits_entitled FROM dbo.agreements WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND id=CONVERT(uniqueidentifier,@p2)`, shopID, agreementID).Scan(&visitsUsed, &visitsEntitled)
@@ -329,13 +335,16 @@ func (s *Service) BulkUpdateVisitStatus(ctx context.Context, shopID string, visi
 			).Scan(&agreementID, &currentStatus, &visitsUsed, &visitsEntitled)
 		}
 		if err != nil {
-			return fmt.Errorf("visit not found: %w", err)
+			if errors.Is(err, database.ErrNoRows) {
+				return fmt.Errorf("%w: visit not found: %w", ErrOutcomeConflict, err)
+			}
+			return err
 		}
 
 		switch action {
 		case "scheduled":
 			if currentStatus == string(VisitCompleted) {
-				return fmt.Errorf("completed visit cannot be handed off")
+				return fmt.Errorf("%w: completed visit cannot be handed off", ErrOutcomeConflict)
 			}
 			_, err = tx.Exec(ctx, database.Statement(s.pool.Dialect(), `
 				UPDATE visit_dues SET status = 'scheduled', scheduled_at = $3
@@ -347,7 +356,7 @@ func (s *Service) BulkUpdateVisitStatus(ctx context.Context, shopID string, visi
 				continue
 			}
 			if visitsUsed >= visitsEntitled {
-				return fmt.Errorf("agreement visit entitlement is exhausted")
+				return fmt.Errorf("%w: agreement visit entitlement is exhausted", ErrOutcomeConflict)
 			}
 			_, err = tx.Exec(ctx, database.Statement(s.pool.Dialect(), `
 				UPDATE visit_dues SET status = 'completed', completed_at = $3
@@ -366,10 +375,10 @@ func (s *Service) BulkUpdateVisitStatus(ctx context.Context, shopID string, visi
 				return err
 			}
 			if tag.RowsAffected() != 1 {
-				return fmt.Errorf("agreement visit entitlement is exhausted")
+				return fmt.Errorf("%w: agreement visit entitlement is exhausted", ErrOutcomeConflict)
 			}
 		default:
-			return fmt.Errorf("unknown action: %s", action)
+			return fmt.Errorf("%w: unknown action: %s", ErrOutcomeInput, action)
 		}
 		if err != nil {
 			return err

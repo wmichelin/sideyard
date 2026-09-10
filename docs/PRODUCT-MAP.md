@@ -13,13 +13,13 @@ for the distinction between provisioned resources and deployed app behavior.
 
 ## Availability snapshot
 
-Reviewed September 10, 2026 against staging release `df50643` and the recorded
+Reviewed September 10, 2026 against staging release `224bad1` and the recorded
 release verification. These are verified release states, not a live deployment monitor.
 
 | Label | Meaning |
 | --- | --- |
 | **Live** | Available in production at [getsideyard.com](https://getsideyard.com), source `ae6f16a`, and on staging. The legacy ClubDue hostname remains supported. |
-| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), release `df50643`: standalone jobs/site surveys, the single-line work-status badge fix, configured private Azure photo storage, native-compatible CSV import behavior, and a staging-only Azure SQL operator boundary. The deployed web application still uses PostgreSQL. |
+| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), release `224bad1`: standalone jobs/site surveys, the single-line work-status badge fix, configured private Azure photo storage, native-compatible CSV import behavior, and a guarded Azure SQL runtime boundary. The deployed web application still uses PostgreSQL. |
 | **Conditional** | Implemented but requires explicit deployment configuration; this includes the staging-only lazy Azure SQL HTTP runtime and its 80-second total request budget. Conditional behavior is not a promise of availability to clients. |
 
 Unless marked otherwise, catalog nodes are **Live**. “Signed in” means a user
@@ -59,7 +59,7 @@ flowchart TB
 
   subgraph WORKSPACE["Workspace and setup"]
     NAV{{"NAV · Shared navigation"}}
-    DASH["DASH · Dashboard + calendar"]
+    DASH["DASH · Dashboard + calendar<br/>Availability feedback candidate"]
     BUSINESS["BUSINESS · Trade / service setup<br/>Save feedback on staging"]
     PLANS["PLANS · Plan templates<br/>Save / number feedback on staging"]
     PLAN["PLAN · Edit template<br/>Save / number feedback on staging"]
@@ -75,8 +75,8 @@ flowchart TB
   end
 
   subgraph RECORDS["Customers, properties and assets"]
-    CUSTOMERS["CUSTOMERS · Customer list / add"]
-    CUSTOMER["CUSTOMER · Contact, properties, vehicles<br/>Availability feedback on staging"]
+    CUSTOMERS["CUSTOMERS · Customer list / add<br/>Draft / availability candidate"]
+    CUSTOMER["CUSTOMER · Contact, properties, vehicles<br/>Draft / availability candidate"]
     PROPERTY["PROPERTY · Site notes / measurements<br/>Availability feedback on staging"]
     ADDRESS["ADDRESS · Correct property address"]
     PHOTOS["PHOTOS · Private property photos<br/>Azure storage on staging<br/>Availability feedback on staging"]
@@ -150,6 +150,7 @@ shop; it is not a client-facing identifier to invent during onboarding.
 - Introduces Sideyard, links to sign-in and the enabled demo, and collects early-access interest.
 - Required name and email; optional business, trade and free-text needs. Trade accepts free text; marketing suggestions are separate from business presets.
 - Saves interest and queues an owner email through Resend. Production notification delivery is configured; duplicate email submissions do not create repeated alerts. Failed delivery retries without losing the signup.
+- **Staging candidate:** if a database acknowledgement is lost, the form keeps the submitted details and explains that the save is unconfirmed. The dependency failure does not consume the public submission throttle; confirmed validation and rate-limit failures remain 422 and 429.
 - **Staging worker; delivery requires Resend configuration:** successful saves wake delivery after commit; empty queues stop polling. Startup and daily maintenance reconcile durable work, while known pending failures keep their retry timers. A lost process handoff can delay recovery until reconciliation; prolonged outages can produce a duplicate beyond the provider's deduplication window. This does not enable SQL Server for the application.
 - Submission leads to THANKS. It does not create a shop or login. There is no in-app lead-management page yet.
 
@@ -185,6 +186,10 @@ enabled on the recorded production and staging releases.
 **Staging:** the entry GET is database-free; its
 CSRF-protected POST recognizes an existing owner session and returns to DASH.
 A failed session lookup cannot replace that owner session with a new demo.
+
+**Staging candidate:** confirmed demo-workspace capacity returns 429 with a five-minute retry window.
+Database or session dependency failures return 503, preserve that distinction,
+and do not consume the prospect's demo-start throttle.
 
 Starts an isolated fictional landscaping shop with 30 customers, without shared
 credentials. Automatic entry has a manual button fallback. Sessions expire after
@@ -228,6 +233,7 @@ There is no shop switcher or team administration screen.
 - Month calendar with previous/next/today controls, day selection, daily agenda/pagination, overdue indication and moved-date context.
 - Open an agreement, change a recurring visit’s date or open service work; quick links to the main work lists and new agreement.
 - Calendar contains pending recurring occurrences only. Seasonal work and staging standalone jobs are not included. Generation has an approximately 90-day forward horizon; browsing later months does not generate more work.
+- **Staging candidate:** unavailable statistics or calendar storage returns retryable 503 feedback instead of an internal-error response.
 
 ### BUSINESS — Business setup
 
@@ -254,6 +260,9 @@ owner to reload and check their changes before retrying.
 List customer contacts, add a customer with name/email/phone, and open CUSTOMER.
 This is the starting point for manual client-data entry; bulk entry uses IMPORT.
 
+**Staging candidate:** list failures return 503. Invalid or unconfirmed customer creation
+keeps the entered contact details on the page; only a confirmed write redirects.
+
 ### CUSTOMER — Customer, properties and vehicles
 
 **Route:** `GET/POST /customers/{id}`. **Access:** Signed in; vehicle section Owner.
@@ -263,7 +272,8 @@ This is the starting point for manual client-data entry; bulk entry uses IMPORT.
 - Add/list multiple service addresses, including unit/suite, via `POST /customers/{id}/properties`. Add/list equipment per property via `POST /properties/{id}/equipment`.
 - Owners open property details, equipment editing and private histories. Vehicle creation/editing is inline via `POST /customers/{id}/vehicles`: multiple vehicles, name, make/model/year, optional identifier and internal standing notes. Vehicles do not require a property.
 - **Staging:** create a job/site survey already associated with this customer.
-- **Staging:** customer-detail read failures return temporary-unavailability feedback (503); missing or malformed customer IDs return 404.
+- **Staging candidate:** customer-detail read failures return temporary-unavailability feedback (503); missing or malformed customer IDs return 404.
+- **Staging candidate:** contact, property, equipment and vehicle forms retain submitted details after validation, conflict or unconfirmed dependency failures. Related lists are marked unavailable rather than shown as empty; only confirmed writes redirect. Customer deletion distinguishes missing records, protected dependencies and unavailable storage.
 - No combined customer-wide authored activity timeline yet. Property/asset/visit notes have their own pages.
 
 ### PROPERTY — Property details, site notes and measurements

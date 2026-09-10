@@ -19,6 +19,11 @@ type authAttempt struct {
 	resetAt  time.Time
 }
 
+type authThrottleTicket struct {
+	key     string
+	resetAt time.Time
+}
+
 // authThrottle is intentionally process-local: it bounds pilot login/signup
 // attempts without trusting forwarded headers or introducing another service.
 type authThrottle struct {
@@ -70,6 +75,11 @@ func (t *authThrottle) success(key string) {
 }
 
 func (t *authThrottle) take(key string) bool {
+	_, ok := t.takeWithTicket(key)
+	return ok
+}
+
+func (t *authThrottle) takeWithTicket(key string) (authThrottleTicket, bool) {
 	now := t.now()
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -79,11 +89,29 @@ func (t *authThrottle) take(key string) bool {
 		attempt = authAttempt{resetAt: now.Add(t.window)}
 	}
 	if attempt.failures >= t.maxAttempts {
-		return false
+		return authThrottleTicket{}, false
 	}
 	attempt.failures++
 	t.attempts[key] = attempt
-	return true
+	return authThrottleTicket{key: key, resetAt: attempt.resetAt}, true
+}
+
+// refund returns one admitted attempt when the protected dependency could not
+// process it. The ticket prevents an old request from refunding a newer window.
+func (t *authThrottle) refund(ticket authThrottleTicket) {
+	now := t.now()
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	attempt, ok := t.attempts[ticket.key]
+	if !ok || !attempt.resetAt.Equal(ticket.resetAt) || !now.Before(attempt.resetAt) || attempt.failures < 1 {
+		return
+	}
+	attempt.failures--
+	if attempt.failures == 0 {
+		delete(t.attempts, ticket.key)
+		return
+	}
+	t.attempts[ticket.key] = attempt
 }
 
 func (t *authThrottle) prune(now time.Time) {

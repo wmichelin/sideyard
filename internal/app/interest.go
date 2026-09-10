@@ -91,7 +91,8 @@ func (s *Server) handleInterest(w http.ResponseWriter, r *http.Request) {
 		// Do not trust client-supplied forwarding headers to identify visitors.
 		s.interestThrottle = newAuthThrottle(RuntimeLimits{AuthMaxAttempts: 20, AuthThrottleWindow: time.Minute})
 	})
-	if !s.interestThrottle.take("interest") {
+	ticket, admitted := s.interestThrottle.takeWithTicket("interest")
+	if !admitted {
 		w.Header().Set("Retry-After", "60")
 		s.renderLanding(w, r, interestSignup{}, "We've received several requests. Please try again in a minute.", http.StatusTooManyRequests)
 		return
@@ -114,13 +115,17 @@ func (s *Server) handleInterest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.interest == nil {
+		s.interestThrottle.refund(ticket)
+		w.Header().Set("Retry-After", "15")
 		s.renderLanding(w, r, in, "We couldn't save your interest right now. Please try again shortly.", http.StatusServiceUnavailable)
 		return
 	}
 	if err := s.interest.SaveInterest(r.Context(), in); err != nil {
+		s.interestThrottle.refund(ticket)
+		w.Header().Set("Retry-After", "15")
 		// Database errors can contain submitted values; keep contact details out of logs.
 		log.Printf("interest signup persistence failed request_id=%s", w.Header().Get("X-Request-ID"))
-		s.renderLanding(w, r, in, "We couldn't save your interest right now. Please try again shortly.", http.StatusServiceUnavailable)
+		s.renderLanding(w, r, in, "We couldn't confirm whether your interest was saved. Your details are kept below; wait a moment and use the same email if you try again.", http.StatusServiceUnavailable)
 		return
 	}
 	http.Redirect(w, r, "/interest/thanks", http.StatusSeeOther)

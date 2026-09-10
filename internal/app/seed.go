@@ -24,6 +24,7 @@ const (
 )
 
 var errPublicDemoMutationBudgetReached = errors.New("public demo mutation budget reached")
+var errPublicDemoCapacityReached = errors.New("public demo capacity reached")
 
 type PublicDemoResult struct {
 	ShopID    string
@@ -132,7 +133,7 @@ func (s *Store) SeedPublicDemo(ctx context.Context) (PublicDemoResult, error) {
 		return PublicDemoResult{}, err
 	}
 	if activeDemos >= 100 {
-		return PublicDemoResult{}, fmt.Errorf("public demo capacity reached")
+		return PublicDemoResult{}, errPublicDemoCapacityReached
 	}
 
 	var result PublicDemoResult

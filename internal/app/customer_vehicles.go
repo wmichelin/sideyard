@@ -117,16 +117,16 @@ func (s *Server) handleCustomerVehicle(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err := validateCustomerVehicle(v); err != nil {
-		http.Error(w, err.Error(), 422)
+		s.renderCustomerEdit(w, r, u, r.PathValue("id"), customerEditState{VehicleDraft: &v, VehicleError: err.Error(), Status: http.StatusUnprocessableEntity})
 		return
 	}
 	if err := s.store.SaveCustomerVehicle(r.Context(), u.ShopID, r.PathValue("id"), v); err != nil {
 		if errors.Is(err, errInvalidRecordID) {
 			http.Error(w, "Invalid record identifier.", http.StatusBadRequest)
 		} else if errors.Is(err, errVehicleConflict) {
-			http.Error(w, err.Error(), 409)
+			s.renderCustomerEdit(w, r, u, r.PathValue("id"), customerEditState{VehicleDraft: &v, VehicleError: err.Error(), Status: http.StatusConflict})
 		} else {
-			http.Error(w, "Could not save the vehicle. Please retry.", 503)
+			s.renderCustomerEdit(w, r, u, r.PathValue("id"), customerEditState{VehicleDraft: &v, VehicleError: "Could not confirm whether this vehicle was saved. Check the current vehicles before submitting these retained details again.", Status: http.StatusServiceUnavailable})
 		}
 		return
 	}

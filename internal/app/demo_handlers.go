@@ -26,24 +26,47 @@ func (s *Server) handlePublicDemoPost(w http.ResponseWriter, r *http.Request) {
 	}
 	limiter := s.publicDemoLimiter()
 	const limiterKey = "public-demo:global"
-	if !limiter.take(limiterKey) {
+	ticket, admitted := limiter.takeWithTicket(limiterKey)
+	if !admitted {
 		w.Header().Set("Retry-After", "60")
 		http.Error(w, "The demo is receiving too many new visitors. Please try again in a minute.", http.StatusTooManyRequests)
 		return
 	}
-	result, err := s.store.SeedPublicDemo(r.Context())
+	seed := s.store.SeedPublicDemo
+	if s.publicDemoSeed != nil {
+		seed = s.publicDemoSeed
+	}
+	result, err := seed(r.Context())
 	if err != nil {
 		log.Printf("public demo workspace creation failed request_id=%s error=%v", requestIDFromContext(r.Context()), err)
-		w.WriteHeader(http.StatusServiceUnavailable)
+		if !errors.Is(err, errPublicDemoCapacityReached) {
+			limiter.refund(ticket)
+		}
+		status := http.StatusServiceUnavailable
+		message := "The demo is temporarily unavailable. Please try again shortly."
+		if errors.Is(err, errPublicDemoCapacityReached) {
+			status = http.StatusTooManyRequests
+			w.Header().Set("Retry-After", "300")
+			message = "The demo is temporarily at capacity. Please try again in a few minutes."
+		} else {
+			w.Header().Set("Retry-After", "15")
+		}
+		w.WriteHeader(status)
 		s.render(w, r, "demo_entry.html", map[string]any{
-			"Error": "The demo is temporarily at capacity. Please try again in a few minutes.",
+			"Error": message,
 		})
 		return
 	}
 	token, err := s.auth.createSessionUntil(r.Context(), result.UserID, result.ExpiresAt)
 	if err != nil {
-		s.store.cleanupFailedPublicDemo(r.Context(), result.ShopID)
+		limiter.refund(ticket)
+		if s.publicDemoCleanup != nil {
+			s.publicDemoCleanup(r.Context(), result.ShopID)
+		} else {
+			s.store.cleanupFailedPublicDemo(r.Context(), result.ShopID)
+		}
 		log.Printf("public demo session creation failed request_id=%s", requestIDFromContext(r.Context()))
+		w.Header().Set("Retry-After", "15")
 		http.Error(w, "The demo could not start. Please try again.", http.StatusServiceUnavailable)
 		return
 	}

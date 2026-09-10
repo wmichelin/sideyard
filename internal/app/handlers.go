@@ -33,6 +33,8 @@ type Server struct {
 	interestThrottleOnce sync.Once
 	clock                Clock
 	photoProcessing      sync.Mutex
+	publicDemoSeed       func(context.Context) (PublicDemoResult, error)
+	publicDemoCleanup    func(context.Context, string)
 }
 
 func (s *Server) nowUTC() time.Time {
@@ -536,16 +538,16 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
 	stats, err := s.store.DashboardStats(r.Context(), user.ShopID)
 	if err != nil {
-		log.Printf("dashboard stats: %v", err)
-		http.Error(w, "server error", http.StatusInternalServerError)
+		log.Printf("dashboard stats unavailable request_id=%s", requestIDFromContext(r.Context()))
+		http.Error(w, "The dashboard is temporarily unavailable. Please retry.", http.StatusServiceUnavailable)
 		return
 	}
 	calendar := calendarSelection(s.nowUTC(), r.URL.Query())
 	page, _ := strconv.Atoi(r.URL.Query().Get("calendar_page"))
 	work, err := s.store.ServiceCalendar(r.Context(), user.ShopID, calendar.Month, calendar.End, calendar.SelectedDay, page)
 	if err != nil {
-		log.Printf("dashboard calendar request_id=%s error=%v", requestIDFromContext(r.Context()), err)
-		http.Error(w, "Could not load the service calendar. Reload to try again.", http.StatusInternalServerError)
+		log.Printf("dashboard calendar unavailable request_id=%s", requestIDFromContext(r.Context()))
+		http.Error(w, "Could not load the service calendar. Reload to try again.", http.StatusServiceUnavailable)
 		return
 	}
 	calendar.populate(work)
@@ -874,29 +876,20 @@ func (s *Server) handleCustomers(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "bad form", http.StatusBadRequest)
 			return
 		}
-		name := strings.TrimSpace(r.FormValue("name"))
-		if name != "" {
-			_, err := s.store.CreateCustomer(r.Context(), user.ShopID, name,
-				r.FormValue("email"), r.FormValue("phone"))
-			if err != nil {
-				log.Printf("create customer: %v", err)
-			}
+		draft := customerDraftFromRequest(r)
+		if draft.Name == "" || !validStoredText(draft.Name, draft.Email, draft.Phone) {
+			s.renderCustomersPage(w, r, user, draft, "Enter a customer name and valid contact details.", http.StatusUnprocessableEntity)
+			return
+		}
+		if _, err := s.store.CreateCustomer(r.Context(), user.ShopID, draft.Name, draft.Email, draft.Phone); err != nil {
+			log.Printf("create customer unavailable request_id=%s", requestIDFromContext(r.Context()))
+			s.renderCustomersPage(w, r, user, draft, "Could not confirm whether this customer was saved. Check the customer list before submitting these retained details again.", http.StatusServiceUnavailable)
+			return
 		}
 		http.Redirect(w, r, "/customers", http.StatusSeeOther)
 		return
 	}
-
-	customers, err := s.store.ListCustomers(r.Context(), user.ShopID)
-	if err != nil {
-		log.Printf("list customers: %v", err)
-		http.Error(w, "server error", http.StatusInternalServerError)
-		return
-	}
-
-	s.renderLayout(w, r, "Customers — Sideyard", "customers_content", map[string]any{
-		"Nav":       NavData{Active: "customers", User: user},
-		"Customers": customers,
-	})
+	s.renderCustomersPage(w, r, user, customerDraft{}, "", http.StatusOK)
 }
 
 // Empty optional values keep the existing form defaults. Malformed or out-of-range

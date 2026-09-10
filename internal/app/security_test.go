@@ -403,6 +403,29 @@ func TestPublicDemoLimiterConsumesCapacityAtomically(t *testing.T) {
 	}
 }
 
+func TestThrottleRefundCannotDebitANewerWindow(t *testing.T) {
+	now := time.Date(2026, 9, 1, 4, 0, 0, 0, time.UTC)
+	limiter := newAuthThrottle(RuntimeLimits{AuthMaxAttempts: 2, AuthThrottleWindow: time.Minute})
+	limiter.now = func() time.Time { return now }
+	oldTicket, admitted := limiter.takeWithTicket("global")
+	if !admitted {
+		t.Fatal("initial request was not admitted")
+	}
+	now = now.Add(time.Minute)
+	newTicket, admitted := limiter.takeWithTicket("global")
+	if !admitted {
+		t.Fatal("new-window request was not admitted")
+	}
+	limiter.refund(oldTicket)
+	if got := limiter.attempts["global"].failures; got != 1 {
+		t.Fatalf("old request refunded newer window: failures=%d", got)
+	}
+	limiter.refund(newTicket)
+	if _, ok := limiter.attempts["global"]; ok {
+		t.Fatal("current-window refund did not return admitted attempt")
+	}
+}
+
 func TestSessionAndCSRFCookiesAreSecureOutsideDevelopment(t *testing.T) {
 	for _, tc := range []struct {
 		name   string

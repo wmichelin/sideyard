@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/wmichelin/clubdue/internal/database"
 	"github.com/wmichelin/clubdue/internal/servicework"
+	visitdomain "github.com/wmichelin/clubdue/internal/visits"
 	"log"
 	"net/http"
 	"sort"
@@ -96,7 +97,7 @@ func (s *Server) handleVisits(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Printf("work outcome request_id=%s kind=%s error=%v", requestIDFromContext(r.Context()), submission.kind, err)
-		if submission.kind == "recurring" && !errors.Is(err, database.ErrNoRows) && !errors.Is(err, servicework.ErrOutcomeInput) && !errors.Is(err, servicework.ErrOutcomeConflict) {
+		if !errors.Is(err, database.ErrNoRows) && !errors.Is(err, servicework.ErrOutcomeInput) && !errors.Is(err, servicework.ErrOutcomeConflict) && !errors.Is(err, visitdomain.ErrOutcomeInput) && !errors.Is(err, visitdomain.ErrOutcomeConflict) {
 			s.workSaveErrorStatus(w, r, user, dueOnly, "Could not confirm this save. Reload to check the recorded outcomes before retrying.", http.StatusServiceUnavailable)
 			return
 		}

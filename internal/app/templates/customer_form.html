@@ -6,10 +6,14 @@
   </div>
   <a href="/customers" class="secondary-btn">Back to customers</a>
 </header>
-{{ if eq .Nav.User.Role "owner" }}<div class="link-row"><a class="secondary-btn" href="/jobs/new?customer_id={{ .Customer.ID }}">New job or site survey</a></div>{{ end }}
+{{ if and (not .CustomerUnavailable) (eq .Nav.User.Role "owner") }}<div class="link-row"><a class="secondary-btn" href="/jobs/new?customer_id={{ .Customer.ID }}">New job or site survey</a></div>{{ end }}
 
-{{ if .UpdateError }}<p class="error-banner">Enter a customer name to save changes.</p>{{ end }}
+{{ if .UpdateError }}<p class="error-banner" role="alert">{{ .UpdateError }}</p>{{ end }}
+{{ if .CustomerUnavailable }}<p class="error-banner" role="alert">The customer record is temporarily unavailable. Any submitted fields shown below are retained.</p>{{ end }}
+{{ if .RelatedUnavailable }}<p class="error-banner" role="alert">Related properties, vehicles, and site details are temporarily unavailable.</p>{{ end }}
 
+{{ if not .CustomerUnavailable }}
+{{ if .Customer.ID }}
 <section class="panel">
   <h3 class="section-title">Customer details</h3>
   <form method="post" class="form-stack">
@@ -26,8 +30,9 @@
     <button class="ghost-btn">Delete customer</button>
   </form>
 </section>
+{{ end }}
 
-{{ if eq .Nav.User.Role "owner" }}
+{{ if and (eq .Nav.User.Role "owner") (not .RelatedUnavailable) }}
 <section class="panel" id="vehicles">
   <h3 class="section-title">Vehicles</h3>
   <p>Keep each vehicle with its customer, independent of the address where you work. Vehicle notes are internal to your business.</p>
@@ -55,19 +60,71 @@
 
 <section class="panel">
   <h3 class="section-title">Add property</h3>
+  {{ if .PropertyError }}<p class="error-banner" role="alert">{{ .PropertyError }}</p>{{ end }}
   <form method="post" action="/customers/{{ .Customer.ID }}/properties" class="form-stack">
     {{ template "csrf_field" . }}
     <div class="form-row">
-      <label><span>Address</span><input name="address_line1" required></label>
-      <label><span>Unit / suite</span><input name="address_line2"></label>
-      <label><span>City</span><input name="city" required></label>
-      <label><span>State</span><input name="state" required></label>
-      <label><span>ZIP</span><input name="postal_code" required></label>
+      <label><span>Address</span><input name="address_line1" value="{{ if .PropertyDraft }}{{ .PropertyDraft.AddressLine1 }}{{ end }}" required></label>
+      <label><span>Unit / suite</span><input name="address_line2" value="{{ if .PropertyDraft }}{{ .PropertyDraft.AddressLine2 }}{{ end }}"></label>
+      <label><span>City</span><input name="city" value="{{ if .PropertyDraft }}{{ .PropertyDraft.City }}{{ end }}" required></label>
+      <label><span>State</span><input name="state" value="{{ if .PropertyDraft }}{{ .PropertyDraft.State }}{{ end }}" required></label>
+      <label><span>ZIP</span><input name="postal_code" value="{{ if .PropertyDraft }}{{ .PropertyDraft.PostalCode }}{{ end }}" required></label>
     </div>
     <button class="secondary-btn">Add property</button>
   </form>
 </section>
+{{ end }}
 
+{{ if .VehicleError }}
+<section class="panel" id="vehicle-retry">
+  <h3 class="section-title">Vehicle details</h3>
+  <p class="error-banner" role="alert">{{ .VehicleError }}</p>
+  <form method="post" action="/customers/{{ .Customer.ID }}/vehicles" class="form-stack">
+    {{ template "csrf_field" . }}
+    {{ if .VehicleDraft.ID }}<input type="hidden" name="vehicle_id" value="{{ .VehicleDraft.ID }}"><input type="hidden" name="revision" value="{{ .VehicleDraft.Revision }}">{{ end }}
+    <label><span>Vehicle name</span><input name="name" maxlength="120" required value="{{ .VehicleDraft.Name }}"></label>
+    <div class="form-row"><label><span>Make</span><input name="make" maxlength="120" value="{{ .VehicleDraft.Make }}"></label><label><span>Model</span><input name="model" maxlength="120" value="{{ .VehicleDraft.Model }}"></label><label><span>Model year</span><input name="year" type="number" min="1886" max="9999" value="{{ .VehicleDraft.Year }}"></label></div>
+    <label><span>Identifier (optional)</span><input name="identifier" maxlength="120" value="{{ .VehicleDraft.Identifier }}"></label>
+    <label><span>Internal vehicle notes</span><textarea name="notes" maxlength="2000" rows="2">{{ .VehicleDraft.Notes }}</textarea></label>
+    <button class="secondary-btn">Submit retained vehicle details</button>
+  </form>
+</section>
+{{ end }}
+
+{{ if and .PropertyError .CustomerUnavailable }}
+<section class="panel" id="property-retry">
+  <h3 class="section-title">Property details</h3>
+  <p class="error-banner" role="alert">{{ .PropertyError }}</p>
+  <form method="post" action="/customers/{{ .Customer.ID }}/properties" class="form-stack">
+    {{ template "csrf_field" . }}
+    <div class="form-row">
+      <label><span>Address</span><input name="address_line1" value="{{ .PropertyDraft.AddressLine1 }}" required></label>
+      <label><span>Unit / suite</span><input name="address_line2" value="{{ .PropertyDraft.AddressLine2 }}"></label>
+      <label><span>City</span><input name="city" value="{{ .PropertyDraft.City }}" required></label>
+      <label><span>State</span><input name="state" value="{{ .PropertyDraft.State }}" required></label>
+      <label><span>ZIP</span><input name="postal_code" value="{{ .PropertyDraft.PostalCode }}" required></label>
+    </div>
+    <button class="secondary-btn">Submit retained property details</button>
+  </form>
+</section>
+{{ end }}
+
+{{ if .EquipmentError }}
+<section class="panel" id="site-detail-retry">
+  <h3 class="section-title">Site asset or detail</h3>
+  <p class="error-banner" role="alert">{{ .EquipmentError }}</p>
+  <form method="post" action="/properties/{{ .EquipmentDraft.PropertyID }}/equipment" class="form-row">
+    {{ template "csrf_field" . }}
+    <label><span>Site asset or detail</span><input name="kind" required value="{{ .EquipmentDraft.Kind }}"></label>
+    <label><span>Make</span><input name="make" value="{{ .EquipmentDraft.Make }}"></label>
+    <label><span>Model</span><input name="model" value="{{ .EquipmentDraft.Model }}"></label>
+    <label><span>Identifier</span><input name="serial_number" value="{{ .EquipmentDraft.SerialNumber }}"></label>
+    <button class="secondary-btn">Submit retained site detail</button>
+  </form>
+</section>
+{{ end }}
+
+{{ if not .RelatedUnavailable }}
 {{ range .Properties }}
 <section class="panel">
   <h3 class="section-title">{{ .AddressLine1 }}{{ if .AddressLine2 }}, {{ .AddressLine2 }}{{ end }}, {{ .City }}, {{ .State }} {{ .PostalCode }}</h3>
@@ -90,5 +147,6 @@
 </section>
 {{ else }}
 <p class="empty-note">No service locations yet.</p>
+{{ end }}
 {{ end }}
 {{ end }}

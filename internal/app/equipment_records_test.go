@@ -173,7 +173,7 @@ func testEquipmentRecordsPreserveIdentityAndRejectConflictingEdits(t *testing.T,
 	for _, role := range []string{"staff", "owner"} {
 		r := httptest.NewRequest("GET", "/customers/"+customer, nil)
 		w := httptest.NewRecorder()
-		server.renderCustomerEdit(w, r, &User{ShopID: shop, Role: role}, customer)
+		server.renderCustomerEdit(w, r, &User{ShopID: shop, Role: role}, customer, customerEditState{Status: 200})
 		if w.Code != 200 || strings.Contains(w.Body.String(), got.Notes) || strings.Contains(w.Body.String(), got.Location) {
 			t.Fatal("private equipment fields leaked into customer summary")
 		}

@@ -3,11 +3,14 @@ package app
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
+	mssql "github.com/microsoft/go-mssqldb"
 	"github.com/wmichelin/clubdue/internal/database"
 )
 
@@ -111,6 +114,17 @@ type Store struct {
 	photoObjects       photoObjectStorage
 }
 
+var errCustomerDeleteConflict = errors.New("customer has agreements or jobs")
+
+func isCustomerDeleteForeignKeyConflict(err error) bool {
+	var postgresError *pgconn.PgError
+	if errors.As(err, &postgresError) && postgresError.Code == "23503" {
+		return true
+	}
+	var sqlServerError mssql.Error
+	return errors.As(err, &sqlServerError) && sqlServerError.Number == 547
+}
+
 func (s *Store) nowUTC() time.Time {
 	return utcNow(s.clock)
 }
@@ -193,7 +207,7 @@ func (s *Store) UpdateCustomer(ctx context.Context, shopID, customerID, name, em
 		return err
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("customer not found")
+		return database.ErrNoRows
 	}
 	return nil
 }
@@ -202,15 +216,34 @@ func (s *Store) DeleteCustomer(ctx context.Context, shopID, customerID string) e
 	if err := validateRecordIDs(shopID, customerID); err != nil {
 		return err
 	}
-
-	tag, err := s.db.Pool.Exec(ctx, database.Statement(s.db.Pool.Dialect(), `DELETE FROM customers WHERE shop_id = $1 AND id = $2`, `DELETE FROM dbo.customers WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND id=CONVERT(uniqueidentifier,@p2)`), shopID, customerID)
+	tx, err := s.db.Pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("customer not found")
+	defer tx.Rollback(ctx)
+	var lockedID string
+	if err := tx.QueryRow(ctx, database.Statement(tx.Dialect(), `SELECT id FROM customers WHERE shop_id=$1 AND id=$2 FOR UPDATE`, `SELECT LOWER(CONVERT(char(36),id)) FROM dbo.customers WITH(XLOCK,HOLDLOCK) WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND id=CONVERT(uniqueidentifier,@p2)`), shopID, customerID).Scan(&lockedID); err != nil {
+		return err
 	}
-	return nil
+
+	var dependent int
+	if err := tx.QueryRow(ctx, database.Statement(tx.Dialect(), `SELECT CASE WHEN EXISTS(SELECT 1 FROM agreements WHERE shop_id=$1 AND customer_id=$2) OR EXISTS(SELECT 1 FROM jobs WHERE shop_id=$1 AND customer_id=$2) THEN 1 ELSE 0 END`, `SELECT CASE WHEN EXISTS(SELECT 1 FROM dbo.agreements WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND customer_id=CONVERT(uniqueidentifier,@p2)) OR EXISTS(SELECT 1 FROM dbo.jobs WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND customer_id=CONVERT(uniqueidentifier,@p2)) THEN 1 ELSE 0 END`), shopID, customerID).Scan(&dependent); err != nil {
+		return err
+	}
+	if dependent == 1 {
+		return errCustomerDeleteConflict
+	}
+	tag, err := tx.Exec(ctx, database.Statement(tx.Dialect(), `DELETE FROM customers WHERE shop_id = $1 AND id = $2`, `DELETE FROM dbo.customers WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND id=CONVERT(uniqueidentifier,@p2)`), shopID, customerID)
+	if err != nil {
+		if isCustomerDeleteForeignKeyConflict(err) {
+			return errCustomerDeleteConflict
+		}
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return database.ErrNoRows
+	}
+	return tx.Commit(ctx)
 }
 
 func (s *Store) ListProperties(ctx context.Context, shopID, customerID string) ([]Property, error) {
@@ -337,7 +370,7 @@ SELECT CONVERT(uniqueidentifier,@p1),id,@p3,CASE WHEN DATALENGTH(@p4)=0 THEN NUL
 		return err
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("property not found")
+		return database.ErrNoRows
 	}
 	return nil
 }

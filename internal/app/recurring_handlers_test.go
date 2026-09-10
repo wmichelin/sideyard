@@ -9,9 +9,27 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
+
+type onceBeginFailingPool struct {
+	database.Pool
+	mu     sync.Mutex
+	failed bool
+	err    error
+}
+
+func (p *onceBeginFailingPool) Begin(ctx context.Context) (database.Tx, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.failed {
+		p.failed = true
+		return nil, p.err
+	}
+	return p.Pool.Begin(ctx)
+}
 
 func TestRecurringHandlersDistinguishMissingAndUnavailable(t *testing.T) {
 	shop := "12345678-1234-1234-1234-123456789012"
@@ -99,6 +117,21 @@ func testRecurringFormsPreserveInputAndUnconfirmedOutcomes(t *testing.T, db *DB)
 	w = request(server.handleVisits, "", "/visits", url.Values{"occurrence_id": {rows[0].ID}, "action": {"completed"}}, false)
 	if w.Code != 503 || !strings.Contains(w.Body.String(), "Could not confirm") || strings.Contains(w.Body.String(), "selection is kept") {
 		t.Fatalf("fallback lost honest save status %d %s", w.Code, w.Body.String())
+	}
+
+	server.store = store
+	createSeasonalTestAgreement(t, db, store, shop, []string{"fall"}, 2, 0)
+	if err := store.SyncVisitDues(ctx, shop); err != nil {
+		t.Fatal(err)
+	}
+	seasonal, err := store.ListVisitDues(ctx, shop, false)
+	if err != nil || len(seasonal) == 0 {
+		t.Fatal("missing seasonal outage fixture", err)
+	}
+	server.store = &Store{db: &DB{Pool: &onceBeginFailingPool{Pool: db.Pool, err: failure}}, clock: clock}
+	w = request(server.handleVisits, "", "/visits?filter=all", url.Values{"visit_id": {seasonal[0].ID}, "action": {"completed"}, "filter": {"all"}}, false)
+	if w.Code != 503 || !strings.Contains(w.Body.String(), "Could not confirm") || !strings.Contains(w.Body.String(), `value="`+seasonal[0].ID+`"`) || !strings.Contains(w.Body.String(), "checked") || w.Header().Get("Location") != "" {
+		t.Fatalf("seasonal outage lost status/selection %d %s", w.Code, w.Body.String())
 	}
 
 }

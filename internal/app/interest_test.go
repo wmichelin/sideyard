@@ -142,6 +142,30 @@ func TestInterestThrottleAndEscapedValidation(t *testing.T) {
 	}
 }
 
+func TestInterestDependencyFailureRetainsDraftAndRefundsThrottle(t *testing.T) {
+	failure := errors.New("private database commit acknowledgement")
+	fake := &fakeInterestRecorder{err: failure}
+	s := interestTestServer(fake)
+	values := url.Values{"name": {"Alex <Owner>"}, "email": {"alex@example.test"}, "business": {"A & B"}, "trade": {"Plumbing"}, "message": {"Keep <this> & retry"}, "csrf_token": {"test-csrf-token"}}
+	for i := 0; i < 25; i++ {
+		w := httptest.NewRecorder()
+		s.handler(fstest.MapFS{}).ServeHTTP(w, interestRequest(values))
+		body := w.Body.String()
+		if w.Code != http.StatusServiceUnavailable || w.Header().Get("Retry-After") != "15" || w.Header().Get("Location") != "" || !strings.Contains(body, "couldn&#39;t confirm whether") || !strings.Contains(body, "Alex &lt;Owner&gt;") || !strings.Contains(body, "A &amp; B") || !strings.Contains(body, "Keep &lt;this&gt; &amp; retry") || strings.Contains(body, failure.Error()) {
+			t.Fatalf("dependency response %d: status=%d body=%s", i, w.Code, body)
+		}
+	}
+	if got := s.interestThrottle.attempts["interest"].failures; got != 0 {
+		t.Fatalf("dependency failures consumed interest throttle: %d", got)
+	}
+	fake.err = nil
+	w := httptest.NewRecorder()
+	s.handler(fstest.MapFS{}).ServeHTTP(w, interestRequest(values))
+	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/interest/thanks" {
+		t.Fatalf("recovered submission status=%d", w.Code)
+	}
+}
+
 func TestInterestPersistenceDeduplicatesWithoutOverwritingAndExportsPrivately(t *testing.T) {
 	ctx := context.Background()
 	db, err := openDB(ctx, integrationDatabaseURL(t))
