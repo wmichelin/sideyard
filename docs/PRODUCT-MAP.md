@@ -720,17 +720,16 @@ separate Entra credentials: a backups-container read/write publisher and a
 photos-container read-only recovery reader. It derives their exact resource IDs
 from protected Terraform state, rejects identity reuse, and never activates them
 without a separately reviewed Terraform assignment and permission canary. No live
-recovery identity or publication/restore command is installed yet. The unpublished
-logical-export source candidate also adds a staging-only bootstrap/audit command
+recovery identity or publication/restore command is installed yet. The verified
+staging logical-export source boundary adds a bootstrap/audit command
 for one dormant, passwordless database login whose effective access is column-level
 `SELECT` on the exact current transfer catalog and migration ledger. It rejects
 other databases/schemas, temporary or persistent object creation, extra relation
 or column grants, table writes, large-object access, application-function execution,
-source-schema drift, row-level security and unexpected role membership. It is not
-available until its source revision
-passes staging and its manual bootstrap workflow succeeds; short-lived activation
-still belongs to the future export command. The application selector therefore
-remains PostgreSQL.
+source-schema drift, row-level security and unexpected role membership. Staging
+bootstrap and an independent audit passed on the exact immutable running revision;
+short-lived activation still belongs to the future export command. The application
+selector therefore remains PostgreSQL.
 [Transfer contract](../internal/transfer/catalog.go) ·
 [Restore implementation](../internal/transfer/restore.go) ·
 [Logical Blob contract](../scripts/azure/logical-backup-store.py) ·

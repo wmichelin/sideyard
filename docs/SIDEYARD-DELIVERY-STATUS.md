@@ -1850,7 +1850,7 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   landing and login checks returned 200. No Azure identity was activated and
   production is unchanged.
 
-### PostgreSQL logical-export source identity — implementation complete, staging pending
+### PostgreSQL logical-export source identity — staging verified
 
 - Added a staging-only, artifact-bound host workflow that bootstraps or audits a
   fixed dormant PostgreSQL export login without creating a credential. The workflow
@@ -1871,8 +1871,21 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   and another database. Drift cases cover a child role, column grant, public view,
   alternate schema, zero-column relation, large object, database CREATE and a
   row-hiding policy. A fake-host suite covers backend/generation/lock,
-  revision/digest and environment-file gates before any operator call. The full
-  CI and staging publication gates remain.
-- This access boundary does not export, encrypt, upload or restore data. It is not
-  provisioned on staging yet; Azure SQL remains conditional and production is
-  unchanged.
+  revision/digest and environment-file gates before any operator call. The CI,
+  staging publication and live operator evidence follow.
+- Source commit `1ee929bb286a9edaadb0d93a673f4c7dee27b8a1` passed all four CI jobs in
+  run `34542227124`. The temporary-helper correction
+  `aebbea66ba98de20186f0a68a7264591aa15ad0f` deployed in run `34542763368` as
+  `ghcr.io/wmichelin/clubdue@sha256:e3f0713eafbbc31be8a9d6301de841b39e68259754f157d06019ad6f9a1d906c`.
+  Its repeat CI run `34542763354` also passed all four jobs.
+  The public safety marker independently reported staging, PostgreSQL and generation
+  `765629bc-8d1b-4e04-9f80-4c3c22cca1c9`.
+- The first bootstrap attempt (`34542602246`) failed before any database operation
+  because its assumed durable state-helper path was absent. The corrected workflow
+  carries both reviewed candidates in its temporary SHA directory. Bootstrap run
+  `34542916789` and separate read-only audit run `34542967070` then passed against
+  exact revision `aebbea66ba98de20186f0a68a7264591aa15ad0f`; the complete staging
+  smoke suite passed afterward.
+- This boundary does not export, encrypt, upload or restore data. Staging has the
+  fixed roles, but its login remains `NOLOGIN` with a null password. Azure SQL
+  remains conditional and production is unchanged.
