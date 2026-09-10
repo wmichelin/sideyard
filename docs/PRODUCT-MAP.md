@@ -13,13 +13,13 @@ for the distinction between provisioned resources and deployed app behavior.
 
 ## Availability snapshot
 
-Reviewed September 9, 2026 against staging release `4ac47f8` and the recorded
+Reviewed September 9, 2026 against staging release `1c7c8b7` and the recorded
 release verification. These are verified release states, not a live deployment monitor.
 
 | Label | Meaning |
 | --- | --- |
 | **Live** | Available in production at [getsideyard.com](https://getsideyard.com), source `ae6f16a`, and on staging. The legacy ClubDue hostname remains supported. |
-| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), release `4ac47f8`: standalone jobs/site surveys, the single-line work-status badge fix, and configured private Azure photo storage. |
+| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), release `1c7c8b7`: standalone jobs/site surveys, the single-line work-status badge fix, and configured private Azure photo storage. |
 | **Conditional** | Implemented but requires explicit deployment configuration; not a promise of availability to clients. |
 
 Unless marked otherwise, catalog nodes are **Live**. “Signed in” means a user
@@ -79,11 +79,11 @@ flowchart TB
     CUSTOMER["CUSTOMER · Contact, properties, vehicles"]
     PROPERTY["PROPERTY · Site notes / measurements<br/>Availability feedback on staging"]
     ADDRESS["ADDRESS · Correct property address"]
-    PHOTOS["PHOTOS · Private property photos<br/>Azure storage on staging<br/>Availability feedback pending staging"]
+    PHOTOS["PHOTOS · Private property photos<br/>Azure storage on staging<br/>Availability feedback on staging"]
     IMAGE["IMAGE · Private image viewer"]
     EQUIPMENT["EQUIPMENT · Equipment record"]
-    EHISTORY["EHISTORY · Equipment service history"]
-    VHISTORY["VHISTORY · Vehicle service history"]
+    EHISTORY["EHISTORY · Equipment service history<br/>Input handling pending staging"]
+    VHISTORY["VHISTORY · Vehicle service history<br/>Input handling pending staging"]
     CUSTOMERS --> CUSTOMER
     CUSTOMER --> PROPERTY & EQUIPMENT & VHISTORY
     PROPERTY --> ADDRESS & PHOTOS & EQUIPMENT
@@ -296,7 +296,7 @@ and 50 MiB per shop. Deletion removes live image content; older encrypted backup
 may retain it for up to 30 days. Photos belong to properties, not individual jobs
 or visits. Open IMAGE for a full image or return to PROPERTY.
 
-**Pending staging verification:** photo page, image and deletion requests distinguish
+**Staging:** photo page, image and deletion requests distinguish
 unavailable dependencies (503) from missing or malformed record IDs (404); failures
 do not expose private database details or access Blob before tenant verification.
 
@@ -344,6 +344,11 @@ Required event date, optional local time, editable IANA timezone, recording auth
 and timestamp. Unknown time stays blank; ambiguous clock-change times require a
 choice. Corrections append; retries do not duplicate notes. Shows latest 100,
 retains older entries. These notes are excluded from public pages and work CSV.
+
+**Pending staging verification:** malformed asset-history IDs return 404.
+Invalid text and event instants outside years 0001–9999 in UTC are rejected;
+date-only notes preserve their separate date. This input handling also applies
+to the shared visit-note form. [Validation](../internal/app/internal_notes.go).
 
 ### EHISTORY — Equipment service history
 

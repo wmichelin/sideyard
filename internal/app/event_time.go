@@ -86,6 +86,9 @@ func parseEventTime(date, clock, zone, offset string, now time.Time) (eventTime,
 			return result, errors.New("The event time cannot be in the future.")
 		}
 		utc := candidate.UTC()
+		if utc.Year() < 1 || utc.Year() > 9999 {
+			return result, errors.New("Choose an event time within years 0001 through 9999 in UTC.")
+		}
 		result.At = &utc
 		return result, nil
 	}

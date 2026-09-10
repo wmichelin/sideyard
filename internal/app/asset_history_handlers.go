@@ -45,7 +45,7 @@ func (s *Server) handleInternalHistory(w http.ResponseWriter, r *http.Request, k
 	}
 	target, err := getTarget(r.Context(), u.ShopID, kind, r.PathValue("id"))
 	if err != nil {
-		if errors.Is(err, database.ErrNoRows) {
+		if errors.Is(err, database.ErrNoRows) || errors.Is(err, errInvalidRecordID) {
 			http.NotFound(w, r)
 		} else {
 			log.Printf("load internal history kind=%s: %v", kind, err)

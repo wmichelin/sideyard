@@ -20,6 +20,11 @@ func TestAssetNotesKeepIndependentAuthoredHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(db.Close)
+	testAssetNotesKeepIndependentAuthoredHistory(t, db)
+}
+
+func testAssetNotesKeepIndependentAuthoredHistory(t *testing.T, db *DB) {
+	ctx := context.Background()
 	s := &Store{db: db}
 	stamp := time.Now().Format("150405.000000000")
 	shop := createTestShop(t, ctx, db, "asset-notes-"+stamp)
@@ -110,10 +115,10 @@ func TestAssetNotesKeepIndependentAuthoredHistory(t *testing.T) {
 	if err != nil || got[0].Notes != "Standing detail" {
 		t.Fatal("history rewrote standing vehicle details")
 	}
-	if _, err := db.Pool.Exec(ctx, `INSERT INTO asset_notes(shop_id,vehicle_id,submission_key,body,occurred_on,event_timezone,recorded_by) VALUES ($1,$2,repeat('f',32),'Foreign','2025-01-01','UTC','owner')`, other, vehicles[0].ID); err == nil {
+	if _, err := db.Pool.Exec(ctx, database.Statement(db.Pool.Dialect(), `INSERT INTO asset_notes(shop_id,vehicle_id,submission_key,body,occurred_on,event_timezone,recorded_by) VALUES ($1,$2,repeat('f',32),'Foreign','2025-01-01','UTC','owner')`, `INSERT INTO dbo.asset_notes(shop_id,vehicle_id,submission_key,body,occurred_on,event_timezone,recorded_by) VALUES(CONVERT(uniqueidentifier,@p1),CONVERT(uniqueidentifier,@p2),REPLICATE(N'f',32),N'Foreign','2025-01-01',N'UTC',N'owner')`), other, vehicles[0].ID); err == nil {
 		t.Fatal("database permitted foreign vehicle")
 	}
-	if _, err := db.Pool.Exec(ctx, `INSERT INTO asset_notes(shop_id,vehicle_id,equipment_id,submission_key,body,occurred_on,event_timezone,recorded_by) VALUES ($1,$2,$3,repeat('f',32),'Two parents','2025-01-01','UTC','owner')`, shop, vehicles[0].ID, equipment[0].ID); err == nil {
+	if _, err := db.Pool.Exec(ctx, database.Statement(db.Pool.Dialect(), `INSERT INTO asset_notes(shop_id,vehicle_id,equipment_id,submission_key,body,occurred_on,event_timezone,recorded_by) VALUES ($1,$2,$3,repeat('f',32),'Two parents','2025-01-01','UTC','owner')`, `INSERT INTO dbo.asset_notes(shop_id,vehicle_id,equipment_id,submission_key,body,occurred_on,event_timezone,recorded_by) VALUES(CONVERT(uniqueidentifier,@p1),CONVERT(uniqueidentifier,@p2),CONVERT(uniqueidentifier,@p3),REPLICATE(N'f',32),N'Two parents','2025-01-01',N'UTC',N'owner')`), shop, vehicles[0].ID, equipment[0].ID); err == nil {
 		t.Fatal("database permitted two parents")
 	}
 

@@ -19,6 +19,8 @@ func TestMalformedRecordRequestsDoNotReadDatabaseOrReportOutage(t *testing.T) {
 		handler          http.HandlerFunc
 		status           int
 	}{
+		{"vehicle history", "GET", shop + "suffix", nil, s.handleVehicleHistory, 404},
+		{"equipment history", "GET", shop + "suffix", nil, s.handleEquipmentHistory, 404},
 		{"equipment", "GET", shop + "suffix", nil, s.handleEquipmentRecord, 404},
 		{"address", "GET", shop + " ", nil, s.handlePropertyAddress, 404},
 		{"photo gallery", "GET", shop + "suffix", nil, s.handlePropertyPhotos, 404},

@@ -775,3 +775,44 @@ paid integrations or live customer payment collection are configured by this cha
   until the full port and transfer/restore gates pass.
 - Staging: https://clubdue-staging.michelindigitalmedia.com (verified `4ac47f8`;
   native photo slice pending). Production remains unchanged.
+
+
+- Photo source `1c7c8b754854e68b3c70009857f086d3486ba7d9` passed all CI jobs
+  [34421134446](https://github.com/wmichelin/clubdue/actions/runs/34421134446) and
+  staging [34421134661](https://github.com/wmichelin/clubdue/actions/runs/34421134661).
+  Running revision/image readback and manual smoke passed:
+  `ghcr.io/wmichelin/clubdue@sha256:42be3b8979dc054f6b85e6f944762de0b2183100478955cf25ad97025664d3b1`.
+  Staging browser checks passed large upload through proxy, unsupported format
+  feedback, private Azure image retrieval, foreign/anonymous denial, deletion and
+  re-upload at 390/1440px without errors. Production is unchanged.
+
+### Native asset service history — implementation
+
+- Migrations 009–012 preserve the shared vehicle/equipment history table and
+  submission keys. SQL Server prohibits its multiple cascading asset paths;
+  one shop cascade plus set-based ownership, parent-update and deletion triggers
+  preserve the current relationship contract. This is an engine-specific
+  constraint implementation, not a new history or reassignment feature.
+- Architect/staff: note writes lock shop (shared), asset, then submission key.
+  Trigger parent/notes checks use current locking reads under RCSI. Orphaning
+  identity/shop changes fail; same-shop asset moves preserve notes and target
+  navigation. Ordinary asset edits skip unnecessary history locks. Direct SQL
+  writes may deadlock with deletion; failure must roll back rather than replay.
+- Product/QA: retain date-only NULL instants, explicit DST fold choices, original
+  authorship and exact retry semantics. Invalid resource IDs return 404; invalid
+  note kind/text and UTC instants outside years 0001–9999 fail before persistence.
+  No new asset-move UI is included. Canonical UUID ordering retains latest history.
+- Unit-testing: shared existing history/DST/privacy tests pass on both engines.
+  Native tests cover multirow tenant rejection, referenced identity changes,
+  same-shop moves, two-tenant direct/property/customer/shop cascade rollback, and
+  all eight note-first/parent-first races against deletion/identity changes.
+  Failed inserts release the key and permit retry; 102 retained entries verify
+  event-date priority, tied recording timestamps and the 100-row UUID window.
+- DevOps: PostgreSQL migrations are unchanged and SQL runtime stays disabled.
+  Full both-engine suite, vet, static build and isolated SQL rehearsal passed. Bulk transfer/restore must fire these validation triggers, verify
+  they remain enabled, and audit orphan/tenant relationships explicitly; SQL
+  constraint checks alone cannot prove trigger-backed relationships.
+  [Trigger ordering](https://learn.microsoft.com/en-us/sql/t-sql/statements/create-trigger-transact-sql?view=sql-server-ver17)
+  and [bulk trigger behavior](https://learn.microsoft.com/en-us/sql/t-sql/statements/bulk-insert-transact-sql?view=sql-server-ver17).
+- Staging: https://clubdue-staging.michelindigitalmedia.com (verified `1c7c8b7`;
+  this asset-history slice pending). Production is unchanged.

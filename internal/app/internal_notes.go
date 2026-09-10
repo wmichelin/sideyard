@@ -29,6 +29,9 @@ func (n internalNote) EventLabel() string {
 var errInternalNoteInput = errors.New("Enter a note up to 2,000 bytes. Reload the page if this form is out of date.")
 
 func validateInternalNote(input internalNoteInput, now time.Time) (eventTime, error) {
+	if !validStoredText(input.Body, input.Date, input.Time, input.Zone, input.Offset) {
+		return eventTime{}, errInternalNoteInput
+	}
 	body := strings.TrimSpace(input.Body)
 	if !noteSubmissionKey.MatchString(input.Key) || body == "" || len(body) > 2000 || strings.ContainsRune(body, '\x00') {
 		return eventTime{}, errInternalNoteInput

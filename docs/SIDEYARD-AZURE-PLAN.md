@@ -4,7 +4,7 @@
 
 Status: implementing — user authorized Azure SQL, versioned Blob and seven-day backups.
 Last completed: both environments provisioned; staging Blob and connection foundation verified; both Azure exports restored; real idle/resume probe completed in 45 seconds.
-Now: tenant/auth and customer-book native port verified in isolated engines; property histories next, then remaining domains and idle-safe background work, September 9, 2026.
+Now: native accounts, customer/property records and private photos verified in isolated engines; asset histories in final checks, standalone jobs next, then recurring domains and idle-safe runtime wiring, September 9, 2026.
 Next: verify both database backends and idle behavior before a reviewed database cutover.
 Evidence: Blob staging release `7181040`; exact artifacts in the delivery status.
 Staging: https://clubdue-staging.michelindigitalmedia.com (verified for Azure Blob; application database remains PostgreSQL).
