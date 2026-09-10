@@ -1725,7 +1725,7 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   new backend/generation fence selects PostgreSQL, conditional host units remain
   disabled, and production is unchanged.
 
-### Native logical transfer and resumable restore — local verification
+### Native logical transfer and resumable restore — staging verified
 
 - Added a versioned logical data contract for the current staging PostgreSQL
   migration 31 schema and the exact production migration 29 schema. The production
@@ -1758,6 +1758,15 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
 - This library has no operator command and is not a backup release. Encrypted Blob
   wrapping, exact photo-object/version manifests, least-privilege exporter/importer
   identities, Terraform-derived disposable targets, a nonempty valid row in every
-  profile table/value family, oldest/newest recovery drills and staging publication
-  remain. In particular, the current v29 fixture does not yet exercise inline
+  profile table/value family and oldest/newest recovery drills remain. In
+  particular, the current v29 fixture does not yet exercise inline
   photo bytes. The staging selector is still PostgreSQL; production is unchanged.
+- Source `8af5371f0bbdb437e2e923f67a2cd27d136670bf` passed all four CI
+  jobs [34523739030](https://github.com/wmichelin/clubdue/actions/runs/34523739030)
+  and staging deployment
+  [34523738972](https://github.com/wmichelin/clubdue/actions/runs/34523738972).
+  The running revision label, restart policy and immutable manifest were read back
+  as `ghcr.io/wmichelin/clubdue@sha256:a33e9552e6391190019ad06ddf4ff188f1279c645ee1434d9cffc4fda2557458`.
+  The workflow smoke and a separate complete live smoke passed; recent application
+  logs showed the exercised requests completing without server errors. The runtime
+  backend/generation fence remains on PostgreSQL and production is unchanged.

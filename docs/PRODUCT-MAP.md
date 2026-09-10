@@ -13,14 +13,14 @@ for the distinction between provisioned resources and deployed app behavior.
 
 ## Availability snapshot
 
-Reviewed September 10, 2026 against staging release `307a4ca` and the recorded
+Reviewed September 10, 2026 against staging release `8af5371` and the recorded
 release verification. These are verified release states, not a live deployment monitor.
 
 | Label | Meaning |
 | --- | --- |
 | **Live** | Available in production at [getsideyard.com](https://getsideyard.com), source `ae6f16a`, and on staging. The legacy ClubDue hostname remains supported. |
-| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), release `307a4ca`: standalone jobs/site surveys, the single-line work-status badge fix, configured private Azure photo storage, native-compatible CSV import behavior, a guarded Azure SQL runtime boundary, and retryable outage feedback that retains customer, demo and seasonal-work input. The deployed web application still uses PostgreSQL. |
-| **Conditional** | Present in the staging artifact but disabled pending its operational gates; this includes the staging-only lazy Azure SQL HTTP runtime, its 80-second total request budget, host-owned scheduled work and durable interest-delivery wake. Conditional behavior is not a promise of availability to clients. |
+| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), release `8af5371`: standalone jobs/site surveys, the single-line work-status badge fix, configured private Azure photo storage, native-compatible CSV import behavior, a guarded Azure SQL runtime boundary, and retryable outage feedback that retains customer, demo and seasonal-work input. The deployed web application still uses PostgreSQL. |
+| **Conditional** | Present in the staging artifact but disabled pending its operational gates; this includes the staging-only lazy Azure SQL HTTP runtime, its 80-second total request budget, host-owned scheduled work, durable interest-delivery wake and internal logical transfer/restore contract. Conditional behavior is not a promise of availability to clients. |
 
 Unless marked otherwise, catalog nodes are **Live**. “Signed in” means a user
 of the current shop; “Owner” means the handler additionally requires the owner
