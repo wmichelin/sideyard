@@ -7,18 +7,24 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import tempfile
 
 
 def run(command, *, cwd, environment=None, capture=False):
-    return subprocess.run(
-        command,
-        cwd=cwd,
-        env=environment,
-        check=True,
-        text=True,
-        capture_output=capture,
-    )
+    try:
+        return subprocess.run(
+            command,
+            cwd=cwd,
+            env=environment,
+            check=True,
+            text=True,
+            capture_output=capture,
+        )
+    except subprocess.CalledProcessError as error:
+        if capture and error.stderr:
+            print(error.stderr.rstrip(), file=sys.stderr)
+        raise SystemExit(f"operator subprocess failed with exit status {error.returncode}")
 
 
 def main():

@@ -1516,7 +1516,7 @@ paid integrations or live customer payment collection are configured by this cha
 - Corrected isolated rehearsal passed in full, including the shared landscaping
   fixture test. All local gates are complete; CSV slice is ready for staging.
 
-### Native database operator boundary — implementation starting
+### Native database operator boundary — staging verified
 
 The reviewed next slice is explicit backend configuration, a shared lazy Azure
 factory, and bounded native migrate/check/maintenance commands. Existing operator
@@ -1536,4 +1536,23 @@ server/database names before opening a connection. A checked-in wrapper derives
 the exact target from isolated Terraform state and verifies the active Azure CLI
 subscription. Native HTTP startup remains disabled. Local schema, isolation,
 configuration, token-cache and maintenance checks passed before documentation;
-actual Azure staging execution is the next acceptance gate and is not yet claimed.
+actual Azure staging execution was then completed from source `3a2394f` using the
+Terraform-derived `sideyard-staging-ddd8d30e.database.windows.net/sideyard`
+target and the signed-in human Entra administrator. The initial read-only check
+failed on the empty database without creating the ledger, as required. Migration
+then applied all 29 embedded checksums and enabled both snapshot settings in
+10 seconds. A second migration, read-only check, empty-database maintenance run,
+and final read-only check all passed. No production command or web database
+switch occurred. Azure control-plane readback immediately afterward reported
+the staging database online, Local backup redundancy, seven retention days and
+an earliest restore point of `2026-09-09T22:02:16Z`.
+
+- Source `3a2394f006ba64d91501d93d91f08a343be0a7d8` passed CI
+  [34488737552](https://github.com/wmichelin/clubdue/actions/runs/34488737552),
+  including PostgreSQL, native SQL, production-mode recovery, pilot onboarding,
+  formatting, vet and static build gates. Staging deployment
+  [34488737551](https://github.com/wmichelin/clubdue/actions/runs/34488737551)
+  published immutable image
+  `ghcr.io/wmichelin/clubdue@sha256:fefb21716b7821fcc8b3718e937af767a10ca3141870fdb601c5ce8d32b6ee28`.
+  The complete staging smoke passed afterward. Live staging HTTP remains on
+  PostgreSQL; the initialized Azure database has no client traffic.

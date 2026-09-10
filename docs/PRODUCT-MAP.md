@@ -13,13 +13,13 @@ for the distinction between provisioned resources and deployed app behavior.
 
 ## Availability snapshot
 
-Reviewed September 10, 2026 against staging release `716a08b` and the recorded
+Reviewed September 10, 2026 against staging release `3a2394f` and the recorded
 release verification. These are verified release states, not a live deployment monitor.
 
 | Label | Meaning |
 | --- | --- |
 | **Live** | Available in production at [getsideyard.com](https://getsideyard.com), source `ae6f16a`, and on staging. The legacy ClubDue hostname remains supported. |
-| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), release `716a08b`: standalone jobs/site surveys, the single-line work-status badge fix, configured private Azure photo storage, and native-compatible CSV import behavior. |
+| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), release `3a2394f`: standalone jobs/site surveys, the single-line work-status badge fix, configured private Azure photo storage, native-compatible CSV import behavior, and a staging-only Azure SQL operator boundary. |
 | **Conditional** | Implemented but requires explicit deployment configuration; not a promise of availability to clients. |
 
 Unless marked otherwise, catalog nodes are **Live**. “Signed in” means a user
