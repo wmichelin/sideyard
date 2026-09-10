@@ -20,6 +20,23 @@ type adapter struct{ pool *pgxpool.Pool }
 func (*adapter) Dialect() database.Dialect        { return database.Postgres }
 func (p *adapter) Close()                         { p.pool.Close() }
 func (p *adapter) Ping(ctx context.Context) error { return p.pool.Ping(ctx) }
+func (p *adapter) CheckSchemaThrough(ctx context.Context, migrationCount int) error {
+	return (&DB{Pool: p.pool}).CheckSchemaThrough(ctx, migrationCount)
+}
+func (*adapter) ExpectedMigrationChecksums(migrationCount int) ([]string, error) {
+	migrations, err := loadMigrations(migrationFS)
+	if err != nil {
+		return nil, err
+	}
+	if migrationCount < 1 || migrationCount > len(migrations) {
+		return nil, fmt.Errorf("PostgreSQL release migration count is invalid")
+	}
+	checksums := make([]string, migrationCount)
+	for index := range checksums {
+		checksums[index] = migrations[index].checksum
+	}
+	return checksums, nil
+}
 func (p *adapter) Exec(ctx context.Context, query string, args ...any) (database.Result, error) {
 	return p.pool.Exec(ctx, query, args...)
 }

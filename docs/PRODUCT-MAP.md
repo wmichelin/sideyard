@@ -694,6 +694,19 @@ stopped with restart disabled.
 Deployment, backup and host work serialize through a root-owned mode-0700 lock
 directory. Backup success records must match the selected backend and data
 generation; the monitor rejects stale records from a prior authority.
+The conditional database-transfer library defines two fixed release profiles:
+the current 31-migration staging schema and the frozen 29-migration production
+PostgreSQL schema. It exports one bounded, read-only snapshot, validates every
+record and digest before target writes, resumes checked batches only into an
+empty SQL Server database, and compares a destination re-export before success.
+The production profile preserves inline photo recovery bytes and excludes tables
+or object fields added after migration 29. SQL migration 030 stores only the
+restore checkpoint. There is no operator-facing transfer command yet; encrypted
+Blob packaging, an exact photo-object manifest, isolated-target provisioning and
+oldest/newest restore drills remain activation gates. The application selector
+therefore remains PostgreSQL. [Transfer contract](../internal/transfer/catalog.go) ·
+[Restore implementation](../internal/transfer/restore.go) ·
+[Real-engine rehearsal](../internal/app/transfer_sqlserver_test.go).
 The runtime is restricted to the exact staging database and an explicit
 `ENABLE_AZURE_SQL_HTTP=1` configuration. Its request, HTTP read/write, graceful
 shutdown and outer browser/proxy/probe budgets are fixed at 80, 90, 100 and 110 seconds.

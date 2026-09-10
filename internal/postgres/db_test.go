@@ -73,6 +73,74 @@ func TestMigrationChecksumsRejectChangedAppliedMigration(t *testing.T) {
 	}
 }
 
+func TestOpenReadOnlyChecksSchemaAndCannotWrite(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	databaseURL := integrationDatabaseURL(t)
+	writable, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writable.Close()
+	readOnly, err := OpenReadOnly(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer readOnly.Close()
+	if err := readOnly.CheckSchema(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readOnly.Pool.Exec(ctx, `CREATE TEMP TABLE sideyard_read_only_probe(id int)`); err == nil {
+		t.Fatal("read-only exporter connection accepted a write")
+	}
+}
+
+// TestPrepareV29Fixture is invoked explicitly by the isolated cross-engine
+// rehearsal. The dedicated database persists only until that script exits.
+func TestPrepareV29Fixture(t *testing.T) {
+	databaseURL := os.Getenv("POSTGRES_V29_TEST_URL")
+	if databaseURL == "" {
+		t.Skip("POSTGRES_V29_TEST_URL is required only by the release-profile rehearsal")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	config, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	db := &DB{Pool: pool}
+	if err := db.ensureMigrationLedger(ctx); err != nil {
+		t.Fatal(err)
+	}
+	migrations, err := loadMigrations(migrationFS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, migration := range migrations[:29] {
+		if err := db.applyMigration(ctx, migration); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.Pool.Exec(ctx, `
+		INSERT INTO shops(id,name,slug) VALUES('20000000-0000-4000-8000-000000000001','Production v29 fixture','production-v29-fixture');
+		INSERT INTO users(id,shop_id,email,password_hash,role) VALUES('20000000-0000-4000-8000-000000000002','20000000-0000-4000-8000-000000000001','owner@v29.example','$2a$10$fixture','owner');
+		INSERT INTO customers(id,shop_id,name,email,phone) VALUES
+		('20000000-0000-4000-8000-000000000011','20000000-0000-4000-8000-000000000001','Alpha & Sons',NULL,''),
+		('20000000-0000-4000-8000-000000000012','20000000-0000-4000-8000-000000000001','Bravo <Home>','bravo@example.test',NULL),
+		('20000000-0000-4000-8000-000000000013','20000000-0000-4000-8000-000000000001','Café 🚜','cafe@example.test',''),
+		('20000000-0000-4000-8000-000000000014','20000000-0000-4000-8000-000000000001','Delta > Yard','delta@example.test','555-0100')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.CheckSchemaThrough(ctx, 29); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func newMigrationTestDB(t *testing.T, ctx context.Context) *DB {
 	t.Helper()
 	databaseURL := integrationDatabaseURL(t)

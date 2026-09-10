@@ -26,6 +26,48 @@ type DB struct {
 
 // Open connects to Postgres and applies the embedded migrations.
 func Open(ctx context.Context, databaseURL string) (*DB, error) {
+	db, err := open(ctx, databaseURL, false)
+	if err != nil {
+		return nil, err
+	}
+	if err := db.migrate(ctx); err != nil {
+		db.Close()
+		return nil, err
+	}
+	return db, nil
+}
+
+// OpenReadOnly connects with server-enforced read-only transactions and checks
+// the exact embedded migration ledger without applying migrations. Logical
+// export must never change its source as a side effect of taking a snapshot.
+func OpenReadOnly(ctx context.Context, databaseURL string) (*DB, error) {
+	return OpenReadOnlyThrough(ctx, databaseURL, lenMustLoadMigrations())
+}
+
+// OpenReadOnlyThrough binds an export to an explicit historical release. Only
+// exact embedded-prefix ledgers are accepted; later source tables are rejected
+// by the logical catalog profile before export.
+func OpenReadOnlyThrough(ctx context.Context, databaseURL string, migrationCount int) (*DB, error) {
+	db, err := open(ctx, databaseURL, true)
+	if err != nil {
+		return nil, err
+	}
+	if err := db.CheckSchemaThrough(ctx, migrationCount); err != nil {
+		db.Close()
+		return nil, err
+	}
+	return db, nil
+}
+
+func lenMustLoadMigrations() int {
+	migrations, err := loadMigrations(migrationFS)
+	if err != nil {
+		panic(err)
+	}
+	return len(migrations)
+}
+
+func open(ctx context.Context, databaseURL string, readOnly bool) (*DB, error) {
 	cfg, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("parse database url: %w", err)
@@ -33,6 +75,9 @@ func Open(ctx context.Context, databaseURL string) (*DB, error) {
 	cfg.MaxConns = 8
 	cfg.MinConns = 1
 	cfg.MaxConnLifetime = time.Hour
+	if readOnly {
+		cfg.ConnConfig.RuntimeParams["default_transaction_read_only"] = "on"
+	}
 
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
@@ -44,12 +89,7 @@ func Open(ctx context.Context, databaseURL string) (*DB, error) {
 		return nil, fmt.Errorf("ping database: %w", err)
 	}
 
-	db := &DB{Pool: pool}
-	if err := db.migrate(ctx); err != nil {
-		pool.Close()
-		return nil, err
-	}
-	return db, nil
+	return &DB{Pool: pool}, nil
 }
 
 func (db *DB) Close() {
@@ -73,6 +113,47 @@ func (db *DB) migrate(ctx context.Context) error {
 	}()
 
 	return db.migrateWithFS(ctx, migrationFS)
+}
+
+// CheckSchema performs the checksum check used by migrations without taking a
+// migration lock or writing a baseline. It is safe for a read-only exporter.
+func (db *DB) CheckSchema(ctx context.Context) error {
+	return db.CheckSchemaThrough(ctx, lenMustLoadMigrations())
+}
+
+func (db *DB) CheckSchemaThrough(ctx context.Context, migrationCount int) error {
+	expected, err := loadMigrations(migrationFS)
+	if err != nil {
+		return err
+	}
+	if migrationCount < 1 || migrationCount > len(expected) {
+		return fmt.Errorf("PostgreSQL release migration count is invalid")
+	}
+	expected = expected[:migrationCount]
+	rows, err := db.Pool.Query(ctx, `SELECT version,checksum FROM schema_migrations ORDER BY version`)
+	if err != nil {
+		return fmt.Errorf("read PostgreSQL schema ledger: %w", err)
+	}
+	defer rows.Close()
+	matched := 0
+	for rows.Next() {
+		var version int
+		var checksum *string
+		if err := rows.Scan(&version, &checksum); err != nil {
+			return fmt.Errorf("read PostgreSQL schema entry: %w", err)
+		}
+		if matched >= len(expected) || checksum == nil || version != expected[matched].version || *checksum != expected[matched].checksum {
+			return fmt.Errorf("PostgreSQL schema version %d is incompatible with this binary", version)
+		}
+		matched++
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("read PostgreSQL schema ledger: %w", err)
+	}
+	if matched != len(expected) {
+		return fmt.Errorf("PostgreSQL schema is incomplete: %d of %d migrations", matched, len(expected))
+	}
+	return nil
 }
 
 type migration struct {

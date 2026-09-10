@@ -454,9 +454,13 @@ Provisioning, state initialization, status and encrypted PostgreSQL backup/resto
 commands are implemented in [the Azure CLI/Terraform runbook](../infra/azure/README.md).
 Use its shared `infra/azure/environments` configuration with separate environment
 variable files, backend keys and `TF_DATA_DIR` values. Do not invent per-environment
-configuration directories. Native SQL application transfer and recovery commands
-remain implementation work; use the recorded PostgreSQL recovery procedure until
-those gates pass.
+configuration directories. The internal native logical-transfer contract and
+resumable SQL restore are implemented and exercised across the current staging
+schema and frozen production migration 29 schema. They are deliberately not
+operator commands yet. Authenticated encryption, exact Blob/photo manifests,
+Terraform-derived disposable restore targets and oldest/newest recovery drills
+remain implementation work. Use the recorded PostgreSQL recovery procedure until
+all of those gates pass.
 
 Authentication can require device/browser approval, but routine provisioning,
 configuration, monitoring and recovery will use CLI/API. An ephemeral Cloud
@@ -542,9 +546,13 @@ activation or transfer approval. Continue in these bounded slices:
    retained PostgreSQL container must never reopen writes against stale source data
    after Azure accepts writes. A permanent SQL leadership connection would prevent
    idle pause, and increasing hourly retry spacing alone is insufficient.
-5. Complete native logical transfer/export/restore and asset reconciliation before
-   switching runtime configuration. Current backup commands explicitly export
-   PostgreSQL; configured Azure native retention does not replace a tested restore.
+5. Package the implemented native logical transfer/export/restore contract in an
+   authenticated encrypted Blob workflow, bind every referenced photo to its exact
+   object version, and provision disposable restore targets from Terraform output.
+   Rehearse current staging plus frozen production migration 29, including the
+   newest and oldest retained recovery points, before switching runtime
+   configuration. Current backup commands explicitly export PostgreSQL; configured
+   Azure native retention does not replace a tested restore.
 
 Acceptance spans startup-level unavailable-SQL tests, real HTTP delayed-auth/body
 parsing, total-deadline/cancellation/shutdown checks, browser saves beyond the old

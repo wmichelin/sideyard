@@ -74,6 +74,68 @@ func TestSQLServerCheckRequiresBothIsolationModes(t *testing.T) {
 	}
 }
 
+func TestSQLServerDataIntegrityRejectsDisabledGuards(t *testing.T) {
+	p := testPool(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := p.PrepareSchema(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.CheckDataIntegrity(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Exec(ctx, `DISABLE TRIGGER dbo.visit_notes_validate_owner ON dbo.visit_notes`); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.CheckDataIntegrity(ctx); err == nil {
+		t.Fatal("disabled validation trigger accepted")
+	}
+	if _, err := p.Exec(ctx, `ENABLE TRIGGER dbo.visit_notes_validate_owner ON dbo.visit_notes`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Exec(ctx, `
+		INSERT INTO dbo.shops(id,name,slug) VALUES
+		(CONVERT(uniqueidentifier,'30000000-0000-4000-8000-000000000001'),N'First',N'integrity-first'),
+		(CONVERT(uniqueidentifier,'30000000-0000-4000-8000-000000000002'),N'Second',N'integrity-second');
+		INSERT INTO dbo.customers(id,shop_id,name) VALUES
+		(CONVERT(uniqueidentifier,'30000000-0000-4000-8000-000000000003'),CONVERT(uniqueidentifier,'30000000-0000-4000-8000-000000000001'),N'Owner');
+		INSERT INTO dbo.customer_vehicles(id,shop_id,customer_id,name) VALUES
+		(CONVERT(uniqueidentifier,'30000000-0000-4000-8000-000000000004'),CONVERT(uniqueidentifier,'30000000-0000-4000-8000-000000000001'),CONVERT(uniqueidentifier,'30000000-0000-4000-8000-000000000003'),N'Truck');
+		DISABLE TRIGGER dbo.asset_notes_validate_owner ON dbo.asset_notes;
+		INSERT INTO dbo.asset_notes(shop_id,vehicle_id,submission_key,body,occurred_on,event_timezone,recorded_by)
+		VALUES(CONVERT(uniqueidentifier,'30000000-0000-4000-8000-000000000002'),CONVERT(uniqueidentifier,'30000000-0000-4000-8000-000000000004'),N'12345678901234567890123456789012',N'Invalid owner','2035-09-02',N'America/New_York',N'Test');
+		ENABLE TRIGGER dbo.asset_notes_validate_owner ON dbo.asset_notes;`); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.CheckDataIntegrity(ctx); err == nil {
+		t.Fatal("historical trigger-maintained violation accepted")
+	}
+	if _, err := p.Exec(ctx, `DELETE FROM dbo.asset_notes WHERE submission_key=N'12345678901234567890123456789012'; DELETE FROM dbo.shops WHERE id IN(CONVERT(uniqueidentifier,'30000000-0000-4000-8000-000000000001'),CONVERT(uniqueidentifier,'30000000-0000-4000-8000-000000000002'))`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Exec(ctx, `ALTER TABLE dbo.visit_notes NOCHECK CONSTRAINT ALL`); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.CheckDataIntegrity(ctx); err == nil {
+		t.Fatal("disabled or untrusted constraints accepted")
+	}
+	if _, err := p.Exec(ctx, `ALTER TABLE dbo.visit_notes WITH CHECK CHECK CONSTRAINT ALL`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Exec(ctx, `ALTER INDEX shops_slug_key ON dbo.shops DISABLE`); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.CheckDataIntegrity(ctx); err == nil {
+		t.Fatal("disabled unique index accepted")
+	}
+	if _, err := p.Exec(ctx, `ALTER INDEX shops_slug_key ON dbo.shops REBUILD`); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.CheckDataIntegrity(ctx); err != nil {
+		t.Fatal("re-enabled validation guards rejected", err)
+	}
+}
+
 func TestSQLServerRuntimeRoleAllowsDomainWorkAndRejectsControl(t *testing.T) {
 	p := testPool(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)

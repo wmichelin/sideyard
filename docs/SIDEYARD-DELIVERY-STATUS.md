@@ -1724,3 +1724,40 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   The workflow smoke and a separate complete live smoke both passed. Staging's
   new backend/generation fence selects PostgreSQL, conditional host units remain
   disabled, and production is unchanged.
+
+### Native logical transfer and resumable restore — local verification
+
+- Added a versioned logical data contract for the current staging PostgreSQL
+  migration 31 schema and the exact production migration 29 schema. The production
+  profile transfers its 29 tables and inline photo recovery bytes while excluding
+  later jobs, photo-object records and object-handoff columns. Both profile digests
+  are pinned; an export fails on an unknown table, column, migration checksum or
+  mismatched environment/profile instead of silently dropping data.
+- The dedicated PostgreSQL source opener enforces read-only transactions and the
+  exporter verifies the exact migration ledger without applying migrations. SQL
+  and PostgreSQL use explicit canonical values and matching UTF-8 binary key
+  order. Archives are
+  bounded to 240 MiB and bind every row, table, shop, catalog, source generation
+  and artifact through SHA-256 digests.
+- SQL restore requires an independently authenticated artifact digest, validates
+  the complete canonical archive before mutations, imports bounded batches only
+  into an empty current-schema target, and stores its checkpoint in SQL migration
+  030. Its private spool is unlinked before validation. Interrupted or unknown
+  commit acknowledgements resume from the target checkpoint; a different archive
+  cannot reuse it. A complete destination re-export must match the source root.
+- SQL schema and data checks reject missing, extra or disabled validation triggers,
+  disabled or untrusted constraints, disabled indexes, invalid cross-tenant trigger
+  relationships, malformed JSON membership and derived email identity drift.
+- Real disposable-engine tests passed SQL Server to SQL Server, PostgreSQL 31 to
+  SQL Server, and a PostgreSQL 29 fixture to current SQL Server. Seeded rows cover
+  cross-engine null/empty distinctions and supplementary/private-use Unicode key
+  ordering. The restore matrix covers wrong authenticated digests, interruption
+  after partial batches, unknown successful commits, changed resume batch sizes
+  and final root reconciliation. A changed PostgreSQL migration checksum is
+  rejected at the transfer boundary.
+- This library has no operator command and is not a backup release. Encrypted Blob
+  wrapping, exact photo-object/version manifests, least-privilege exporter/importer
+  identities, Terraform-derived disposable targets, a nonempty valid row in every
+  profile table/value family, oldest/newest recovery drills and staging publication
+  remain. In particular, the current v29 fixture does not yet exercise inline
+  photo bytes. The staging selector is still PostgreSQL; production is unchanged.

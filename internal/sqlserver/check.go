@@ -4,10 +4,26 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sort"
 )
 
 type contextRowQueryer interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func (p *Pool) ExpectedMigrationChecksums(migrationCount int) ([]string, error) {
+	migrations, err := loadMigrations(migrationFS)
+	if err != nil {
+		return nil, err
+	}
+	if migrationCount != len(migrations) {
+		return nil, fmt.Errorf("SQL Server release migration count is invalid")
+	}
+	checksums := make([]string, migrationCount)
+	for index := range checksums {
+		checksums[index] = migrations[index].checksum
+	}
+	return checksums, nil
 }
 
 // CheckRuntime verifies the effective application principal before checking
@@ -110,6 +126,84 @@ func (p *Pool) CheckSchema(ctx context.Context) error {
 	}
 	if !rcsi || snapshot != 1 {
 		return fmt.Errorf("SQL Server requires READ_COMMITTED_SNAPSHOT and ALLOW_SNAPSHOT_ISOLATION ON")
+	}
+	return nil
+}
+
+// CheckDataIntegrity verifies that application guards are present, enabled and
+// trusted, then audits the relationships maintained by triggers. Restore runs
+// this both before importing and before accepting reconciliation.
+func (p *Pool) CheckDataIntegrity(ctx context.Context) error {
+	expectedTriggers := []string{
+		"agreements_validate_references", "asset_notes_validate_owner",
+		"business_settings_validate_trades", "equipment_note_integrity",
+		"plan_templates_integrity", "properties_address_revision",
+		"properties_agreement_integrity", "property_photos_retire_object",
+		"recurring_note_integrity", "renewal_digest_membership",
+		"seasonal_note_integrity", "vehicle_note_integrity", "visit_notes_validate_owner",
+	}
+	rows, err := p.db.QueryContext(ctx, `SELECT tr.name,tr.is_disabled
+		FROM sys.triggers tr
+		JOIN sys.tables t ON t.object_id=tr.parent_id
+		JOIN sys.schemas s ON s.schema_id=t.schema_id
+		WHERE tr.parent_class=1 AND s.name=N'dbo' ORDER BY tr.name`)
+	if err != nil {
+		return fmt.Errorf("inspect SQL Server validation triggers: %w", err)
+	}
+	var actualTriggers []string
+	for rows.Next() {
+		var name string
+		var disabled bool
+		if err := rows.Scan(&name, &disabled); err != nil {
+			rows.Close()
+			return fmt.Errorf("inspect SQL Server validation trigger: %w", err)
+		}
+		if disabled {
+			rows.Close()
+			return fmt.Errorf("SQL Server validation trigger %s is disabled", name)
+		}
+		actualTriggers = append(actualTriggers, name)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return fmt.Errorf("inspect SQL Server validation triggers: %w", err)
+	}
+	rows.Close()
+	sort.Strings(expectedTriggers)
+	if fmt.Sprint(actualTriggers) != fmt.Sprint(expectedTriggers) {
+		return fmt.Errorf("SQL Server validation trigger inventory is incompatible")
+	}
+	var unsafeConstraints, disabledIndexes int
+	if err := p.db.QueryRowContext(ctx, `SELECT
+		(SELECT COUNT(*) FROM sys.check_constraints c JOIN sys.tables t ON t.object_id=c.parent_object_id JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE s.name=N'dbo' AND (c.is_disabled=1 OR c.is_not_trusted=1))
+		+(SELECT COUNT(*) FROM sys.foreign_keys f JOIN sys.tables t ON t.object_id=f.parent_object_id JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE s.name=N'dbo' AND (f.is_disabled=1 OR f.is_not_trusted=1)),
+		(SELECT COUNT(*) FROM sys.indexes i JOIN sys.tables t ON t.object_id=i.object_id JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE s.name=N'dbo' AND i.is_disabled=1)`).Scan(&unsafeConstraints, &disabledIndexes); err != nil {
+		return fmt.Errorf("inspect SQL Server constraint trust: %w", err)
+	}
+	if unsafeConstraints != 0 || disabledIndexes != 0 {
+		return fmt.Errorf("SQL Server has disabled or untrusted data guards")
+	}
+	var triggerViolations int
+	if err := p.db.QueryRowContext(ctx, `SELECT
+		(SELECT COUNT(*) FROM dbo.asset_notes n WHERE
+			(n.vehicle_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM dbo.customer_vehicles v WHERE v.id=n.vehicle_id AND v.shop_id=n.shop_id)) OR
+			(n.equipment_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM dbo.equipment e WHERE e.id=n.equipment_id AND e.shop_id=n.shop_id)))
+		+(SELECT COUNT(*) FROM dbo.visit_notes n WHERE
+			(n.occurrence_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM dbo.service_occurrences o WHERE o.id=n.occurrence_id AND o.shop_id=n.shop_id)) OR
+			(n.seasonal_visit_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM dbo.visit_dues v WHERE v.id=n.seasonal_visit_id AND v.shop_id=n.shop_id)))
+		+(SELECT COUNT(*) FROM dbo.agreements a WHERE
+			(a.property_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM dbo.properties p WHERE p.id=a.property_id AND p.shop_id=a.shop_id AND p.customer_id=a.customer_id)) OR
+			(a.plan_template_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM dbo.plan_templates p WHERE p.id=a.plan_template_id AND p.shop_id=a.shop_id)))
+		+(SELECT COUNT(*) FROM dbo.business_settings b WHERE
+			EXISTS(SELECT 1 FROM OPENJSON(b.trades) j WHERE j.type<>1) OR NOT EXISTS(SELECT 1 FROM OPENJSON(b.trades) j WHERE j.value COLLATE Latin1_General_100_BIN2=b.primary_trade AND DATALENGTH(j.value)=DATALENGTH(b.primary_trade)))
+		+(SELECT COUNT(*) FROM dbo.plan_templates p WHERE EXISTS(SELECT 1 FROM OPENJSON(p.visit_windows) j WHERE j.type<>1))
+		+(SELECT COUNT(*) FROM dbo.agreements a WHERE EXISTS(SELECT 1 FROM OPENJSON(a.plan_snapshot_visit_windows) j WHERE j.type<>1))
+		+(SELECT COUNT(*) FROM dbo.renewal_digest_outbox d WHERE NOT EXISTS(SELECT 1 FROM OPENJSON(d.task_ids)) OR EXISTS(
+			SELECT 1 FROM OPENJSON(d.task_ids) j WHERE j.type<>0 AND (j.type<>1 OR DATALENGTH(j.value)<>72 OR TRY_CONVERT(uniqueidentifier,j.value) IS NULL OR LOWER(j.value) COLLATE Latin1_General_100_BIN2<>LOWER(CONVERT(char(36),TRY_CONVERT(uniqueidentifier,j.value))) COLLATE Latin1_General_100_BIN2)))`).Scan(&triggerViolations); err != nil {
+		return fmt.Errorf("audit SQL Server trigger-maintained integrity: %w", err)
+	}
+	if triggerViolations != 0 {
+		return fmt.Errorf("SQL Server data violates trigger-maintained integrity")
 	}
 	return nil
 }
