@@ -427,6 +427,50 @@ the role assignment is gone; then revoke its keys and delete the service princip
 and application as separate deliberate operations. Never delete an app while RBAC
 still names its principal.
 
+### Staging PostgreSQL logical-export source
+
+The native transfer reads PostgreSQL through a separate database login. It does
+not reuse the application owner, Azure runtime principal or either Blob identity.
+After the exact source revision has passed CI and staging verification, bootstrap
+the dormant source roles from the CLI with the manual workflow:
+
+```sh
+gh workflow run staging-postgres-exporter.yml --ref main -f action=bootstrap
+gh run list --workflow staging-postgres-exporter.yml --limit 1
+# After provisioning, rerun an independent read-only audit:
+gh workflow run staging-postgres-exporter.yml --ref main -f action=check
+```
+
+The workflow copies the reviewed wrapper only to a SHA-scoped temporary directory,
+acquires the existing host database-operation lock through the already installed
+state helper, verifies the immutable running revision, and then executes and removes
+the candidate. It never overwrites durable shared tooling. It rejects production,
+Azure authority, a stale workflow revision, a mutable running image or a mismatched
+data generation, and runs the exact binary already serving staging in a short-lived
+read-only container.
+
+The bootstrap creates one fixed dormant login,
+`sideyard_staging_logical_exporter`, and one no-login grant role,
+`sideyard_logical_exporter`. It creates no password or credential file. Effective
+access is limited to the authoritative `clubdue` database, `USAGE` on `public`,
+and column-level `SELECT` on `schema_migrations.version/checksum` plus the exact
+columns in the binary's current logical-transfer profile. The dormant login has a
+single-connection ceiling, read-only defaults and bounded statement, lock and
+idle-transaction times. The audit rejects database `CREATE`/temporary access,
+other databases or schemas, extra relation/column grants, views, sequences,
+large objects, application functions, source-schema drift, role authority and
+row-level security on source tables.
+
+The dedicated Sideyard PostgreSQL cluster has only its database-owning application
+administrator. Bootstrap verifies that condition first, then permanently removes
+the cluster's broad `PUBLIC` database/schema/relation/function/large-object defaults;
+the owner
+keeps implicit access. This baseline is not rolled back when the dormant exporter
+is later removed. If another login or database owner exists, bootstrap refuses to
+change anything and that principal must be reviewed first. The current slice
+supplies dormant source grants only; the later export command must implement a
+short-lived, crash-recoverable password activation and disable it after use.
+
 Download an exact completed backup using protected credentials in the process
 environment (never inline command arguments):
 

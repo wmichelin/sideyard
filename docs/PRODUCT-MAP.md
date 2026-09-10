@@ -678,8 +678,10 @@ CSS/JS/icons and sample files under `/static/`, operational probes (`/healthz`,
 `/livez`, `/readyz`, `/rollback-safetyz`), disabled deployment-only development
 seeding (`POST /dev/seed`) and the legacy no-database sample screen. Those are
 assets, operator tools or a development fallback, not client product pages.
-The staging-only native `migrate`, `check-db`, `bootstrap-runtime`, and `maintenance` commands are
-documented in the [Azure runbook](../infra/azure/README.md#staging-sql-operator-boundary).
+The staging-only native `migrate`, `check-db`, `bootstrap-runtime` and `maintenance`
+commands are documented at the [SQL operator boundary](../infra/azure/README.md#staging-sql-operator-boundary);
+`bootstrap-postgres-exporter` and `check-postgres-exporter` are documented at the
+[PostgreSQL source boundary](../infra/azure/README.md#staging-postgresql-logical-export-source).
 They do not add a page. The conditional Azure SQL web runtime must use a distinct
 contained Entra principal with application DML but no schema or migration-ledger
 write permission. It opens connections lazily, so LAND, THANKS, LOGIN, SIGNUP,
@@ -718,12 +720,22 @@ separate Entra credentials: a backups-container read/write publisher and a
 photos-container read-only recovery reader. It derives their exact resource IDs
 from protected Terraform state, rejects identity reuse, and never activates them
 without a separately reviewed Terraform assignment and permission canary. No live
-recovery identity or publication/restore command is installed yet. The application
-selector therefore remains PostgreSQL.
+recovery identity or publication/restore command is installed yet. The unpublished
+logical-export source candidate also adds a staging-only bootstrap/audit command
+for one dormant, passwordless database login whose effective access is column-level
+`SELECT` on the exact current transfer catalog and migration ledger. It rejects
+other databases/schemas, temporary or persistent object creation, extra relation
+or column grants, table writes, large-object access, application-function execution,
+source-schema drift, row-level security and unexpected role membership. It is not
+available until its source revision
+passes staging and its manual bootstrap workflow succeeds; short-lived activation
+still belongs to the future export command. The application selector therefore
+remains PostgreSQL.
 [Transfer contract](../internal/transfer/catalog.go) ·
 [Restore implementation](../internal/transfer/restore.go) ·
 [Logical Blob contract](../scripts/azure/logical-backup-store.py) ·
 [Recovery identity lifecycle](../scripts/azure/provision-recovery-identity.py) ·
+[PostgreSQL exporter boundary](../internal/postgres/exporter_permissions.go) ·
 [Real-engine rehearsal](../internal/app/transfer_sqlserver_test.go).
 The runtime is restricted to the exact staging database and an explicit
 `ENABLE_AZURE_SQL_HTTP=1` configuration. Its request, HTTP read/write, graceful

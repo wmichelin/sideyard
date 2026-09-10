@@ -26,6 +26,18 @@ func CatalogDigest() string {
 	return catalogDigest(Catalog)
 }
 
+// ProfileCatalogDigest validates and hashes the exact complete column-level
+// contract used by a logical release profile.
+func ProfileCatalogDigest(profile Profile) (string, error) {
+	if profile.LogicalSchema == "" || profile.PostgresMigrations < 1 {
+		return "", fmt.Errorf("logical profile identity is invalid")
+	}
+	if err := validateCatalog(profile.Catalog); err != nil {
+		return "", err
+	}
+	return catalogDigest(profile.Catalog), nil
+}
+
 func catalogDigest(catalog []Table) string {
 	encoded, err := json.Marshal(catalog)
 	if err != nil {

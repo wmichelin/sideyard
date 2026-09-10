@@ -1849,3 +1849,29 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   `765629bc-8d1b-4e04-9f80-4c3c22cca1c9` were read back independently; health,
   landing and login checks returned 200. No Azure identity was activated and
   production is unchanged.
+
+### PostgreSQL logical-export source identity — implementation complete, staging pending
+
+- Added a staging-only, artifact-bound host workflow that bootstraps or audits a
+  fixed dormant PostgreSQL export login without creating a credential. The workflow
+  uses a SHA-scoped temporary wrapper, never replaces shared host tooling, shares
+  the database-operation lock, requires PostgreSQL to remain authoritative, and
+  rejects a workflow revision that differs from the immutable running image.
+- One no-login role owns the exact grants: `CONNECT` only to the source database,
+  schema `USAGE`, and column-level `SELECT` only on the embedded current transfer
+  profile plus migration version/checksum. The dormant passwordless login has
+  read-only defaults and bounded session settings. Audit covers database CREATE,
+  the exact source schema, all user schemas/relation kinds/columns, sequences,
+  functions, large objects, child and parent memberships, and rejects row-level
+  security that could hide exported rows.
+- A disposable PostgreSQL 16 rehearsal temporarily activates the login for a direct
+  credential canary, then disables it. It proves every required relation read and
+  rejects an unexported ledger column, DML, persistent/temporary DDL, role escalation
+  and another database. Drift cases cover a child role, column grant, public view,
+  alternate schema, zero-column relation, large object, database CREATE and a
+  row-hiding policy. A fake-host suite covers backend/generation/lock,
+  revision/digest and environment-file gates before any operator call. The full
+  CI and staging publication gates remain.
+- This access boundary does not export, encrypt, upload or restore data. It is not
+  provisioned on staging yet; Azure SQL remains conditional and production is
+  unchanged.

@@ -23,6 +23,9 @@ var staticFS embed.FS
 
 // Run starts the Sideyard application or executes a supported operator command.
 func Run(args []string) error {
+	if len(args) == 1 && isPostgresExporterCommand(args[0]) {
+		return runPostgresExporterCommand(args[0], os.Getenv)
+	}
 	if len(args) == 1 && isNativeDatabaseCommand(args[0]) {
 		config, err := loadDatabaseOperatorConfig(os.Getenv)
 		if err != nil {
@@ -36,6 +39,10 @@ func Run(args []string) error {
 		return err
 	}
 	return run(config, args)
+}
+
+func isPostgresExporterCommand(command string) bool {
+	return command == "bootstrap-postgres-exporter" || command == "check-postgres-exporter"
 }
 
 func isNativeDatabaseCommand(command string) bool {

@@ -71,6 +71,9 @@ jobs:
       - name: Production-mode backup and restore rehearsal
         run: ./scripts/production-rehearsal.sh
 
+      - name: PostgreSQL logical exporter permission rehearsal
+        run: ./scripts/postgres-exporter-rehearsal.sh
+
       - name: Azure backup integrity and monitor checks
         run: |
           python3 scripts/azure/test-backup-store.py

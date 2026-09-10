@@ -1,0 +1,73 @@
+name: Staging PostgreSQL Exporter
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Bootstrap or audit the dormant staging logical-export roles
+        required: true
+        default: check
+        type: choice
+        options:
+          - check
+          - bootstrap
+
+concurrency:
+  group: staging-database-operations
+  cancel-in-progress: false
+
+jobs:
+  exporter-access:
+    if: github.ref == 'refs/heads/main'
+    environment: staging
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy reviewed operator to a revision-scoped temporary directory
+        uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: root
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          source: scripts/azure/run-postgres-exporter-access.sh
+          target: /root/.sideyard-postgres-exporter/${{ github.sha }}
+          strip_components: 2
+
+      - name: Bootstrap or audit dormant staging exporter
+        uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17
+        env:
+          SIDEYARD_EXPORTER_ACTION: ${{ inputs.action }}
+          SIDEYARD_EXPECTED_REVISION: ${{ github.sha }}
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: root
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          envs: SIDEYARD_EXPORTER_ACTION,SIDEYARD_EXPECTED_REVISION
+          script: |
+            set -euo pipefail
+            candidate_root="/root/.sideyard-postgres-exporter/${SIDEYARD_EXPECTED_REVISION}"
+            candidate="${candidate_root}/run-postgres-exporter-access.sh"
+            trap 'rm -rf "$candidate_root"' EXIT
+            [[ "$SIDEYARD_EXPECTED_REVISION" =~ ^[0-9a-f]{40}$ ]]
+            [ -f "$candidate" ] && [ ! -L "$candidate" ]
+
+            source /opt/clubdue/azure-tools/azure/runtime-state.sh
+            prepare_sideyard_lock_root
+            exec 9>"${SIDEYARD_LOCK_ROOT}/sideyard-staging-database-window.lock"
+            flock -w 120 9
+            load_sideyard_runtime_state staging
+            [ "$SIDEYARD_BACKEND" = postgres ]
+            verify_sideyard_current_container staging clubdue-staging-current
+            revision="$(docker inspect -f '{{ index .Config.Labels "org.opencontainers.image.revision" }}' clubdue-staging-current)"
+            image="$(docker inspect -f '{{.Config.Image}}' clubdue-staging-current)"
+            [ "$revision" = "$SIDEYARD_EXPECTED_REVISION" ]
+            [[ "$image" =~ ^ghcr.io/wmichelin/clubdue@sha256:[0-9a-f]{64}$ ]]
+
+            chmod 700 "$candidate"
+            SIDEYARD_DATABASE_LOCK_HELD=1 \
+              SIDEYARD_RUNTIME_STATE_SCRIPT=/opt/clubdue/azure-tools/azure/runtime-state.sh \
+              SIDEYARD_EXPECTED_REVISION="$SIDEYARD_EXPECTED_REVISION" \
+              "$candidate" staging "$SIDEYARD_EXPORTER_ACTION"
