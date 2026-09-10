@@ -664,3 +664,41 @@ paid integrations or live customer payment collection are configured by this cha
   values survive, every limit-plus-space value fails, defaults and uniqueness
   remain intact. Existing SQL migrations/checksums are unchanged. The full native
   SQL app/adapter suite passed; application SQL selection is still disabled.
+
+
+- Capacity correction source `8346acec0b7146a276c0704c9fea4db96bcbd4c5` passed CI
+  [34418590986](https://github.com/wmichelin/clubdue/actions/runs/34418590986) and
+  staging [34418590945](https://github.com/wmichelin/clubdue/actions/runs/34418590945).
+  Running revision/image readback and manual staging smoke passed:
+  `ghcr.io/wmichelin/clubdue@sha256:22ba461561be88fd43f2b5610197c136a578cdc1adfc33238092acdd3d0ac563`.
+  The application still uses PostgreSQL; production is unchanged.
+
+### Native customer-book schema — implementation
+
+- Separate native migrations 004/005 add customers, properties, equipment and
+  customer vehicles, with explicit native CRUD and address revision statements.
+  Historical unbounded text remains unbounded; exact nullable external identities
+  use filtered hash indexes. Tenant ownership follows one cascading path. Before
+  importing, audit legacy cross-tenant property relationships and date ranges.
+- Architect/staff review: preserve optional whitespace, reject UUID-prefix aliases,
+  and compare address changes by binary content plus byte length. SQL's AFTER
+  trigger increments revisions only for actual changes, including multirow writes.
+  Later dependent tables must restore deletion restrictions before runtime activation.
+- Product/QA review: preserve separate assets, owner/staff visibility, existing
+  text limits and optimistic edits. Malformed equipment/address paths return 404;
+  malformed vehicle form IDs return 400 without querying the database.
+- Unit-testing review: share vehicle/equipment behavior across both engines; verify
+  foreign-tenant reads/writes, exact long Unicode text, duplicate identities,
+  concurrent address edits, rollback on revision overflow and four simultaneous
+  customer-detail loads. All pass. The latter proves property rows are closed
+  before borrowing equipment connections, fixing potential pool exhaustion.
+- DevOps sequencing: keep SQL runtime selection disabled and PostgreSQL migration
+  checksums unchanged. The full suite with both real engines, vet and static build
+  passed; isolated SQL Server rehearsal and focused review additions passed.
+  CI and staging verification are the next gates for this slice.
+- Remaining HTTP activation gates include customer reads that currently mask
+  dependency errors and property/equipment create handlers that can redirect after
+  a failed write. Those older paths need explicit unavailable/unsaved responses
+  before cold-start SQL traffic is enabled. No live Azure data has been transferred.
+- Staging: https://clubdue-staging.michelindigitalmedia.com (verified at `8346ace`;
+  this customer-book slice is pending deployment). Production remains unchanged.

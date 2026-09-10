@@ -4,6 +4,8 @@ import (
 	"log"
 	"net/http"
 	"strings"
+
+	"github.com/wmichelin/clubdue/internal/database"
 )
 
 func (s *Server) handleCustomerEdit(w http.ResponseWriter, r *http.Request) {
@@ -53,6 +55,10 @@ func (s *Server) handlePropertyCreate(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleEquipmentCreate(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r.Context())
 	propertyID := r.PathValue("id")
+	if err := validateRecordIDs(user.ShopID, propertyID); err != nil {
+		http.NotFound(w, r)
+		return
+	}
 	if err := r.ParseForm(); err == nil {
 		if kind := strings.TrimSpace(r.FormValue("kind")); kind != "" {
 			if err := s.store.CreateEquipment(r.Context(), user.ShopID, propertyID, kind, r.FormValue("make"), r.FormValue("model"), r.FormValue("serial_number")); err != nil {
@@ -61,7 +67,7 @@ func (s *Server) handleEquipmentCreate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	var customerID string
-	if err := s.store.db.Pool.QueryRow(r.Context(), `SELECT customer_id FROM properties WHERE shop_id = $1 AND id = $2`, user.ShopID, propertyID).Scan(&customerID); err != nil {
+	if err := s.store.db.Pool.QueryRow(r.Context(), database.Statement(s.store.db.Pool.Dialect(), `SELECT customer_id FROM properties WHERE shop_id = $1 AND id = $2`, `SELECT LOWER(CONVERT(char(36),customer_id)) FROM dbo.properties WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND id=CONVERT(uniqueidentifier,@p2)`), user.ShopID, propertyID).Scan(&customerID); err != nil {
 		http.NotFound(w, r)
 		return
 	}

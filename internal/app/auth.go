@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/wmichelin/clubdue/internal/database"
 	"golang.org/x/crypto/bcrypt"
@@ -89,7 +88,7 @@ func (a *Auth) bootstrapShop(ctx context.Context, credentials OwnerCredentials) 
 }
 
 func (a *Auth) provisionOwner(ctx context.Context, credentials OwnerCredentials) (string, error) {
-	if !validAccountText(credentials.Email, credentials.ShopName) {
+	if !validStoredText(credentials.Email, credentials.ShopName) {
 		return "", errors.New("email and shop name must be valid text without null characters")
 	}
 	credentials.Email = normalizeEmail(credentials.Email)
@@ -163,7 +162,7 @@ func (a *Auth) provisionOwner(ctx context.Context, credentials OwnerCredentials)
 }
 
 func (a *Auth) signup(ctx context.Context, shopName, email, password string) (string, error) {
-	if !validAccountText(email, shopName) {
+	if !validStoredText(email, shopName) {
 		return "", invalidAccountInput("email and shop name must be valid text without null characters")
 	}
 	email = strings.ToLower(strings.TrimSpace(email))
@@ -234,7 +233,7 @@ func (a *Auth) signup(ctx context.Context, shopName, email, password string) (st
 }
 
 func (a *Auth) login(ctx context.Context, email, password string) (string, error) {
-	if !validAccountText(email) {
+	if !validStoredText(email) {
 		return "", errInvalidCredentials
 	}
 	email = strings.ToLower(strings.TrimSpace(email))
@@ -385,17 +384,6 @@ func slugify(s string) string {
 		return "shop"
 	}
 	return out
-}
-
-// PostgreSQL text rejects NUL and invalid UTF-8. Preserve that input contract
-// before normalization so SQL Server cannot silently accept or repair it.
-func validAccountText(values ...string) bool {
-	for _, value := range values {
-		if !utf8.ValidString(value) || strings.ContainsRune(value, '\x00') {
-			return false
-		}
-	}
-	return true
 }
 
 // Input errors are safe to present; dependency errors remain internal and must

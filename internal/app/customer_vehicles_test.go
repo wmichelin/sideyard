@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/wmichelin/clubdue/internal/database"
 )
 
 func TestCustomerVehicleValidation(t *testing.T) {
@@ -28,6 +30,11 @@ func TestCustomerVehiclesRemainSeparateAndScoped(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(db.Close)
+	testCustomerVehiclesRemainSeparateAndScoped(t, db)
+}
+
+func testCustomerVehiclesRemainSeparateAndScoped(t *testing.T, db *DB) {
+	ctx := context.Background()
 	s := &Store{db: db}
 	stamp := time.Now().Format("150405.000000000")
 	shop := createTestShop(t, ctx, db, "vehicles-"+stamp)
@@ -68,7 +75,7 @@ func TestCustomerVehiclesRemainSeparateAndScoped(t *testing.T) {
 	if err := s.SaveCustomerVehicle(ctx, shop, foreign, customerVehicle{Name: "Foreign"}); !errors.Is(err, errVehicleConflict) {
 		t.Fatalf("foreign insert: %v", err)
 	}
-	if _, err := db.Pool.Exec(ctx, `INSERT INTO customer_vehicles(shop_id,customer_id,name) VALUES ($1,$2,'Foreign')`, shop, foreign); err == nil {
+	if _, err := db.Pool.Exec(ctx, database.Statement(db.Pool.Dialect(), `INSERT INTO customer_vehicles(shop_id,customer_id,name) VALUES ($1,$2,'Foreign')`, `INSERT INTO dbo.customer_vehicles(shop_id,customer_id,name) VALUES(CONVERT(uniqueidentifier,@p1),CONVERT(uniqueidentifier,@p2),'Foreign')`), shop, foreign); err == nil {
 		t.Fatal("database accepted foreign customer")
 	}
 	// Neither vehicle needs a property, and a later location does not move it.

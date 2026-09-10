@@ -10,6 +10,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/wmichelin/clubdue/internal/database"
 )
 
 // This test intentionally uses the same migrations as the application. Set
@@ -884,7 +886,7 @@ func withAgreementField(in CreateAgreementInput, update func(*CreateAgreementInp
 func createTestShop(t *testing.T, ctx context.Context, db *DB, suffix string) string {
 	t.Helper()
 	var id string
-	if err := db.Pool.QueryRow(ctx, `INSERT INTO shops (name, slug) VALUES ($1, $2) RETURNING id`, suffix, suffix).Scan(&id); err != nil {
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `INSERT INTO shops (name, slug) VALUES ($1, $2) RETURNING id`, sqlServerInsertUnclaimedShop), suffix, suffix).Scan(&id); err != nil {
 		t.Fatal(err)
 	}
 	return id
@@ -893,7 +895,7 @@ func createTestShop(t *testing.T, ctx context.Context, db *DB, suffix string) st
 func createTestCustomer(t *testing.T, ctx context.Context, db *DB, shopID, name string) string {
 	t.Helper()
 	var id string
-	if err := db.Pool.QueryRow(ctx, `INSERT INTO customers (shop_id, name) VALUES ($1, $2) RETURNING id`, shopID, name).Scan(&id); err != nil {
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `INSERT INTO customers (shop_id, name) VALUES ($1, $2) RETURNING id`, `DECLARE @created TABLE(id uniqueidentifier); INSERT INTO dbo.customers(shop_id,name) OUTPUT inserted.id INTO @created VALUES(CONVERT(uniqueidentifier,@p1),@p2); SELECT LOWER(CONVERT(char(36),id)) FROM @created;`), shopID, name).Scan(&id); err != nil {
 		t.Fatal(err)
 	}
 	return id
@@ -902,7 +904,7 @@ func createTestCustomer(t *testing.T, ctx context.Context, db *DB, shopID, name 
 func createTestProperty(t *testing.T, ctx context.Context, db *DB, shopID, customerID, address string) string {
 	t.Helper()
 	var id string
-	if err := db.Pool.QueryRow(ctx, `INSERT INTO properties (shop_id, customer_id, address_line1, city, state, postal_code) VALUES ($1, $2, $3, 'Cary', 'NC', '27511') RETURNING id`, shopID, customerID, address).Scan(&id); err != nil {
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `INSERT INTO properties (shop_id, customer_id, address_line1, city, state, postal_code) VALUES ($1, $2, $3, 'Cary', 'NC', '27511') RETURNING id`, `DECLARE @created TABLE(id uniqueidentifier); INSERT INTO dbo.properties(shop_id,customer_id,address_line1,city,state,postal_code) OUTPUT inserted.id INTO @created VALUES(CONVERT(uniqueidentifier,@p1),CONVERT(uniqueidentifier,@p2),@p3,'Cary','NC','27511'); SELECT LOWER(CONVERT(char(36),id)) FROM @created;`), shopID, customerID, address).Scan(&id); err != nil {
 		t.Fatal(err)
 	}
 	return id

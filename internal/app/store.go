@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/wmichelin/clubdue/internal/database"
 )
 
 type AgreementStatus string
@@ -111,11 +113,15 @@ func (s *Store) nowUTC() time.Time {
 }
 
 func (s *Store) ListCustomers(ctx context.Context, shopID string) ([]Customer, error) {
-	rows, err := s.db.Pool.Query(ctx, `
+	if err := validateRecordIDs(shopID); err != nil {
+		return nil, err
+	}
+
+	rows, err := s.db.Pool.Query(ctx, database.Statement(s.db.Pool.Dialect(), `
 		SELECT id, COALESCE(external_id, ''), name, COALESCE(email, ''), COALESCE(phone, '')
 		FROM customers
 		WHERE shop_id = $1
-		ORDER BY name`, shopID)
+		ORDER BY name`, `SELECT LOWER(CONVERT(char(36),id)),COALESCE(external_id,N''),name,COALESCE(email,N''),COALESCE(phone,N'') FROM dbo.customers WHERE shop_id=CONVERT(uniqueidentifier,@p1) ORDER BY name`), shopID)
 	if err != nil {
 		return nil, err
 	}
@@ -133,19 +139,34 @@ func (s *Store) ListCustomers(ctx context.Context, shopID string) ([]Customer, e
 }
 
 func (s *Store) CreateCustomer(ctx context.Context, shopID, name, email, phone string) (string, error) {
+	if !validStoredText(name, email, phone) {
+		return "", errInvalidStoredText
+	}
+
+	if err := validateRecordIDs(shopID); err != nil {
+		return "", err
+	}
+
 	var id string
-	err := s.db.Pool.QueryRow(ctx, `
+	err := s.db.Pool.QueryRow(ctx, database.Statement(s.db.Pool.Dialect(), `
 		INSERT INTO customers (shop_id, name, email, phone)
 		VALUES ($1, $2, NULLIF($3, ''), NULLIF($4, ''))
-		RETURNING id`, shopID, name, email, phone).Scan(&id)
+		RETURNING id`, `DECLARE @created TABLE(id uniqueidentifier);
+INSERT INTO dbo.customers(shop_id,name,email,phone) OUTPUT inserted.id INTO @created
+VALUES(CONVERT(uniqueidentifier,@p1),@p2,CASE WHEN DATALENGTH(@p3)=0 THEN NULL ELSE @p3 END,CASE WHEN DATALENGTH(@p4)=0 THEN NULL ELSE @p4 END);
+SELECT LOWER(CONVERT(char(36),id)) FROM @created;`), shopID, name, email, phone).Scan(&id)
 	return id, err
 }
 
 func (s *Store) GetCustomer(ctx context.Context, shopID, customerID string) (*Customer, error) {
+	if err := validateRecordIDs(shopID, customerID); err != nil {
+		return nil, err
+	}
+
 	var c Customer
-	err := s.db.Pool.QueryRow(ctx, `
+	err := s.db.Pool.QueryRow(ctx, database.Statement(s.db.Pool.Dialect(), `
 		SELECT id, COALESCE(external_id, ''), name, COALESCE(email, ''), COALESCE(phone, '')
-		FROM customers WHERE shop_id = $1 AND id = $2`, shopID, customerID,
+		FROM customers WHERE shop_id = $1 AND id = $2`, `SELECT LOWER(CONVERT(char(36),id)),COALESCE(external_id,N''),name,COALESCE(email,N''),COALESCE(phone,N'') FROM dbo.customers WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND id=CONVERT(uniqueidentifier,@p2)`), shopID, customerID,
 	).Scan(&c.ID, &c.ExternalID, &c.Name, &c.Email, &c.Phone)
 	if err != nil {
 		return nil, fmt.Errorf("customer not found")
@@ -154,9 +175,17 @@ func (s *Store) GetCustomer(ctx context.Context, shopID, customerID string) (*Cu
 }
 
 func (s *Store) UpdateCustomer(ctx context.Context, shopID, customerID, name, email, phone string) error {
-	tag, err := s.db.Pool.Exec(ctx, `
+	if !validStoredText(name, email, phone) {
+		return errInvalidStoredText
+	}
+
+	if err := validateRecordIDs(shopID, customerID); err != nil {
+		return err
+	}
+
+	tag, err := s.db.Pool.Exec(ctx, database.Statement(s.db.Pool.Dialect(), `
 		UPDATE customers SET name = $3, email = NULLIF($4, ''), phone = NULLIF($5, ''), updated_at = now()
-		WHERE shop_id = $1 AND id = $2`, shopID, customerID, name, email, phone)
+		WHERE shop_id = $1 AND id = $2`, `UPDATE dbo.customers SET name=@p3,email=CASE WHEN DATALENGTH(@p4)=0 THEN NULL ELSE @p4 END,phone=CASE WHEN DATALENGTH(@p5)=0 THEN NULL ELSE @p5 END,updated_at=SYSUTCDATETIME() WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND id=CONVERT(uniqueidentifier,@p2)`), shopID, customerID, name, email, phone)
 	if err != nil {
 		return err
 	}
@@ -167,7 +196,11 @@ func (s *Store) UpdateCustomer(ctx context.Context, shopID, customerID, name, em
 }
 
 func (s *Store) DeleteCustomer(ctx context.Context, shopID, customerID string) error {
-	tag, err := s.db.Pool.Exec(ctx, `DELETE FROM customers WHERE shop_id = $1 AND id = $2`, shopID, customerID)
+	if err := validateRecordIDs(shopID, customerID); err != nil {
+		return err
+	}
+
+	tag, err := s.db.Pool.Exec(ctx, database.Statement(s.db.Pool.Dialect(), `DELETE FROM customers WHERE shop_id = $1 AND id = $2`, `DELETE FROM dbo.customers WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND id=CONVERT(uniqueidentifier,@p2)`), shopID, customerID)
 	if err != nil {
 		return err
 	}
@@ -178,9 +211,13 @@ func (s *Store) DeleteCustomer(ctx context.Context, shopID, customerID string) e
 }
 
 func (s *Store) ListProperties(ctx context.Context, shopID, customerID string) ([]Property, error) {
-	rows, err := s.db.Pool.Query(ctx, `
+	if err := validateRecordIDs(shopID, customerID); err != nil {
+		return nil, err
+	}
+
+	rows, err := s.db.Pool.Query(ctx, database.Statement(s.db.Pool.Dialect(), `
 		SELECT id, customer_id, address_line1, COALESCE(address_line2, ''), city, state, postal_code
-		FROM properties WHERE shop_id = $1 AND customer_id = $2 ORDER BY address_line1`, shopID, customerID)
+		FROM properties WHERE shop_id = $1 AND customer_id = $2 ORDER BY address_line1`, `SELECT LOWER(CONVERT(char(36),id)),LOWER(CONVERT(char(36),customer_id)),address_line1,COALESCE(address_line2,N''),city,state,postal_code FROM dbo.properties WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND customer_id=CONVERT(uniqueidentifier,@p2) ORDER BY address_line1`), shopID, customerID)
 	if err != nil {
 		return nil, err
 	}
@@ -191,20 +228,33 @@ func (s *Store) ListProperties(ctx context.Context, shopID, customerID string) (
 		if err := rows.Scan(&p.ID, &p.CustomerID, &p.AddressLine1, &p.AddressLine2, &p.City, &p.State, &p.PostalCode); err != nil {
 			return nil, err
 		}
-		equipment, err := s.ListEquipment(ctx, shopID, p.ID)
+		properties = append(properties, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	// Release the property query before borrowing another pool connection.
+	for i := range properties {
+		equipment, err := s.ListEquipment(ctx, shopID, properties[i].ID)
 		if err != nil {
 			return nil, err
 		}
-		p.Equipment = equipment
-		properties = append(properties, p)
+		properties[i].Equipment = equipment
 	}
-	return properties, rows.Err()
+	return properties, nil
 }
 
 func (s *Store) ListAllProperties(ctx context.Context, shopID string) ([]Property, error) {
-	rows, err := s.db.Pool.Query(ctx, `
+	if err := validateRecordIDs(shopID); err != nil {
+		return nil, err
+	}
+
+	rows, err := s.db.Pool.Query(ctx, database.Statement(s.db.Pool.Dialect(), `
 		SELECT id, customer_id, address_line1, COALESCE(address_line2, ''), city, state, postal_code
-		FROM properties WHERE shop_id = $1 ORDER BY address_line1`, shopID)
+		FROM properties WHERE shop_id = $1 ORDER BY address_line1`, `SELECT LOWER(CONVERT(char(36),id)),LOWER(CONVERT(char(36),customer_id)),address_line1,COALESCE(address_line2,N''),city,state,postal_code FROM dbo.properties WHERE shop_id=CONVERT(uniqueidentifier,@p1) ORDER BY address_line1`), shopID)
 	if err != nil {
 		return nil, err
 	}
@@ -221,11 +271,22 @@ func (s *Store) ListAllProperties(ctx context.Context, shopID string) ([]Propert
 }
 
 func (s *Store) CreateProperty(ctx context.Context, shopID, customerID, address1, address2, city, state, postal string) (string, error) {
+	if !validStoredText(address1, address2, city, state, postal) {
+		return "", errInvalidStoredText
+	}
+
+	if err := validateRecordIDs(shopID, customerID); err != nil {
+		return "", err
+	}
+
 	var id string
-	err := s.db.Pool.QueryRow(ctx, `
+	err := s.db.Pool.QueryRow(ctx, database.Statement(s.db.Pool.Dialect(), `
 		INSERT INTO properties (shop_id, customer_id, address_line1, address_line2, city, state, postal_code)
 		SELECT $1, id, $3, NULLIF($4, ''), $5, $6, $7 FROM customers WHERE shop_id = $1 AND id = $2
-		RETURNING id`, shopID, customerID, address1, address2, city, state, postal).Scan(&id)
+		RETURNING id`, `DECLARE @created TABLE(id uniqueidentifier);
+INSERT INTO dbo.properties(shop_id,customer_id,address_line1,address_line2,city,state,postal_code) OUTPUT inserted.id INTO @created
+SELECT CONVERT(uniqueidentifier,@p1),id,@p3,CASE WHEN DATALENGTH(@p4)=0 THEN NULL ELSE @p4 END,@p5,@p6,@p7 FROM dbo.customers WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND id=CONVERT(uniqueidentifier,@p2);
+SELECT LOWER(CONVERT(char(36),id)) FROM @created;`), shopID, customerID, address1, address2, city, state, postal).Scan(&id)
 	if err != nil {
 		return "", fmt.Errorf("create property: %w", err)
 	}
@@ -233,9 +294,13 @@ func (s *Store) CreateProperty(ctx context.Context, shopID, customerID, address1
 }
 
 func (s *Store) ListEquipment(ctx context.Context, shopID, propertyID string) ([]Equipment, error) {
-	rows, err := s.db.Pool.Query(ctx, `
+	if err := validateRecordIDs(shopID, propertyID); err != nil {
+		return nil, err
+	}
+
+	rows, err := s.db.Pool.Query(ctx, database.Statement(s.db.Pool.Dialect(), `
 		SELECT id, property_id, kind, COALESCE(make, ''), COALESCE(model, ''), COALESCE(serial_number, '')
-		FROM equipment WHERE shop_id = $1 AND property_id = $2 ORDER BY kind`, shopID, propertyID)
+		FROM equipment WHERE shop_id = $1 AND property_id = $2 ORDER BY kind`, `SELECT LOWER(CONVERT(char(36),id)),LOWER(CONVERT(char(36),property_id)),kind,COALESCE(make,N''),COALESCE(model,N''),COALESCE(serial_number,N'') FROM dbo.equipment WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND property_id=CONVERT(uniqueidentifier,@p2) ORDER BY kind`), shopID, propertyID)
 	if err != nil {
 		return nil, err
 	}
@@ -252,10 +317,19 @@ func (s *Store) ListEquipment(ctx context.Context, shopID, propertyID string) ([
 }
 
 func (s *Store) CreateEquipment(ctx context.Context, shopID, propertyID, kind, make, model, serial string) error {
-	tag, err := s.db.Pool.Exec(ctx, `
+	if !validStoredText(kind, make, model, serial) {
+		return errInvalidStoredText
+	}
+
+	if err := validateRecordIDs(shopID, propertyID); err != nil {
+		return err
+	}
+
+	tag, err := s.db.Pool.Exec(ctx, database.Statement(s.db.Pool.Dialect(), `
 		INSERT INTO equipment (shop_id, property_id, kind, make, model, serial_number)
 		SELECT $1, id, $3, NULLIF($4, ''), NULLIF($5, ''), NULLIF($6, '')
-		FROM properties WHERE shop_id = $1 AND id = $2`, shopID, propertyID, kind, make, model, serial)
+		FROM properties WHERE shop_id = $1 AND id = $2`, `INSERT INTO dbo.equipment(shop_id,property_id,kind,make,model,serial_number)
+SELECT CONVERT(uniqueidentifier,@p1),id,@p3,CASE WHEN DATALENGTH(@p4)=0 THEN NULL ELSE @p4 END,CASE WHEN DATALENGTH(@p5)=0 THEN NULL ELSE @p5 END,CASE WHEN DATALENGTH(@p6)=0 THEN NULL ELSE @p6 END FROM dbo.properties WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND id=CONVERT(uniqueidentifier,@p2)`), shopID, propertyID, kind, make, model, serial)
 	if err != nil {
 		return err
 	}

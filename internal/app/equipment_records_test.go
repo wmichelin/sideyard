@@ -48,6 +48,11 @@ func TestEquipmentRecordsPreserveIdentityAndRejectConflictingEdits(t *testing.T)
 		t.Fatal(err)
 	}
 	t.Cleanup(db.Close)
+	testEquipmentRecordsPreserveIdentityAndRejectConflictingEdits(t, db)
+}
+
+func testEquipmentRecordsPreserveIdentityAndRejectConflictingEdits(t *testing.T, db *DB) {
+	ctx := context.Background()
 	s := &Store{db: db}
 	stamp := time.Now().Format("150405.000000000")
 	shop := createTestShop(t, ctx, db, "equipment-"+stamp)
@@ -65,7 +70,7 @@ func TestEquipmentRecordsPreserveIdentityAndRejectConflictingEdits(t *testing.T)
 		t.Fatalf("equipment: %+v %v", items, err)
 	}
 	// Installation dates predate this feature (including demo-seeded records).
-	if _, err := db.Pool.Exec(ctx, `UPDATE equipment SET installed_on='2020-02-29' WHERE id=$1`, items[0].ID); err != nil {
+	if _, err := db.Pool.Exec(ctx, database.Statement(db.Pool.Dialect(), `UPDATE equipment SET installed_on='2020-02-29' WHERE id=$1`, `UPDATE dbo.equipment SET installed_on='2020-02-29' WHERE id=CONVERT(uniqueidentifier,@p1)`), items[0].ID); err != nil {
 		t.Fatal(err)
 	}
 	e, err := s.GetEquipmentRecord(ctx, shop, items[0].ID)
@@ -118,7 +123,7 @@ func TestEquipmentRecordsPreserveIdentityAndRejectConflictingEdits(t *testing.T)
 	if err != nil || got.WarrantyUntil != "" || got.InstalledOn != "2020-02-29" {
 		t.Fatal("optional date clearing changed installation date")
 	}
-	if _, err := db.Pool.Exec(ctx, `INSERT INTO equipment(shop_id,property_id,kind) VALUES ($1,$2,'Foreign')`, other, property); err == nil {
+	if _, err := db.Pool.Exec(ctx, database.Statement(db.Pool.Dialect(), `INSERT INTO equipment(shop_id,property_id,kind) VALUES ($1,$2,'Foreign')`, `INSERT INTO dbo.equipment(shop_id,property_id,kind) VALUES(CONVERT(uniqueidentifier,@p1),CONVERT(uniqueidentifier,@p2),'Foreign')`), other, property); err == nil {
 		t.Fatal("database permitted foreign property ownership")
 	}
 
