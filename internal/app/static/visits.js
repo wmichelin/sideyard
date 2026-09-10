@@ -98,7 +98,7 @@ function initializeWorkForm(form) {
     form.setAttribute("aria-busy", "true");
     workFeedback(form, "Saving selected work…");
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 25000);
+    const timeout = setTimeout(() => controller.abort(), 110000);
 
     try {
       // Named action buttons shadow HTMLFormElement.action in some browsers.

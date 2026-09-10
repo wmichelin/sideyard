@@ -34,6 +34,17 @@ rollout_plan() {
 
 validate_target
 
+container_exists() { docker container inspect "$1" >/dev/null 2>&1; }
+
+stop_and_remove_container() {
+  local name="$1"
+  container_exists "$name" || return 0
+  if [ "$(docker inspect -f '{{.State.Running}}' "$name")" = true ]; then
+    docker stop --timeout 110 "$name" >/dev/null
+  fi
+  docker rm "$name" >/dev/null
+}
+
 if [ "$CONTAINER" = clubdue-staging ]; then
   DEPLOY_PUBLIC_DEMO=1
 else
@@ -42,7 +53,14 @@ else
 fi
 readonly DEPLOY_PUBLIC_DEMO
 
-if [ -n "${CLUBDUE_DEPLOY_TEST_PLAN:-}" ]; then rollout_plan; exit 0; fi
+if [ -n "${CLUBDUE_DEPLOY_TEST_PLAN:-}" ]; then
+  if [ "$CLUBDUE_DEPLOY_TEST_PLAN" = cleanup ]; then
+    stop_and_remove_container "${CONTAINER}-test-running"
+  else
+    rollout_plan
+  fi
+  exit 0
+fi
 
 DEPLOY_MODE="${CLUBDUE_DEPLOY_MODE:-promote}"
 case "$DEPLOY_MODE" in promote|rollback) ;; *) fail "CLUBDUE_DEPLOY_MODE must be promote or rollback" ;; esac
@@ -63,8 +81,6 @@ ENABLED_PATH="/etc/nginx/sites-enabled/${DOMAIN}"
 CURRENT_CONTAINER="${CONTAINER}-current"
 PREVIOUS_CONTAINER="${CONTAINER}-previous"
 CANDIDATE_CONTAINER="${CONTAINER}-candidate"
-
-container_exists() { docker container inspect "$1" >/dev/null 2>&1; }
 
 container_port() {
   local mapping
@@ -140,7 +156,8 @@ switch_proxy() {
   # Only our marked directive is replaced; nginx -t still rejects conflicts with
   # any independently managed directive and preserves the previous vhost.
   sed -i '/^[[:space:]]*client_max_body_size 8m; # sideyard-upload-limit$/d' "$candidate"
-  sed -E -i "/proxy_pass[[:space:]]+http:\/\/127\\.0\\.0\\.1:${target_port};/a\\        client_max_body_size 8m; # sideyard-upload-limit" "$candidate"
+  sed -i '/# sideyard-request-envelope$/d' "$candidate"
+  sed -E -i "/proxy_pass[[:space:]]+http:\/\/127\\.0\\.0\\.1:${target_port};/a\\        client_max_body_size 8m; # sideyard-upload-limit\\n        client_body_timeout 110s; # sideyard-request-envelope\\n        proxy_send_timeout 110s; # sideyard-request-envelope\\n        proxy_read_timeout 110s; # sideyard-request-envelope\\n        send_timeout 110s; # sideyard-request-envelope" "$candidate"
   mv "$candidate" "$SITE_PATH"
   if ! nginx -t; then
     cp --preserve=mode,ownership "$backup" "$SITE_PATH"; rm -f "$backup"
@@ -155,9 +172,11 @@ switch_proxy() {
 }
 
 wait_for_ready() {
-  local target_port="$1"
-  for _ in $(seq 1 30); do
-    curl -fsS "http://127.0.0.1:${target_port}/readyz" 2>/dev/null | grep -qx ok && return 0
+  local target_port="$1" deadline remaining
+  deadline=$((SECONDS + 110))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    remaining=$((deadline - SECONDS))
+    curl -fsS --max-time "$remaining" "http://127.0.0.1:${target_port}/readyz" 2>/dev/null | grep -qx ok && return 0
     sleep 1
   done
   return 1
@@ -194,7 +213,7 @@ verify_candidate_contract() {
     fail "candidate public demo CSRF contract failed; active release remains unchanged"
   fi
   session_headers="$CANDIDATE_PROBE_DIR/session.headers"
-  session_status="$(curl -sS --max-time 20 -D "$session_headers" -o /dev/null -w '%{http_code}' -X POST \
+  session_status="$(curl -sS --max-time 110 -D "$session_headers" -o /dev/null -w '%{http_code}' -X POST \
     -H "Cookie: clubdue_csrf=${csrf_cookie}" \
     --data-urlencode "csrf_token=${csrf_token}" \
     "http://127.0.0.1:${target_port}/demo/session")"
@@ -208,7 +227,7 @@ verify_candidate_contract() {
   fi
   session_cookie="$(sed -n 's/^Set-Cookie: clubdue_session=\([^;]*\).*/\1/pI' "$session_headers" | tail -1)"
   [ -n "$session_cookie" ] || fail "candidate demo session cookie is missing; active release remains unchanged"
-  dashboard="$(curl -fsS --max-time 20 \
+  dashboard="$(curl -fsS --max-time 110 \
     -H "Cookie: clubdue_csrf=${csrf_cookie}; clubdue_session=${session_cookie}" \
     "http://127.0.0.1:${target_port}/dashboard")"
   # grep -q can close its pipe early and give printf SIGPIPE under pipefail,
@@ -304,22 +323,22 @@ fi
 # The retained previous release occupies the alternate port needed by the next
 # candidate. Releasing that stale rollback slot leaves the current release
 # serving unchanged; if the new candidate fails, traffic remains on current.
-container_exists "$PREVIOUS_CONTAINER" && docker rm -f "$PREVIOUS_CONTAINER" >/dev/null
+stop_and_remove_container "$PREVIOUS_CONTAINER"
 candidate_started=0
 CANDIDATE_PROBE_DIR=""
 cleanup_candidate() {
-  if [ "$candidate_started" = 1 ]; then docker rm -f "$CANDIDATE_CONTAINER" >/dev/null 2>&1 || true; fi
+  if [ "$candidate_started" = 1 ]; then stop_and_remove_container "$CANDIDATE_CONTAINER" >/dev/null 2>&1 || true; fi
   if [ -n "$CANDIDATE_PROBE_DIR" ]; then rm -rf "$CANDIDATE_PROBE_DIR" || true; fi
 }
 trap cleanup_candidate EXIT
 
-if ! docker run -d --name "$CANDIDATE_CONTAINER" --restart always --network "$NETWORK" \
+if ! docker run -d --name "$CANDIDATE_CONTAINER" --restart always --stop-timeout 110 --network "$NETWORK" \
   -p "127.0.0.1:${candidate_port}:8080" "${APP_ENV[@]}" \
   -e "PUBLIC_URL=https://${DOMAIN}" \
   -e "DATABASE_URL=postgres://clubdue:${POSTGRES_PASSWORD}@${DB}:5432/clubdue?sslmode=disable" \
   -e "SESSION_SECRET=${SESSION_SECRET}" \
   -e RESEND_API_KEY -e INTEREST_NOTIFY_FROM -e INTEREST_NOTIFY_TO "$IMAGE" >/dev/null; then
-  docker rm -f "$CANDIDATE_CONTAINER" >/dev/null 2>&1 || true
+  stop_and_remove_container "$CANDIDATE_CONTAINER" >/dev/null 2>&1 || true
   fail "candidate ${CANDIDATE_CONTAINER} could not start; active release remains unchanged"
 fi
 candidate_started=1

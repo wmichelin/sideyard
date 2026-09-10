@@ -22,7 +22,7 @@ func databaseCommandContext() (context.Context, func()) {
 func runDatabaseCommand(c Config, command string) error {
 	// A native schema check must never use PostgreSQL's migrating opener.
 	if c.DatabaseBackend != "azure_sql" {
-		return errors.New("migrate, check-db and maintenance currently require DATABASE_BACKEND=azure_sql")
+		return errors.New("native database commands currently require DATABASE_BACKEND=azure_sql")
 	}
 	if c.AzureSQL.AuthMode != "azure_cli" {
 		return errors.New("native database commands require AZURE_SQL_AUTH_MODE=azure_cli")
@@ -44,6 +44,7 @@ func executeDatabaseCommand(ctx context.Context, c Config, db *DB, command strin
 	schema, ok := db.Pool.(interface {
 		PrepareSchema(context.Context) error
 		CheckSchema(context.Context) error
+		PrepareRuntimePrincipal(context.Context, string) error
 	})
 	if !ok {
 		return errors.New("native schema operator is unavailable")
@@ -60,6 +61,18 @@ func executeDatabaseCommand(ctx context.Context, c Config, db *DB, command strin
 			return err
 		}
 		log.Print("Azure SQL schema and isolation settings verified (read-only)")
+		return nil
+	case "bootstrap-runtime":
+		if c.AzureSQLRuntimeClientID == "" {
+			return errors.New("bootstrap-runtime requires AZURE_SQL_RUNTIME_CLIENT_ID")
+		}
+		if err := schema.CheckSchema(ctx); err != nil {
+			return err
+		}
+		if err := schema.PrepareRuntimePrincipal(ctx, c.AzureSQLRuntimeClientID); err != nil {
+			return err
+		}
+		log.Print("Azure SQL staging runtime principal permissions prepared")
 		return nil
 	case "maintenance":
 		if err := schema.CheckSchema(ctx); err != nil {

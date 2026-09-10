@@ -39,7 +39,7 @@ func Run(args []string) error {
 }
 
 func isNativeDatabaseCommand(command string) bool {
-	return command == "migrate" || command == "check-db" || command == "maintenance"
+	return command == "migrate" || command == "check-db" || command == "maintenance" || command == "bootstrap-runtime"
 }
 
 func run(config Config, args []string) error {
@@ -58,9 +58,6 @@ func run(config Config, args []string) error {
 		}
 		return runProvisionOwner(config)
 	}
-	if config.DatabaseBackend == "azure_sql" {
-		return fmt.Errorf("Azure SQL HTTP startup is not enabled yet; use explicit operator commands while runtime and recovery checks are completed")
-	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -78,7 +75,7 @@ func run(config Config, args []string) error {
 	closeResources := func() {}
 
 	if !srv.demo {
-		db, err := openDB(ctx, config.DatabaseURL)
+		db, err := openConfiguredDB(ctx, config)
 		if err != nil {
 			return err
 		}
@@ -95,7 +92,7 @@ func run(config Config, args []string) error {
 		}
 		interestWake, wakeInterest := newInterestNotificationSignal()
 		srv.interest = &databaseInterestRecorder{db: db, wake: wakeInterest}
-		if config.Environment == EnvironmentStaging {
+		if config.DatabaseBackend != "azure_sql" && config.Environment == EnvironmentStaging {
 			retired, err := srv.store.RetireLegacySharedDemo(ctx)
 			if err != nil {
 				closeResources()
@@ -107,18 +104,22 @@ func run(config Config, args []string) error {
 		}
 
 		auth := newAuth(db, config.SessionSecret, srv.secureCookies())
-		if err := auth.bootstrapShop(ctx, config.BootstrapOwner); err != nil {
-			closeResources()
-			return fmt.Errorf("bootstrap shop: %w", err)
+		if config.DatabaseBackend != "azure_sql" {
+			if err := auth.bootstrapShop(ctx, config.BootstrapOwner); err != nil {
+				closeResources()
+				return fmt.Errorf("bootstrap shop: %w", err)
+			}
 		}
 
 		srv.auth = auth
-		if err := srv.store.SyncAllVisitDues(ctx); err != nil {
-			log.Printf("renewal maintenance failed phase=startup operation=sync_visit_dues error=%v", err)
+		if config.DatabaseBackend != "azure_sql" {
+			if err := srv.store.SyncAllVisitDues(ctx); err != nil {
+				log.Printf("renewal maintenance failed phase=startup operation=sync_visit_dues error=%v", err)
+			}
+			runRenewalMaintenance(ctx, srv.store, time.Now, "startup")
+			go runDailyRenewalGeneration(ctx, srv.store, 24*time.Hour, time.Now, wakeInterest)
 		}
-		runRenewalMaintenance(ctx, srv.store, time.Now, "startup")
-		go runDailyRenewalGeneration(ctx, srv.store, 24*time.Hour, time.Now, wakeInterest)
-		if config.InterestNotifications.APIKey != "" {
+		if config.InterestNotifications.APIKey != "" && config.DatabaseBackend != "azure_sql" {
 			sender := &resendInterestSender{
 				client: &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 				config: config.InterestNotifications, environment: config.Environment,
@@ -129,10 +130,16 @@ func run(config Config, args []string) error {
 			})
 			closeResources = func() { stopNotifications(); db.Close() }
 			log.Print("Sideyard signup email notifications enabled")
+		} else if config.InterestNotifications.APIKey != "" {
+			log.Print("Sideyard signup email notifications queued for host maintenance")
 		} else {
 			log.Print("Sideyard signup email notifications unconfigured; alerts remain queued")
 		}
-		log.Print("Sideyard running with Postgres")
+		if config.DatabaseBackend == "azure_sql" {
+			log.Print("Sideyard running with Azure SQL lazy connections; scheduled maintenance disabled in HTTP process")
+		} else {
+			log.Print("Sideyard running with Postgres")
+		}
 	} else {
 		log.Print("Sideyard running in demo mode (set DATABASE_URL for Postgres)")
 	}
@@ -236,7 +243,7 @@ func (s *Server) handler(static fs.FS) http.Handler {
 	mux.HandleFunc("GET /plan-templates/{id}", auth(s.handlePlanTemplateEdit))
 	mux.HandleFunc("POST /plan-templates/{id}", auth(s.handlePlanTemplateEdit))
 
-	return s.requestIDHandler(s.securityHandler(s.completionLogHandler(mux)))
+	return s.requestIDHandler(requestDeadlineHandler(s.config.RuntimeLimits.RequestTimeout, s.securityHandler(s.completionLogHandler(mux))))
 }
 
 func (s *Server) handleRollbackSafety(w http.ResponseWriter, _ *http.Request) {

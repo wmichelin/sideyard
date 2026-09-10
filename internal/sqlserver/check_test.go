@@ -73,3 +73,76 @@ func TestSQLServerCheckRequiresBothIsolationModes(t *testing.T) {
 		}
 	}
 }
+
+func TestSQLServerRuntimeRoleAllowsDomainWorkAndRejectsControl(t *testing.T) {
+	p := testPool(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if err := p.PrepareSchema(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.db.ExecContext(ctx, `
+		DROP USER IF EXISTS sideyard_runtime_test;
+		DROP ROLE IF EXISTS sideyard_runtime_test_role;
+		CREATE ROLE sideyard_runtime_test_role;
+		CREATE USER sideyard_runtime_test WITHOUT LOGIN;
+		ALTER ROLE sideyard_runtime_test_role ADD MEMBER sideyard_runtime_test;
+		GRANT SELECT,INSERT,UPDATE,DELETE ON SCHEMA::dbo TO sideyard_runtime_test_role;
+		DENY INSERT,UPDATE,DELETE ON OBJECT::dbo.schema_migrations TO sideyard_runtime_test_role;`); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = p.db.ExecContext(context.Background(), `DROP USER IF EXISTS sideyard_runtime_test; DROP ROLE IF EXISTS sideyard_runtime_test_role;`)
+	})
+	conn, err := p.db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, `EXECUTE AS USER=N'sideyard_runtime_test'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkRuntimePermissions(ctx, conn); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkRuntimeIdentity(ctx, conn, "11111111-2222-3333-4444-555555555555"); err == nil {
+		t.Fatal("same-permission non-Entra principal passed runtime identity check")
+	}
+	if _, err := conn.ExecContext(ctx, `INSERT INTO dbo.shops(name,slug) VALUES(N'Runtime permission test',N'runtime-permission-test'); UPDATE dbo.shops SET name=N'Runtime permission changed' WHERE slug=N'runtime-permission-test'; DELETE FROM dbo.shops WHERE slug=N'runtime-permission-test'`); err != nil {
+		t.Fatal("runtime DML rejected", err)
+	}
+	if _, err := conn.ExecContext(ctx, `UPDATE dbo.schema_migrations SET checksum=checksum WHERE version=1`); err == nil {
+		t.Fatal("runtime principal could update migration ledger")
+	}
+	if _, err := conn.ExecContext(ctx, `CREATE TABLE dbo.runtime_permission_escape(id int)`); err == nil {
+		t.Fatal("runtime principal could create schema objects")
+	}
+	var lockStatus int
+	if err := conn.QueryRowContext(ctx, `DECLARE @status int; EXEC @status=sys.sp_getapplock @Resource=N'sideyard-runtime-permission-test',@LockMode=N'Exclusive',@LockOwner=N'Session',@LockTimeout=1000; SELECT @status`).Scan(&lockStatus); err != nil || lockStatus < 0 {
+		t.Fatal("runtime application lock rejected", lockStatus, err)
+	}
+	if _, err := conn.ExecContext(ctx, `EXEC sys.sp_releaseapplock @Resource=N'sideyard-runtime-permission-test',@LockOwner=N'Session'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.ExecContext(ctx, `REVERT; SELECT 1;`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.ExecContext(ctx, `GRANT CREATE TABLE TO sideyard_runtime_test; EXECUTE AS USER=N'sideyard_runtime_test'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkRuntimePermissions(ctx, conn); err == nil {
+		t.Fatal("overprivileged runtime principal passed readiness")
+	}
+	if _, err := conn.ExecContext(ctx, `REVERT; SELECT 1;`); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSQLServerRuntimePrincipalBootstrapRejectsInvalidClientIdentity(t *testing.T) {
+	p := testPool(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if err := p.PrepareRuntimePrincipal(ctx, "not-an-id"); err == nil {
+		t.Fatal("invalid runtime client ID accepted")
+	}
+}

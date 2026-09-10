@@ -21,6 +21,7 @@ const developmentSessionSecret = "dev-insecure-change-me"
 type RuntimeLimits struct {
 	MaxRequestBodyBytes int64
 	MaxMultipartMemory  int64
+	RequestTimeout      time.Duration
 	ReadHeaderTimeout   time.Duration
 	ReadTimeout         time.Duration
 	WriteTimeout        time.Duration
@@ -37,21 +38,23 @@ type OwnerCredentials struct {
 }
 
 type Config struct {
-	Environment           Environment
-	Address               string
-	DatabaseBackend       string
-	AzureSQL              AzureSQLConfig
-	DatabaseURL           string
-	SessionSecret         string
-	PublicURL             *url.URL
-	EnableDevRoutes       bool
-	EnablePublicDemo      bool
-	SignupAllowlist       map[string]struct{}
-	BootstrapOwner        OwnerCredentials
-	ProvisionOwner        OwnerCredentials
-	RuntimeLimits         RuntimeLimits
-	InterestNotifications InterestNotificationConfig
-	AzurePhotos           AzurePhotoConfig
+	Environment             Environment
+	Address                 string
+	DatabaseBackend         string
+	AzureSQL                AzureSQLConfig
+	AzureSQLRuntimeClientID string
+	DatabaseURL             string
+	SessionSecret           string
+	PublicURL               *url.URL
+	EnableDevRoutes         bool
+	EnablePublicDemo        bool
+	EnableAzureSQLHTTP      bool
+	SignupAllowlist         map[string]struct{}
+	BootstrapOwner          OwnerCredentials
+	ProvisionOwner          OwnerCredentials
+	RuntimeLimits           RuntimeLimits
+	InterestNotifications   InterestNotificationConfig
+	AzurePhotos             AzurePhotoConfig
 }
 
 func LoadConfig(getenv func(string) string) (Config, error) {
@@ -60,6 +63,7 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 		RuntimeLimits: RuntimeLimits{
 			MaxRequestBodyBytes: 8 << 20,
 			MaxMultipartMemory:  1 << 20,
+			RequestTimeout:      0,
 			ReadHeaderTimeout:   10 * time.Second,
 			ReadTimeout:         15 * time.Second,
 			WriteTimeout:        20 * time.Second,
@@ -102,6 +106,10 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 		if err != nil {
 			return Config{}, err
 		}
+		config.AzureSQLRuntimeClientID = strings.TrimSpace(getenv("AZURE_SQL_RUNTIME_CLIENT_ID"))
+		if err := validateRecordIDs(config.AzureSQLRuntimeClientID); err != nil {
+			return Config{}, fmt.Errorf("AZURE_SQL_RUNTIME_CLIENT_ID must be a client identifier")
+		}
 	}
 	config.SessionSecret = getenv("SESSION_SECRET")
 	if config.Environment == EnvironmentDevelopment && config.SessionSecret == "" {
@@ -109,12 +117,19 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 	}
 	config.EnableDevRoutes = parseBool(getenv("ENABLE_DEV_ROUTES"))
 	config.EnablePublicDemo = parseBool(getenv("ENABLE_PUBLIC_DEMO"))
+	config.EnableAzureSQLHTTP = parseBool(getenv("ENABLE_AZURE_SQL_HTTP"))
 	config.SignupAllowlist = parseEmailAllowlist(getenv("SIGNUP_ALLOWLIST"))
 	config.BootstrapOwner = ownerCredentialsFromEnv(getenv, "BOOTSTRAP")
 	if config.BootstrapOwner.ShopName == "" {
 		config.BootstrapOwner.ShopName = getenv("SHOP_NAME")
 	}
 	config.ProvisionOwner = ownerCredentialsFromEnv(getenv, "OWNER")
+	if config.DatabaseBackend == "azure_sql" && config.EnableAzureSQLHTTP {
+		config.RuntimeLimits.RequestTimeout = 80 * time.Second
+		config.RuntimeLimits.ReadTimeout = 90 * time.Second
+		config.RuntimeLimits.WriteTimeout = 90 * time.Second
+		config.RuntimeLimits.ShutdownTimeout = 100 * time.Second
+	}
 
 	publicURL, err := parsePublicURL(getenv("PUBLIC_URL"), config.Environment, port)
 	if err != nil {
@@ -139,6 +154,9 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 	if config.RuntimeLimits.MaxMultipartMemory > config.RuntimeLimits.MaxRequestBodyBytes {
 		return Config{}, fmt.Errorf("MAX_MULTIPART_MEMORY_BYTES must not exceed MAX_REQUEST_BODY_BYTES")
 	}
+	if config.RuntimeLimits.RequestTimeout, err = parsePositiveDuration(getenv("HTTP_REQUEST_TIMEOUT"), config.RuntimeLimits.RequestTimeout); err != nil {
+		return Config{}, fmt.Errorf("HTTP_REQUEST_TIMEOUT must be a positive duration")
+	}
 	if config.RuntimeLimits.ReadHeaderTimeout, err = parsePositiveDuration(getenv("HTTP_READ_HEADER_TIMEOUT"), config.RuntimeLimits.ReadHeaderTimeout); err != nil {
 		return Config{}, fmt.Errorf("HTTP_READ_HEADER_TIMEOUT must be a positive duration")
 	}
@@ -153,6 +171,12 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 	}
 	if config.RuntimeLimits.ShutdownTimeout, err = parsePositiveDuration(getenv("HTTP_SHUTDOWN_TIMEOUT"), config.RuntimeLimits.ShutdownTimeout); err != nil {
 		return Config{}, fmt.Errorf("HTTP_SHUTDOWN_TIMEOUT must be a positive duration")
+	}
+	if config.RuntimeLimits.RequestTimeout > 0 && (config.RuntimeLimits.RequestTimeout >= config.RuntimeLimits.ReadTimeout || config.RuntimeLimits.RequestTimeout >= config.RuntimeLimits.WriteTimeout) {
+		return Config{}, fmt.Errorf("HTTP_REQUEST_TIMEOUT must be shorter than HTTP_READ_TIMEOUT and HTTP_WRITE_TIMEOUT")
+	}
+	if config.RuntimeLimits.RequestTimeout > 0 && (config.RuntimeLimits.ShutdownTimeout <= config.RuntimeLimits.ReadTimeout || config.RuntimeLimits.ShutdownTimeout <= config.RuntimeLimits.WriteTimeout) {
+		return Config{}, fmt.Errorf("HTTP_SHUTDOWN_TIMEOUT must be longer than HTTP_READ_TIMEOUT and HTTP_WRITE_TIMEOUT")
 	}
 	if config.RuntimeLimits.AuthMaxAttempts, err = parsePositiveInt(getenv("AUTH_MAX_ATTEMPTS"), config.RuntimeLimits.AuthMaxAttempts); err != nil {
 		return Config{}, fmt.Errorf("AUTH_MAX_ATTEMPTS must be a positive integer")
@@ -177,6 +201,28 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 	}
 	if config.EnablePublicDemo && config.Environment != EnvironmentStaging && config.Environment != EnvironmentProduction {
 		return Config{}, fmt.Errorf("ENABLE_PUBLIC_DEMO is allowed only in staging or production")
+	}
+	if config.DatabaseBackend == "azure_sql" {
+		if config.Environment != EnvironmentStaging || !config.EnableAzureSQLHTTP {
+			return Config{}, fmt.Errorf("Azure SQL HTTP runtime requires explicit staging opt-in")
+		}
+		if !strings.HasPrefix(strings.ToLower(config.AzureSQL.Server), "sideyard-staging-") || config.AzureSQL.Database != "sideyard" {
+			return Config{}, fmt.Errorf("Azure SQL HTTP target does not match staging")
+		}
+		if config.AzureSQL.AuthMode != "client_secret" {
+			return Config{}, fmt.Errorf("Azure SQL HTTP runtime requires client-secret authentication")
+		}
+		if config.AzureSQLRuntimeClientID != config.AzureSQL.ClientID {
+			return Config{}, fmt.Errorf("Azure SQL HTTP credential must match AZURE_SQL_RUNTIME_CLIENT_ID")
+		}
+		if config.BootstrapOwner != (OwnerCredentials{}) {
+			return Config{}, fmt.Errorf("Azure SQL HTTP runtime does not perform startup owner provisioning")
+		}
+		if config.RuntimeLimits.RequestTimeout != 80*time.Second || config.RuntimeLimits.ReadTimeout != 90*time.Second || config.RuntimeLimits.WriteTimeout != 90*time.Second || config.RuntimeLimits.ShutdownTimeout != 100*time.Second {
+			return Config{}, fmt.Errorf("Azure SQL HTTP timeout envelope must remain 80s/90s/90s/100s")
+		}
+	} else if config.EnableAzureSQLHTTP {
+		return Config{}, fmt.Errorf("ENABLE_AZURE_SQL_HTTP requires DATABASE_BACKEND=azure_sql")
 	}
 	return config, nil
 }

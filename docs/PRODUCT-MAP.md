@@ -13,14 +13,14 @@ for the distinction between provisioned resources and deployed app behavior.
 
 ## Availability snapshot
 
-Reviewed September 10, 2026 against staging release `3a2394f` and the recorded
+Reviewed September 10, 2026 against staging release `df50643` and the recorded
 release verification. These are verified release states, not a live deployment monitor.
 
 | Label | Meaning |
 | --- | --- |
 | **Live** | Available in production at [getsideyard.com](https://getsideyard.com), source `ae6f16a`, and on staging. The legacy ClubDue hostname remains supported. |
-| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), release `3a2394f`: standalone jobs/site surveys, the single-line work-status badge fix, configured private Azure photo storage, native-compatible CSV import behavior, and a staging-only Azure SQL operator boundary. |
-| **Conditional** | Implemented but requires explicit deployment configuration; not a promise of availability to clients. |
+| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), release `df50643`: standalone jobs/site surveys, the single-line work-status badge fix, configured private Azure photo storage, native-compatible CSV import behavior, and a staging-only Azure SQL operator boundary. The deployed web application still uses PostgreSQL. |
+| **Conditional** | Implemented but requires explicit deployment configuration; this includes the staging-only lazy Azure SQL HTTP runtime and its 80-second total request budget. Conditional behavior is not a promise of availability to clients. |
 
 Unless marked otherwise, catalog nodes are **Live**. “Signed in” means a user
 of the current shop; “Owner” means the handler additionally requires the owner
@@ -667,9 +667,18 @@ CSS/JS/icons and sample files under `/static/`, operational probes (`/healthz`,
 `/livez`, `/readyz`, `/rollback-safetyz`), disabled deployment-only development
 seeding (`POST /dev/seed`) and the legacy no-database sample screen. Those are
 assets, operator tools or a development fallback, not client product pages.
-The staging-only native `migrate`, `check-db`, and `maintenance` commands are
+The staging-only native `migrate`, `check-db`, `bootstrap-runtime`, and `maintenance` commands are
 documented in the [Azure runbook](../infra/azure/README.md#staging-sql-operator-boundary).
-They do not add a page, and Azure SQL HTTP startup remains disabled.
+They do not add a page. The conditional Azure SQL web runtime must use a distinct
+contained Entra principal with application DML but no schema or migration-ledger
+write permission. It opens connections lazily, so LAND, THANKS, LOGIN, SIGNUP,
+DEMO, static assets and `/livez` can render without waking SQL; `/readyz`
+deliberately wakes SQL and verifies the fixed external-user alias, exact declared
+application SID, schema and effective permissions.
+The runtime is restricted to the exact staging database and an explicit
+`ENABLE_AZURE_SQL_HTTP=1` configuration. Its request, HTTP read/write, graceful
+shutdown and outer browser/proxy/probe budgets are fixed at 80, 90, 100 and 110 seconds.
+The recorded staging deployment does not select this conditional runtime.
 POST-only actions are recorded under their originating catalog page instead of
 inventing extra screens. External phone/email/Maps destinations are documented
 as page features rather than Sideyard pages.

@@ -22,6 +22,17 @@ trap cleanup EXIT
 
 python3 "$ROOT/scripts/test-backup-auth.py"
 
+# Keep every outer transport beyond the Azure request deadline and keep the
+# container stop grace beyond the application's shutdown window.
+grep -q -- '--stop-timeout 110' "$ROOT/scripts/droplet-deploy.sh"
+grep -q 'deadline=$((SECONDS + 110))' "$ROOT/scripts/droplet-deploy.sh"
+grep -q 'proxy_read_timeout 110s; # sideyard-request-envelope' "$ROOT/scripts/droplet-deploy.sh"
+grep -q 'proxy_send_timeout 110s; # sideyard-request-envelope' "$ROOT/scripts/droplet-deploy.sh"
+grep -q 'client_body_timeout 110s; # sideyard-request-envelope' "$ROOT/scripts/droplet-deploy.sh"
+grep -q 'curl() { command curl --max-time 110 "$@"; }' "$ROOT/scripts/smoke-test.sh"
+grep -q 'setTimeout(() => controller.abort(), 110000)' "$ROOT/internal/app/static/visits.js"
+grep -q 'proxy_read_timeout 110s; # sideyard-request-envelope' "$ROOT/scripts/nginx/sideyard.conf"
+
 # These validation checks run inside a disposable Docker shell. The helper's
 # narrow plan seam exercises rollout state selection without a droplet, nginx,
 # registry access, or a way to mutate real deployment state.
@@ -61,6 +72,50 @@ fi
   'release-previous=8083 candidate=8083 active=8083 previous=28083' ]
 [ "$(run_deploy_helper clubdue 8083 -e CLUBDUE_DEPLOY_TEST_PLAN=rollback)" = \
   'proxy=8083 active=8083 previous=28083' ]
+
+deploy_mock="$WORK_DIR/deploy-mock"
+mkdir -p "$deploy_mock"
+cat > "$deploy_mock/docker" <<'SH'
+#!/usr/bin/env sh
+printf '%s\n' "$*" >> "$CLUBDUE_DEPLOY_TEST_DOCKER_LOG"
+case "$1 $2" in
+  'container inspect') exit 0 ;;
+  'inspect -f') printf 'true\n'; exit 0 ;;
+  'stop --timeout') exit 0 ;;
+  'rm clubdue-staging-test-running') exit 0 ;;
+esac
+exit 1
+SH
+chmod 755 "$deploy_mock/docker"
+chmod 777 "$deploy_mock"
+deploy_log="$deploy_mock/deploy-docker.log"
+: > "$deploy_log"
+chmod 666 "$deploy_log"
+run_deploy_helper clubdue-staging 8082 \
+  -v "$deploy_mock/docker:/usr/local/bin/docker:ro" \
+  -e CLUBDUE_DEPLOY_TEST_DOCKER_LOG=/test-output/deploy-docker.log \
+  -v "$deploy_mock:/test-output" \
+  -e CLUBDUE_DEPLOY_TEST_PLAN=cleanup >/dev/null
+grep -Fx 'stop --timeout 110 clubdue-staging-test-running' "$deploy_log"
+grep -Fx 'rm clubdue-staging-test-running' "$deploy_log"
+if grep -Eq 'rm .*-[fF]($| )' "$deploy_log"; then
+  echo 'deploy cleanup used forced removal' >&2
+  exit 1
+fi
+
+# Apply the same managed-line replacement as switch_proxy to a fresh template,
+# then let nginx reject duplicate or invalid timeout directives.
+nginx_candidate="$WORK_DIR/sideyard.conf"
+cp "$ROOT/scripts/nginx/sideyard.conf" "$nginx_candidate"
+sed -i 's/__CLUBDUE_PORT__/8083/' "$nginx_candidate"
+sed -i '/^[[:space:]]*client_max_body_size 8m; # sideyard-upload-limit$/d' "$nginx_candidate"
+sed -i '/# sideyard-request-envelope$/d' "$nginx_candidate"
+sed -E -i '/proxy_pass[[:space:]]+http:\/\/127\.0\.0\.1:8083;/a\        client_max_body_size 8m; # sideyard-upload-limit\n        client_body_timeout 110s; # sideyard-request-envelope\n        proxy_send_timeout 110s; # sideyard-request-envelope\n        proxy_read_timeout 110s; # sideyard-request-envelope\n        send_timeout 110s; # sideyard-request-envelope' "$nginx_candidate"
+for directive in client_body_timeout proxy_send_timeout proxy_read_timeout send_timeout; do
+  [ "$(grep -c "^[[:space:]]*${directive} 110s; # sideyard-request-envelope$" "$nginx_candidate")" = 1 ]
+done
+sed -E -i 's/listen 80;/listen 8081;/; s/listen 443 ssl;/listen 8080;/; /^ *ssl_(certificate|certificate_key|dhparam) /d; /^ *include \/etc\/letsencrypt\//d' "$nginx_candidate"
+docker run --rm -v "$nginx_candidate:/etc/nginx/conf.d/default.conf:ro" nginx:1.27-alpine nginx -t >/dev/null
 
 wait_for_postgres() {
   local container="$1"

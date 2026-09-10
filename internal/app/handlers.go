@@ -325,12 +325,21 @@ func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not ready", http.StatusServiceUnavailable)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-	defer cancel()
-	if err := s.store.db.Pool.Ping(ctx); err != nil {
-		log.Printf("readiness check failed request_id=%s", requestIDFromContext(r.Context()))
-		http.Error(w, "not ready", http.StatusServiceUnavailable)
-		return
+	if s.config.DatabaseBackend == "azure_sql" {
+		runtime, ok := s.store.db.Pool.(interface{ CheckRuntime(context.Context) error })
+		if !ok || runtime.CheckRuntime(r.Context()) != nil {
+			log.Printf("readiness schema check failed request_id=%s", requestIDFromContext(r.Context()))
+			http.Error(w, "not ready", http.StatusServiceUnavailable)
+			return
+		}
+	} else {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		if err := s.store.db.Pool.Ping(ctx); err != nil {
+			log.Printf("readiness check failed request_id=%s", requestIDFromContext(r.Context()))
+			http.Error(w, "not ready", http.StatusServiceUnavailable)
+			return
+		}
 	}
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok"))

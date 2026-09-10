@@ -2,8 +2,74 @@ package sqlserver
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 )
+
+type contextRowQueryer interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+// CheckRuntime verifies the effective application principal before checking
+// schema compatibility. Readiness fails when a credential lacks application
+// DML or has DDL/ledger-write authority, including an administrator credential.
+func (p *Pool) CheckRuntime(ctx context.Context) error {
+	if err := checkRuntimeIdentity(ctx, p.db, p.runtimeClientID); err != nil {
+		return err
+	}
+	if err := checkRuntimePermissions(ctx, p.db); err != nil {
+		return err
+	}
+	return p.CheckSchema(ctx)
+}
+
+func checkRuntimeIdentity(ctx context.Context, queryer contextRowQueryer, expectedClientID string) error {
+	if !identifierPattern.MatchString(expectedClientID) {
+		return fmt.Errorf("SQL Server runtime identity is not configured")
+	}
+	var name, principalType string
+	var sidMatches int
+	if err := queryer.QueryRowContext(ctx, `SELECT name,type,
+		CASE WHEN sid=CONVERT(varbinary(16),CONVERT(uniqueidentifier,@p1)) THEN 1 ELSE 0 END
+		FROM sys.database_principals WHERE name=USER_NAME()`, expectedClientID).Scan(&name, &principalType, &sidMatches); err != nil {
+		return fmt.Errorf("check SQL Server runtime identity: %w", err)
+	}
+	if name != runtimePrincipalName || principalType != "E" || sidMatches != 1 {
+		return fmt.Errorf("SQL Server runtime identity is incompatible")
+	}
+	return nil
+}
+
+func checkRuntimePermissions(ctx context.Context, queryer contextRowQueryer) error {
+	var selectSchema, insertSchema, updateSchema, deleteSchema int
+	var selectLedger, insertLedger, updateLedger, deleteLedger int
+	var createTable, alterUsers, controlDatabase, alterSchema int
+	err := queryer.QueryRowContext(ctx, `SELECT
+		HAS_PERMS_BY_NAME(N'dbo',N'SCHEMA',N'SELECT'),
+		HAS_PERMS_BY_NAME(N'dbo',N'SCHEMA',N'INSERT'),
+		HAS_PERMS_BY_NAME(N'dbo',N'SCHEMA',N'UPDATE'),
+		HAS_PERMS_BY_NAME(N'dbo',N'SCHEMA',N'DELETE'),
+		HAS_PERMS_BY_NAME(N'dbo.schema_migrations',N'OBJECT',N'SELECT'),
+		HAS_PERMS_BY_NAME(N'dbo.schema_migrations',N'OBJECT',N'INSERT'),
+		HAS_PERMS_BY_NAME(N'dbo.schema_migrations',N'OBJECT',N'UPDATE'),
+		HAS_PERMS_BY_NAME(N'dbo.schema_migrations',N'OBJECT',N'DELETE'),
+		HAS_PERMS_BY_NAME(DB_NAME(),N'DATABASE',N'CREATE TABLE'),
+		HAS_PERMS_BY_NAME(DB_NAME(),N'DATABASE',N'ALTER ANY USER'),
+		HAS_PERMS_BY_NAME(DB_NAME(),N'DATABASE',N'CONTROL'),
+		HAS_PERMS_BY_NAME(N'dbo',N'SCHEMA',N'ALTER')`).Scan(
+		&selectSchema, &insertSchema, &updateSchema, &deleteSchema,
+		&selectLedger, &insertLedger, &updateLedger, &deleteLedger,
+		&createTable, &alterUsers, &controlDatabase, &alterSchema,
+	)
+	if err != nil {
+		return fmt.Errorf("check SQL Server runtime permissions: %w", err)
+	}
+	if selectSchema != 1 || insertSchema != 1 || updateSchema != 1 || deleteSchema != 1 || selectLedger != 1 ||
+		insertLedger != 0 || updateLedger != 0 || deleteLedger != 0 || createTable != 0 || alterUsers != 0 || controlDatabase != 0 || alterSchema != 0 {
+		return fmt.Errorf("SQL Server runtime permissions are incompatible")
+	}
+	return nil
+}
 
 // CheckSchema is read-only: exact migration coverage/checksums plus the isolation
 // settings required by native calendar snapshots and parent locking semantics.

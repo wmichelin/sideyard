@@ -272,5 +272,10 @@ func writeRequestParseError(w http.ResponseWriter, err error) {
 		http.Error(w, "request too large", http.StatusRequestEntityTooLarge)
 		return
 	}
+	var timeout net.Error
+	if errors.As(err, &timeout) && timeout.Timeout() {
+		http.Error(w, "request timed out; please try again", http.StatusRequestTimeout)
+		return
+	}
 	http.Error(w, "bad form", http.StatusBadRequest)
 }

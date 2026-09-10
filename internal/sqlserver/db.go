@@ -22,14 +22,20 @@ import (
 var azureHost = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.database\.windows\.net$`)
 var databaseName = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_-]{0,127}$`)
 
-type Pool struct{ db *sql.DB }
+type Pool struct {
+	db              *sql.DB
+	runtimeClientID string
+}
 
 // NewAzure constructs a lazy, Entra-only connection pool. It neither connects
 // nor migrates. The caller owns a long-lived credential so reconnects reuse its
 // token cache. SQL passwords and TLS bypass settings are deliberately absent.
-func NewAzure(server, name string, credential azcore.TokenCredential) (*Pool, error) {
+func NewAzure(server, name string, credential azcore.TokenCredential, runtimeClientID ...string) (*Pool, error) {
 	if credential == nil {
 		return nil, fmt.Errorf("Azure SQL requires an Entra credential")
+	}
+	if len(runtimeClientID) > 1 || (len(runtimeClientID) == 1 && runtimeClientID[0] != "" && !identifierPattern.MatchString(runtimeClientID[0])) {
+		return nil, fmt.Errorf("Azure SQL runtime client ID must be a UUID")
 	}
 	cfg, err := azureConfig(server, name)
 	if err != nil {
@@ -46,10 +52,14 @@ func NewAzure(server, name string, credential azcore.TokenCredential) (*Pool, er
 		return nil, fmt.Errorf("initialize Azure SQL connector")
 	}
 	connector.SessionInitSQL = sessionInitSQL
-	return openDriverConnector(resumingConnector{
+	pool := openDriverConnector(resumingConnector{
 		Connector: nativeConnector{connector}, budget: 80 * time.Second,
 		wait: waitForResume,
-	}), nil
+	})
+	if len(runtimeClientID) == 1 {
+		pool.runtimeClientID = runtimeClientID[0]
+	}
+	return pool, nil
 }
 
 // ValidateAzureEndpoint checks names without creating credentials or connecting.

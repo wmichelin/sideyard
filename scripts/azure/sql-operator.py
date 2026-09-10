@@ -30,13 +30,25 @@ def run(command, *, cwd, environment=None, capture=False):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("environment", choices=("staging",))
-    parser.add_argument("command", choices=("migrate", "check-db", "maintenance"))
+    parser.add_argument("command", choices=("migrate", "check-db", "maintenance", "bootstrap-runtime"))
+    parser.add_argument(
+        "--runtime-client-id",
+        help="Entra application/client ID; required only for bootstrap-runtime",
+    )
     parser.add_argument(
         "--terraform-directory",
         type=Path,
         help="initialized environments directory; defaults to this checkout",
     )
     args = parser.parse_args()
+    if args.command == "bootstrap-runtime":
+        if not args.runtime_client_id or not re.fullmatch(
+            r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}",
+            args.runtime_client_id,
+        ):
+            parser.error("bootstrap-runtime requires a UUID --runtime-client-id")
+    elif args.runtime_client_id:
+        parser.error("--runtime-client-id is valid only with bootstrap-runtime")
 
     root = Path(__file__).resolve().parents[2]
     terraform_directory = (
@@ -108,7 +120,7 @@ def main():
         command_environment = operator_environment.copy()
         for key in (
             "DATABASE_URL", "AZURE_SQL_CLIENT_ID", "AZURE_SQL_CLIENT_SECRET",
-            "SESSION_SECRET", "PUBLIC_URL",
+            "AZURE_SQL_RUNTIME_CLIENT_ID", "SESSION_SECRET", "PUBLIC_URL",
         ):
             command_environment.pop(key, None)
         command_environment.update(
@@ -121,6 +133,8 @@ def main():
                 "AZURE_SQL_AUTH_MODE": "azure_cli",
             }
         )
+        if args.runtime_client_id:
+            command_environment["AZURE_SQL_RUNTIME_CLIENT_ID"] = args.runtime_client_id
         run(
             [str(Path(temporary) / "clubdue"), args.command],
             cwd=root,

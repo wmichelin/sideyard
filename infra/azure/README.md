@@ -126,11 +126,73 @@ check. `maintenance` checks the schema first, retires only the exact legacy
 staging demo, then runs visit, demo-expiry, recurrence, renewal, and digest work.
 It is repeatable and stops on its first failure.
 
+The staging HTTP runtime uses a separate Entra application and a contained
+database user. Create its credential once, without an Azure resource role, then
+bootstrap only its database permissions with the administrator operator:
+
+```sh
+export SIDEYARD_SQL_RUNTIME_CLIENT_ID=292cb17a-202e-4489-bea7-f5ded18fcca8
+python3 scripts/azure/provision-sql-runtime.py staging \
+  --expected-client-id "$SIDEYARD_SQL_RUNTIME_CLIENT_ID"
+python3 scripts/azure/sql-operator.py staging bootstrap-runtime \
+  --runtime-client-id "$SIDEYARD_SQL_RUNTIME_CLIENT_ID"
+python3 scripts/azure/sql-operator.py staging check-db
+```
+
+The first command derives the exact database and subscription from staging
+Terraform state, checks the signed-in Azure CLI account, and verifies the
+tracked `sideyard-staging-sql-runtime` identity, credential key and expiry. Its
+secret stays in the mode-0600
+`~/.config/sideyard-azure/staging-sql-runtime.env`. On the identity's first-ever
+creation, omit `--expected-client-id` and supply `--expires`; an exact
+pre-existing display name is otherwise rejected unless its client ID is already
+in the protected local file or explicitly supplied. The command creates no
+Azure RBAC assignment and exits nonzero when the key is missing, mismatched,
+expired, or within 30 days of expiry. Run this check at least monthly and route
+failure to the operational email alert before activation.
+
+The second command creates the fixed contained SQL user from the application ID,
+grants application DML through `sideyard_app_runtime`, and denies migration-ledger
+writes. It is repeatable and rejects a different identity behind the fixed alias.
+Runtime configuration must include both `AZURE_SQL_CLIENT_ID` and the equal
+`AZURE_SQL_RUNTIME_CLIENT_ID`; `/readyz` verifies the fixed alias, external-user
+type, exact SID, permissions and schema. Do not copy the credential into Terraform
+state, shell history, logs, the Blob identity or the administrator operator.
+
+Install the protected file only after the source revision has passed review. Use
+a root-only temporary transfer and preserve mode 0600; never paste the secret
+into a command, workflow input or log. Before selecting Azure in the staging
+deployment, start the reviewed image on an unproxied loopback port with
+`--env-file staging-sql-runtime.env`, `APP_ENV=staging`, a strong session secret
+and the staging public URL. Check the public entry pages and `/livez` first,
+then `/readyz`, an isolated demo POST and its dashboard. Stop it with
+`docker stop --timeout 110` followed by `docker rm`.
+
+Rotate without an outage by retaining both keys until the new one passes that
+canary:
+
+```sh
+python3 scripts/azure/provision-sql-runtime.py staging --rotate \
+  --expected-client-id "$SIDEYARD_SQL_RUNTIME_CLIENT_ID" \
+  --expires 2028-09-10T23:59:59Z
+# Install the new mode-0600 file and run the unproxied canary.
+python3 scripts/azure/provision-sql-runtime.py staging \
+  --expected-client-id "$SIDEYARD_SQL_RUNTIME_CLIENT_ID" \
+  --revoke-key-id OLD_KEY_ID_REPORTED_BY_ROTATION
+```
+
+Rotation saves the old file as `staging-sql-runtime.env.previous`. Before old-key
+revocation, `--rollback-rotation` restores it atomically; reinstall it and rerun
+the canary, then revoke the failed replacement key. Successful old-key revocation
+removes the saved file. The ordinary check reports any remaining stale key IDs.
+Never revoke the key named by the current protected file.
+
 Production commands are rejected by this slice. Enabling production requires a
 separate reviewed implementation with an exact artifact gate, verified backup
 and reconciliation evidence, explicit approval, and least-privilege production
-identities. The future HTTP runtime also needs a distinct client identity and
-contained database grants; do not grant DDL to the Blob photo or backup identities.
+identities. The conditional HTTP runtime requires this distinct client identity
+and its contained database grants; do not grant DDL to it or reuse the Blob photo
+or backup identities.
 
 If access fails, confirm the CLI account and staging firewall allowlist, then
 change the allowlist through a reviewed Terraform plan. Do not add an ad hoc SQL

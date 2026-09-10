@@ -38,7 +38,13 @@ func loadDatabaseOperatorConfig(getenv func(string) string) (Config, error) {
 	if !strings.HasPrefix(strings.ToLower(azureSQL.Server), expectedServerPrefix) || azureSQL.Database != "sideyard" {
 		return Config{}, errors.New("Azure SQL operator target does not match APP_ENV")
 	}
-	return Config{Environment: environment, DatabaseBackend: "azure_sql", AzureSQL: azureSQL}, nil
+	runtimeClientID := strings.TrimSpace(getenv("AZURE_SQL_RUNTIME_CLIENT_ID"))
+	if runtimeClientID != "" {
+		if err := validateRecordIDs(runtimeClientID); err != nil {
+			return Config{}, errors.New("AZURE_SQL_RUNTIME_CLIENT_ID must be a client identifier")
+		}
+	}
+	return Config{Environment: environment, DatabaseBackend: "azure_sql", AzureSQL: azureSQL, AzureSQLRuntimeClientID: runtimeClientID}, nil
 }
 
 func loadAzureSQLConfig(getenv func(string) string) (AzureSQLConfig, error) {
@@ -80,7 +86,7 @@ func openConfiguredDB(ctx context.Context, c Config) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	return openAzureDatabase(c.AzureSQL, credential)
+	return openAzureDatabase(c.AzureSQL, credential, c.AzureSQLRuntimeClientID)
 }
 func newAzureSQLCredential(c AzureSQLConfig) (azcore.TokenCredential, error) {
 	switch c.AuthMode {
@@ -126,8 +132,8 @@ func (c *cachedAzureSQLCredential) GetToken(ctx context.Context, options policy.
 	c.token = token
 	return token, nil
 }
-func openAzureDatabase(c AzureSQLConfig, credential azcore.TokenCredential) (*DB, error) {
-	pool, err := sqlserver.NewAzure(c.Server, c.Database, credential)
+func openAzureDatabase(c AzureSQLConfig, credential azcore.TokenCredential, runtimeClientID ...string) (*DB, error) {
+	pool, err := sqlserver.NewAzure(c.Server, c.Database, credential, runtimeClientID...)
 	if err != nil {
 		return nil, err
 	}

@@ -21,6 +21,23 @@ func newHTTPServer(config Config, handler http.Handler) *http.Server {
 	}
 }
 
+// The request deadline is installed outside security and authentication so it
+// covers body parsing, a cold database connection, domain work and rendering.
+// Handlers retain control of their response; this middleware only cancels work.
+func requestDeadlineHandler(timeout time.Duration, next http.Handler) http.Handler {
+	if timeout <= 0 {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		deadline := time.Now().Add(timeout)
+		ctx, cancel := context.WithDeadline(r.Context(), deadline)
+		defer cancel()
+		controller := http.NewResponseController(w)
+		_ = controller.SetReadDeadline(deadline)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
 // serveHTTP drains in-flight HTTP work before the application releases its
 // database pool. The caller owns the signal context and resource cleanup.
 func serveHTTP(ctx context.Context, config Config, handler http.Handler, listener net.Listener, closeResources func()) error {

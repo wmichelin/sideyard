@@ -1556,3 +1556,52 @@ an earliest restore point of `2026-09-09T22:02:16Z`.
   `ghcr.io/wmichelin/clubdue@sha256:fefb21716b7821fcc8b3718e937af767a10ca3141870fdb601c5ce8d32b6ee28`.
   The complete staging smoke passed afterward. Live staging HTTP remains on
   PostgreSQL; the initialized Azure database has no client traffic.
+
+### Native HTTP runtime safety and real Azure canary — September 10, 2026
+
+The next staging-only slice constructs Azure SQL lazily and leaves PostgreSQL's
+startup and timeout behavior unchanged. Azure web selection requires the exact
+staging server/database, client-secret authentication and the explicit
+`ENABLE_AZURE_SQL_HTTP=1` flag. It performs no migration, owner bootstrap,
+legacy-demo retirement, scheduled maintenance or notification delivery before
+listening. Public entry pages and `/livez` remain database-free; `/readyz`
+deliberately verifies the complete schema plus effective least-privilege grants.
+The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
+100 and 110 seconds. The deployed staging site does not select this runtime yet.
+
+- A dedicated `sideyard-staging-sql-runtime` Entra application was created with
+  client ID `292cb17a-202e-4489-bea7-f5ded18fcca8`; its local credential file is
+  mode 0600. Azure role-assignment readback for principal
+  `dc7653f0-5220-40d0-be69-374e146c671c` returned an empty list.
+- The administrator operator created the contained `TYPE = E` user from that
+  exact application ID, added it to `sideyard_app_runtime`, granted only schema
+  DML and denied migration-ledger writes. Repeating identity provisioning and
+  database bootstrap both passed without rotating the stored credential.
+- A local build using the real staging credential served `/`, `/login`,
+  `/signup`, `/interest/thanks`, `/demo` and `/livez` before the deliberate
+  database probe. `/readyz` then passed its schema/permission check in 1.861
+  seconds. Creating an isolated fictional demo completed in 33.040 seconds and
+  its dashboard loaded in 15.387 seconds, within the total request budget.
+- The credential was then rotated atomically into a file that pins the same
+  runtime client ID and records key `f31e2339-ba65-48d8-9174-157bffe3b9ba`
+  expiring `2027-09-10T23:59:59Z`. With the replacement key, exact alias/type/SID
+  readiness passed in 52.071 seconds; a second demo write and read passed in
+  32.618 and 15.231 seconds. The prior key was revoked only after that canary;
+  subsequent Azure metadata validation reported no stale keys.
+- The database was already online during this canary. Azure CLI exposes no
+  manual pause operation for this SQL database, so automatic pause after the
+  configured 60-minute idle period and a measured cold resume remain open
+  acceptance evidence. No staging proxy, production resource or production
+  application behavior changed.
+- The complete disposable SQL Server rehearsal passed, including runtime DML,
+  application locks, migration-ledger/DDL denials and readiness rejection after
+  deliberate overprivilege. The ordinary unit suite, vet, static build and
+  production recovery rehearsal also passed. PostgreSQL integration, CI and
+  staging deployment remain the publication gates for this source revision.
+- Final review exposed and resolved two deployment-envelope defects before
+  publication: fresh Nginx templates now use the same managed timeout markers as
+  rolling updates, and running candidates/retained containers receive
+  `docker stop --timeout 110` before removal. The rehearsal applies the real
+  template transformation and passes `nginx -t`, while a Docker command seam
+  proves graceful stop precedes removal. A forced shutdown-deadline test proves
+  socket closure and exactly-once resource cleanup.

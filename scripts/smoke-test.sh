@@ -2,6 +2,10 @@
 # Smoke-test a deployed Sideyard environment (staging or production).
 set -euo pipefail
 
+# Every external probe stays outside the app's 80-second request budget and
+# inside the 110-second browser/proxy envelope used for a cold Azure resume.
+curl() { command curl --max-time 110 "$@"; }
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/env.sh
 source "${SCRIPT_DIR}/env.sh"
@@ -138,7 +142,7 @@ fi
 DEMO_CSRF_TOKEN="$(csrf_from_file "$DEMO_ENTRY_FILE")"
 [ -n "$DEMO_CSRF_TOKEN" ]
 DEMO_SESSION_HEADERS="$WORK_DIR/demo-session.headers"
-DEMO_STATUS="$(curl -sS --max-time 20 -D "$DEMO_SESSION_HEADERS" -b "$DEMO_COOKIE_JAR" -c "$DEMO_COOKIE_JAR" -o /dev/null -w '%{http_code}' \
+DEMO_STATUS="$(curl -sS --max-time 110 -D "$DEMO_SESSION_HEADERS" -b "$DEMO_COOKIE_JAR" -c "$DEMO_COOKIE_JAR" -o /dev/null -w '%{http_code}' \
   --data-urlencode "csrf_token=$DEMO_CSRF_TOKEN" "${CLUBDUE_URL}/demo/session")"
 [ "$DEMO_STATUS" = "303" ]
 grep -Eiq '^Location:[[:space:]]*/dashboard' "$DEMO_SESSION_HEADERS"
@@ -244,7 +248,7 @@ SECOND_DEMO_ENTRY_FILE="$WORK_DIR/second-demo-entry.html"
 curl -fsS -c "$SECOND_DEMO_COOKIE_JAR" -o "$SECOND_DEMO_ENTRY_FILE" "${CLUBDUE_URL}/demo"
 SECOND_DEMO_CSRF_TOKEN="$(csrf_from_file "$SECOND_DEMO_ENTRY_FILE")"
 [ -n "$SECOND_DEMO_CSRF_TOKEN" ]
-SECOND_DEMO_STATUS="$(curl -sS --max-time 20 -b "$SECOND_DEMO_COOKIE_JAR" -c "$SECOND_DEMO_COOKIE_JAR" -o /dev/null -w '%{http_code}' \
+SECOND_DEMO_STATUS="$(curl -sS --max-time 110 -b "$SECOND_DEMO_COOKIE_JAR" -c "$SECOND_DEMO_COOKIE_JAR" -o /dev/null -w '%{http_code}' \
   --data-urlencode "csrf_token=$SECOND_DEMO_CSRF_TOKEN" "${CLUBDUE_URL}/demo/session")"
 [ "$SECOND_DEMO_STATUS" = "303" ]
 SECOND_DEMO_WORK="$(curl -fsS -b "$SECOND_DEMO_COOKIE_JAR" "${CLUBDUE_URL}/visits?filter=due")"
