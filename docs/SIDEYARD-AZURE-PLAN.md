@@ -4,9 +4,9 @@
 
 Status: implementing — user authorized Azure SQL, versioned Blob and seven-day backups.
 Last completed: both environments provisioned; staging Blob and connection foundation verified; both Azure exports restored; real idle/resume probe completed in 45 seconds.
-Now: native accounts, customer/property/photo records, assets, jobs, business setup, agreements, seasonal and recurring work verified in isolated engines; visit history verified on staging. Native renewals verified on staging; demo controls verified on staging. Native demo fixture seeding is in progress; domain imports, transfer and idle runtime wiring remain.
+Now: native accounts, customer/property/photo records, assets, jobs, business setup, agreements, seasonal and recurring work verified in isolated engines; visit history verified on staging. Native renewals verified on staging; demo controls verified on staging. Native demo fixture seeding verified on staging. Domain CSV import implementation and native transaction tests are in progress; transfer and idle runtime wiring remain.
 Next: verify both database backends and idle behavior before a reviewed database cutover.
-Evidence: demo-control staging release `c490848` verified; exact artifacts in the delivery status.
+Evidence: demo-seeding staging release `b1efeae` verified; exact artifacts in the delivery status.
 Staging: https://clubdue-staging.michelindigitalmedia.com (verified for Azure Blob; application database remains PostgreSQL).
 Blocker: no sign-in blocker. The live free SQL API requires a 60-minute idle delay; the plan below reflects that correction.
 
@@ -484,3 +484,71 @@ exact physical erasure at 168 hours: version garbage collection and soft-delete
 windows can retain billable bytes longer. Preserve existing historical backups
 until their established retention expires. Production app migration retains the
 reviewed-staging release gate; paid database overages are not authorized.
+
+
+### Native import compatibility and activation checks
+
+The native importer reports counts from its transaction. Existing PostgreSQL
+result counts remain analysis estimates. Both engines prioritize an existing
+external customer ID over matching an unclaimed manual customer. Native customer
+matching consumes manual candidates against the batch's initial property addresses
+before any property moves; PostgreSQL processes rows sequentially, so later rows
+can see earlier address changes. A historical reassignment file can therefore
+adopt a different unclaimed customer while preserving valid ownership. Review
+those mappings in the isolated transfer/import rehearsal.
+
+Native imports briefly hold an exclusive shop gate, then retain referenced rows
+and templates. Standalone activation records use shop-before-event locks too.
+Unrelated property agreements/jobs reject customer moves; only affected agreements
+included in the file can be detached and restored within the same transaction.
+No automatic replay or compensation follows an unconfirmed import commit.
+
+Before activation, measure preview and commit for 100, 1,000 and 10,000 rows,
+connection counts, and blocking of same-shop work on actual Azure. The current
+pool has zero idle connections and preview lookups use the pool individually;
+large files can incur many separate TDS connections. Local small-file results do
+not prove the supported largest files fit the deployed request timeout. Optimize
+bounded lookup batches/connection ownership if the measurements fail that gate;
+do not silently reduce published limits. Native runtime remains disabled.
+
+### Next execution slices — runtime and cutover prerequisites
+
+The six-role review after the domain import port found no remaining reachable
+PostgreSQL-only domain statement in the audited paths. This is not a runtime
+activation or transfer approval. Continue in these bounded slices:
+
+1. Explicit backend configuration and a shared lazy database factory. Preserve
+   PostgreSQL as the deployed default; Azure configuration must never fall through
+   to the no-database demo. Add bounded native `migrate`, `check-db` and `maintenance`
+   operator commands; verify schema checksums and both RCSI/Snapshot settings.
+   Route provisioning, exports and photo reconciliation through that factory.
+2. Native startup and HTTP deadlines. Serve public pages without connection,
+   migration, bootstrap or maintenance before listening. Preserve required legacy
+   demo retirement as an operator/deployment prerequisite. Apply one 80-second
+   overall request context before authentication, 90-second HTTP read/write and
+   110-second browser/proxy/probe envelopes, with a sufficient shutdown grace.
+   A connector limit per acquisition is not an overall request deadline.
+3. Correct remaining outage feedback: retain unsaved customer input rather than
+   redirect after a write error; use unavailable responses for customer/dashboard
+   reads; distinguish confirmed demo capacity from dependency failure; describe
+   interest saves as unconfirmed when the acknowledgement is lost. Keep sessions,
+   throttle budgets and bulk selections intact during outages. Error 40613 alone
+   does not prove monthly quota exhaustion. GET/demo's handler is database-free,
+   but its browser script immediately submits the database-backed demo POST.
+4. Establish one host-controlled scheduled-work owner in the existing 07:00 UTC
+   backup window. Bound notification retry windows, retain durable deferred work,
+   and keep the email-service timeout distinct from cold database operations.
+   Drain and stop retained app containers. Block cross-backend app rollback: a
+   retained PostgreSQL container must never reopen writes against stale source data
+   after Azure accepts writes. A permanent SQL leadership connection would prevent
+   idle pause, and increasing hourly retry spacing alone is insufficient.
+5. Complete native logical transfer/export/restore and asset reconciliation before
+   switching runtime configuration. Current backup commands explicitly export
+   PostgreSQL; configured Azure native retention does not replace a tested restore.
+
+Acceptance spans startup-level unavailable-SQL tests, real HTTP delayed-auth/body
+parsing, total-deadline/cancellation/shutdown checks, browser saves beyond the old
+25-second abort, no automatic write replay, compatible rollback, and actual Azure
+cold-start/large-import/idle measurements. A successful Ping alone does not verify
+schema compatibility or isolation. Keep production on the reviewed-staging and
+explicit-approval workflow throughout.

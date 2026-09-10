@@ -48,6 +48,9 @@ func Record(ctx context.Context, pool database.Pool, shopID string, event Event)
 	if !validEvent(event) {
 		return fmt.Errorf("invalid pilot activation event %q", event)
 	}
+	if pool.Dialect() == database.SQLServer {
+		return recordSQLServer(ctx, pool, shopID, event, sqlServerRecord)
+	}
 	_, err := pool.Exec(ctx, database.Statement(pool.Dialect(), `
 		INSERT INTO pilot_activation_events (shop_id, event_type)
 		VALUES ($1, $2)
@@ -58,6 +61,9 @@ func Record(ctx context.Context, pool database.Pool, shopID string, event Event)
 // RecordReturningUse records one later-day authenticated use. It avoids
 // treating the first post-provision login as retention or tracking each visit.
 func RecordReturningUse(ctx context.Context, pool database.Pool, shopID string) error {
+	if pool.Dialect() == database.SQLServer {
+		return recordSQLServer(ctx, pool, shopID, EventReturningUse, sqlServerReturningUse)
+	}
 	_, err := pool.Exec(ctx, database.Statement(pool.Dialect(), `
 		INSERT INTO pilot_activation_events (shop_id, event_type)
 		SELECT $1, $2
@@ -66,16 +72,7 @@ func RecordReturningUse(ctx context.Context, pool database.Pool, shopID string) 
 			WHERE shop_id = $1 AND event_type = 'account_created'
 			  AND occurred_at < date_trunc('day', now())
 		)
-		ON CONFLICT (shop_id, event_type) DO NOTHING`, `
-		INSERT INTO dbo.pilot_activation_events (shop_id,event_type)
-		SELECT CONVERT(uniqueidentifier,@p1),@p2 WHERE NOT EXISTS (
-		 SELECT 1 FROM dbo.pilot_activation_events WITH (UPDLOCK,HOLDLOCK)
-		 WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND event_type=@p2
-		) AND EXISTS (
-		 SELECT 1 FROM dbo.pilot_activation_events
-		 WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND event_type='account_created'
-		 AND occurred_at<CONVERT(date,SYSUTCDATETIME())
-		)`), shopID, EventReturningUse)
+		ON CONFLICT (shop_id, event_type) DO NOTHING`, sqlServerReturningUse), shopID, EventReturningUse)
 	return err
 }
 
@@ -87,3 +84,32 @@ SELECT CONVERT(uniqueidentifier,@p1),@p2 WHERE NOT EXISTS (
  SELECT 1 FROM dbo.pilot_activation_events WITH (UPDLOCK,HOLDLOCK)
  WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND event_type=@p2
 )`
+
+const sqlServerReturningUse = `
+		INSERT INTO dbo.pilot_activation_events (shop_id,event_type)
+		SELECT CONVERT(uniqueidentifier,@p1),@p2 WHERE NOT EXISTS (
+		 SELECT 1 FROM dbo.pilot_activation_events WITH (UPDLOCK,HOLDLOCK)
+		 WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND event_type=@p2
+		) AND EXISTS (
+		 SELECT 1 FROM dbo.pilot_activation_events
+		 WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND event_type='account_created'
+		 AND occurred_at<CONVERT(date,SYSUTCDATETIME())
+		)`
+
+// Standalone request events follow the same parent-first order as native work
+// and imports. A key-range lock must never precede the shop gate.
+func recordSQLServer(ctx context.Context, pool database.Pool, shopID string, event Event, statement string) error {
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	var found int
+	if err := tx.QueryRow(ctx, `SELECT 1 FROM dbo.shops WITH(HOLDLOCK) WHERE id=CONVERT(uniqueidentifier,@p1)`, shopID).Scan(&found); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, statement, shopID, event); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}

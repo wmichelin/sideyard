@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/csv"
 	"fmt"
+	"github.com/wmichelin/clubdue/internal/database"
 	"html/template"
 	"net/http"
 	"net/http/httptest"
@@ -15,12 +16,19 @@ import (
 )
 
 func TestImportPreviewShowsEveryRejectedRow(t *testing.T) {
-	ctx := context.Background()
-	db, err := openDB(ctx, integrationDatabaseURL(t))
+	db, err := openDB(context.Background(), integrationDatabaseURL(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	testImportPreviewShowsEveryRejectedRow(t, db)
+}
+func TestSQLServerImportPreviewShowsEveryRejectedRow(t *testing.T) {
+	testImportPreviewShowsEveryRejectedRow(t, sqlServerTestDB(t))
+}
+func testImportPreviewShowsEveryRejectedRow(t *testing.T, db *DB) {
+	ctx := context.Background()
+	var err error
 	for _, demo := range []bool{false, true} {
 		t.Run(fmt.Sprintf("demo=%t", demo), func(t *testing.T) {
 			clock := fixedClock{now: time.Date(2026, 9, 7, 12, 0, 0, 0, time.UTC)}
@@ -41,7 +49,7 @@ func TestImportPreviewShowsEveryRejectedRow(t *testing.T) {
 				shopID = createTestShop(t, ctx, db, fmt.Sprintf("import-errors-%d", stamp))
 				createTestUser(t, ctx, db, shopID, fmt.Sprintf("import-errors-%d@example.test", stamp))
 				var userID string
-				if err := db.Pool.QueryRow(ctx, `SELECT id FROM users WHERE shop_id = $1`, shopID).Scan(&userID); err != nil {
+				if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `SELECT id FROM users WHERE shop_id = $1`, `SELECT LOWER(CONVERT(char(36),id)) FROM dbo.users WHERE shop_id=CONVERT(uniqueidentifier,@p1)`), shopID).Scan(&userID); err != nil {
 					t.Fatal(err)
 				}
 				session, err = auth.createSession(ctx, userID)

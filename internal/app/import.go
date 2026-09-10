@@ -408,6 +408,10 @@ func (s *Store) AnalyzeImport(ctx context.Context, shopID string, rows []ImportR
 	if err != nil {
 		return ImportAnalysis{}, err
 	}
+	return analyzeImport(ctx, s.db.Pool, shopID, rows, plans)
+}
+
+func analyzeImport(ctx context.Context, q database.Queryer, shopID string, rows []ImportRow, plans []PlanTemplate) (ImportAnalysis, error) {
 	planByName := make(map[string]string, len(plans))
 	for _, p := range plans {
 		planByName[p.Name] = p.ID
@@ -426,8 +430,8 @@ func (s *Store) AnalyzeImport(ctx context.Context, shopID string, rows []ImportR
 			out.Summary.Errors++
 			out.Rows = append(out.Rows, preview)
 		}
-		if row.Error != "" {
-			reject(row.Error)
+		if message := importRowInputError(row); message != "" {
+			reject(message)
 			continue
 		}
 		if row.PlanName != "" {
@@ -437,13 +441,13 @@ func (s *Store) AnalyzeImport(ctx context.Context, shopID string, rows []ImportR
 			}
 		}
 
-		agrID, agrExists, err := s.findAgreementByExternalID(ctx, shopID, row.ExternalID)
+		agrID, agrExists, err := findAgreementByExternalID(ctx, q, shopID, row.ExternalID)
 		if err != nil {
 			return ImportAnalysis{}, err
 		}
 		if agrExists {
 			if row.PlanName != "" {
-				capturedPlan, err := s.findAgreementCapturedPlan(ctx, shopID, agrID)
+				capturedPlan, err := findAgreementCapturedPlan(ctx, q, shopID, agrID)
 				if err != nil {
 					return ImportAnalysis{}, err
 				}
@@ -452,7 +456,7 @@ func (s *Store) AnalyzeImport(ctx context.Context, shopID string, rows []ImportR
 					continue
 				}
 			}
-			existingServiceIDs, err := s.findAgreementExternalServiceIDs(ctx, shopID, agrID)
+			existingServiceIDs, err := findAgreementExternalServiceIDs(ctx, q, shopID, agrID)
 			if err != nil {
 				return ImportAnalysis{}, err
 			}
@@ -470,7 +474,7 @@ func (s *Store) AnalyzeImport(ctx context.Context, shopID string, rows []ImportR
 			}
 		}
 		if row.ServiceName != "" {
-			ownerAgreementID, scheduleExists, err := s.findServiceScheduleOwnerByExternalID(ctx, shopID, row.ServiceExternalID)
+			ownerAgreementID, scheduleExists, err := findServiceScheduleOwnerByExternalID(ctx, q, shopID, row.ServiceExternalID)
 			if err != nil {
 				return ImportAnalysis{}, err
 			}
@@ -480,7 +484,7 @@ func (s *Store) AnalyzeImport(ctx context.Context, shopID string, rows []ImportR
 			}
 		}
 
-		customerID, customerExists, err := s.findImportCustomer(ctx, shopID, row)
+		customerID, customerExists, err := findImportCustomer(ctx, q, shopID, row)
 		if err != nil {
 			return ImportAnalysis{}, err
 		}
@@ -492,7 +496,7 @@ func (s *Store) AnalyzeImport(ctx context.Context, shopID string, rows []ImportR
 			preview.Action = "new customer"
 		}
 
-		propID, propExists, err := s.findPropertyByExternalID(ctx, shopID, row.ExternalID)
+		propID, propExists, err := findPropertyByExternalID(ctx, q, shopID, row.ExternalID)
 		if err != nil {
 			return ImportAnalysis{}, err
 		}
@@ -521,7 +525,7 @@ func (s *Store) AnalyzeImport(ctx context.Context, shopID string, rows []ImportR
 		_ = customerID
 
 		if row.ServiceName != "" {
-			_, scheduleExists, err := s.findServiceScheduleByExternalID(ctx, shopID, row.ServiceExternalID)
+			_, scheduleExists, err := findServiceScheduleByExternalID(ctx, q, shopID, row.ServiceExternalID)
 			if err != nil {
 				return ImportAnalysis{}, err
 			}
@@ -540,12 +544,18 @@ func (s *Store) AnalyzeImport(ctx context.Context, shopID string, rows []ImportR
 }
 
 func (s *Store) CommitImport(ctx context.Context, shopID string, rows []ImportRow) (ImportCommitResult, error) {
+	if err := validateImportRows(shopID, rows); err != nil {
+		return ImportCommitResult{}, err
+	}
+	if s.db.Pool.Dialect() == database.SQLServer {
+		return s.commitImportSQLServer(ctx, shopID, rows)
+	}
 	analysis, err := s.AnalyzeImport(ctx, shopID, rows)
 	if err != nil {
 		return ImportCommitResult{}, err
 	}
 	if analysis.Summary.Errors > 0 {
-		return ImportCommitResult{}, fmt.Errorf("cannot commit import with %d errors", analysis.Summary.Errors)
+		return ImportCommitResult{}, firstImportAnalysisError(analysis)
 	}
 
 	plans, err := s.ListPlanTemplates(ctx, shopID)
@@ -624,11 +634,11 @@ func (s *Store) CommitImport(ctx context.Context, shopID string, rows []ImportRo
 	return result, nil
 }
 
-func (s *Store) findImportCustomer(ctx context.Context, shopID string, row ImportRow) (string, bool, error) {
+func findImportCustomer(ctx context.Context, q database.Queryer, shopID string, row ImportRow) (string, bool, error) {
 	var id string
-	err := s.db.Pool.QueryRow(ctx, `
+	err := q.QueryRow(ctx, database.Statement(q.Dialect(), `
 		SELECT id FROM customers
-		WHERE shop_id = $1 AND external_id = $2`, shopID, row.ExternalID,
+		WHERE shop_id = $1 AND external_id = $2`, sqlServerFindImportCustomerExternal), shopID, row.ExternalID,
 	).Scan(&id)
 	if err == nil {
 		return id, true, nil
@@ -637,7 +647,7 @@ func (s *Store) findImportCustomer(ctx context.Context, shopID string, row Impor
 		return "", false, err
 	}
 
-	err = s.db.Pool.QueryRow(ctx, `
+	err = q.QueryRow(ctx, database.Statement(q.Dialect(), `
 		SELECT c.id
 		FROM customers c
 		JOIN properties p ON p.customer_id = c.id AND p.shop_id = c.shop_id
@@ -648,7 +658,7 @@ func (s *Store) findImportCustomer(ctx context.Context, shopID string, row Impor
 		  AND p.state = $5
 		  AND p.postal_code = $6
 		  AND c.external_id IS NULL
-		LIMIT 1`,
+		LIMIT 1`, sqlServerFindImportManualCustomer),
 		shopID, row.CustomerName, row.AddressLine1, row.City, row.State, row.PostalCode,
 	).Scan(&id)
 	if err == database.ErrNoRows {
@@ -660,11 +670,11 @@ func (s *Store) findImportCustomer(ctx context.Context, shopID string, row Impor
 	return id, true, nil
 }
 
-func (s *Store) findPropertyByExternalID(ctx context.Context, shopID, externalID string) (string, bool, error) {
+func findPropertyByExternalID(ctx context.Context, q database.Queryer, shopID, externalID string) (string, bool, error) {
 	var id string
-	err := s.db.Pool.QueryRow(ctx, `
+	err := q.QueryRow(ctx, database.Statement(q.Dialect(), `
 		SELECT id FROM properties
-		WHERE shop_id = $1 AND external_id = $2`, shopID, externalID,
+		WHERE shop_id = $1 AND external_id = $2`, sqlServerFindImportProperty), shopID, externalID,
 	).Scan(&id)
 	if err == database.ErrNoRows {
 		return "", false, nil
@@ -675,11 +685,11 @@ func (s *Store) findPropertyByExternalID(ctx context.Context, shopID, externalID
 	return id, true, nil
 }
 
-func (s *Store) findAgreementByExternalID(ctx context.Context, shopID, externalID string) (string, bool, error) {
+func findAgreementByExternalID(ctx context.Context, q database.Queryer, shopID, externalID string) (string, bool, error) {
 	var id string
-	err := s.db.Pool.QueryRow(ctx, `
+	err := q.QueryRow(ctx, database.Statement(q.Dialect(), `
 		SELECT id FROM agreements
-		WHERE shop_id = $1 AND external_id = $2`, shopID, externalID,
+		WHERE shop_id = $1 AND external_id = $2`, sqlServerFindImportAgreement), shopID, externalID,
 	).Scan(&id)
 	if err == database.ErrNoRows {
 		return "", false, nil
@@ -690,11 +700,11 @@ func (s *Store) findAgreementByExternalID(ctx context.Context, shopID, externalI
 	return id, true, nil
 }
 
-func (s *Store) findServiceScheduleByExternalID(ctx context.Context, shopID, externalID string) (string, bool, error) {
+func findServiceScheduleByExternalID(ctx context.Context, q database.Queryer, shopID, externalID string) (string, bool, error) {
 	var id string
-	err := s.db.Pool.QueryRow(ctx, `
+	err := q.QueryRow(ctx, database.Statement(q.Dialect(), `
 		SELECT id FROM service_schedules
-		WHERE shop_id = $1 AND external_id = $2`, shopID, externalID,
+		WHERE shop_id = $1 AND external_id = $2`, sqlServerFindImportSchedule), shopID, externalID,
 	).Scan(&id)
 	if err == nil {
 		return id, true, nil
@@ -705,11 +715,11 @@ func (s *Store) findServiceScheduleByExternalID(ctx context.Context, shopID, ext
 	return "", false, nil
 }
 
-func (s *Store) findServiceScheduleOwnerByExternalID(ctx context.Context, shopID, externalID string) (string, bool, error) {
+func findServiceScheduleOwnerByExternalID(ctx context.Context, q database.Queryer, shopID, externalID string) (string, bool, error) {
 	var agreementID string
-	err := s.db.Pool.QueryRow(ctx, `
+	err := q.QueryRow(ctx, database.Statement(q.Dialect(), `
 		SELECT agreement_id FROM service_schedules
-		WHERE shop_id = $1 AND external_id = $2`, shopID, externalID,
+		WHERE shop_id = $1 AND external_id = $2`, sqlServerFindImportScheduleOwner), shopID, externalID,
 	).Scan(&agreementID)
 	if err == nil {
 		return agreementID, true, nil
@@ -720,20 +730,20 @@ func (s *Store) findServiceScheduleOwnerByExternalID(ctx context.Context, shopID
 	return "", false, nil
 }
 
-func (s *Store) findAgreementCapturedPlan(ctx context.Context, shopID, agreementID string) (string, error) {
+func findAgreementCapturedPlan(ctx context.Context, q database.Queryer, shopID, agreementID string) (string, error) {
 	var planName string
-	err := s.db.Pool.QueryRow(ctx, `
+	err := q.QueryRow(ctx, database.Statement(q.Dialect(), `
 		SELECT plan_snapshot_name FROM agreements
-		WHERE shop_id = $1 AND id = $2`, shopID, agreementID,
+		WHERE shop_id = $1 AND id = $2`, sqlServerFindImportCapturedPlan), shopID, agreementID,
 	).Scan(&planName)
 	return planName, err
 }
 
-func (s *Store) findAgreementExternalServiceIDs(ctx context.Context, shopID, agreementID string) ([]string, error) {
-	rows, err := s.db.Pool.Query(ctx, `
+func findAgreementExternalServiceIDs(ctx context.Context, q database.Queryer, shopID, agreementID string) ([]string, error) {
+	rows, err := q.Query(ctx, database.Statement(q.Dialect(), `
 		SELECT external_id FROM service_schedules
 		WHERE shop_id = $1 AND agreement_id = $2 AND external_id IS NOT NULL
-		ORDER BY external_id`, shopID, agreementID)
+		ORDER BY external_id`, sqlServerFindImportServiceIDs), shopID, agreementID)
 	if err != nil {
 		return nil, err
 	}
@@ -750,8 +760,17 @@ func (s *Store) findAgreementExternalServiceIDs(ctx context.Context, shopID, agr
 }
 
 func (s *Store) upsertImportCustomer(ctx context.Context, tx database.Tx, shopID string, row ImportRow) (string, error) {
+	var externalID string
+	err := tx.QueryRow(ctx, `SELECT id FROM customers WHERE shop_id=$1 AND external_id=$2 FOR UPDATE`, shopID, row.ExternalID).Scan(&externalID)
+	if err == nil {
+		_, err = tx.Exec(ctx, `UPDATE customers SET name=$3,email=NULLIF($4,''),phone=NULLIF($5,''),updated_at=now() WHERE shop_id=$1 AND id=$2`, shopID, externalID, row.CustomerName, row.Email, row.Phone)
+		return externalID, err
+	}
+	if err != database.ErrNoRows {
+		return "", err
+	}
 	var existingID string
-	err := tx.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
 		SELECT c.id
 		FROM customers c
 		JOIN properties p ON p.customer_id = c.id AND p.shop_id = c.shop_id
@@ -792,6 +811,9 @@ func (s *Store) upsertImportCustomer(ctx context.Context, tx database.Tx, shopID
 }
 
 func (s *Store) upsertImportProperty(ctx context.Context, tx database.Tx, shopID, customerID string, row ImportRow) (string, error) {
+	if tx.Dialect() == database.SQLServer {
+		return upsertImportPropertySQLServer(ctx, tx, shopID, customerID, row, s.nowUTC())
+	}
 	var id string
 	err := tx.QueryRow(ctx, `
 		INSERT INTO properties (shop_id, customer_id, external_id, address_line1, city, state, postal_code)

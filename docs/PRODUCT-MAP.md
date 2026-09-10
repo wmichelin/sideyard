@@ -13,13 +13,13 @@ for the distinction between provisioned resources and deployed app behavior.
 
 ## Availability snapshot
 
-Reviewed September 9, 2026 against staging release `c490848` and the recorded
+Reviewed September 9, 2026 against staging release `b1efeae` and the recorded
 release verification. These are verified release states, not a live deployment monitor.
 
 | Label | Meaning |
 | --- | --- |
 | **Live** | Available in production at [getsideyard.com](https://getsideyard.com), source `ae6f16a`, and on staging. The legacy ClubDue hostname remains supported. |
-| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), release `c490848`: standalone jobs/site surveys, the single-line work-status badge fix, and configured private Azure photo storage. |
+| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), release `b1efeae`: standalone jobs/site surveys, the single-line work-status badge fix, and configured private Azure photo storage. |
 | **Conditional** | Implemented but requires explicit deployment configuration; not a promise of availability to clients. |
 
 Unless marked otherwise, catalog nodes are **Live**. “Signed in” means a user
@@ -63,7 +63,7 @@ flowchart TB
     BUSINESS["BUSINESS · Trade / service setup<br/>Save feedback on staging"]
     PLANS["PLANS · Plan templates<br/>Save / number feedback on staging"]
     PLAN["PLAN · Edit template<br/>Save / number feedback on staging"]
-    IMPORT["IMPORT · CSV upload"]
+    IMPORT["IMPORT · CSV upload<br/>Save / availability feedback pending"]
     PREVIEW["PREVIEW · Import dry-run"]
     IMPORTED["IMPORTED · Import result"]
     NAV --> DASH & BUSINESS & PLANS & IMPORT
@@ -567,12 +567,22 @@ plan/status/price and recurring-service cadence fields are supported. Existing
 plan names must match templates. Reimports match external IDs to update records.
 No direct Sheets OAuth, Deep Lawn or property-measurement import exists.
 
+**Pending staging verification:** existing external customer IDs take precedence
+before matching an unclaimed customer by name/address. Preview read failures return
+503. Invalid committed rows return 422; changed plan/service relationships return
+409 with row feedback. Unconfirmed writes return 503 and ask the user to check
+customers and agreements before uploading again; raw database details stay internal.
+A demo preview may already be consumed after an interrupted admission; after
+confirmed admission its allowance remains consumed even if the later import fails.
+The upload error screen does not retain the file; choose it again after checking.
+[Import persistence](../internal/app/import.go) · [Native implementation](../internal/app/import_sqlserver.go).
+
 ### PREVIEW — Import dry-run
 
 **Route:** Rendered by `POST /import`. **Access:** Signed in.
 [Source](../internal/app/templates/import.html) · [Handler](../internal/app/import_handlers.go).
 
-Review new/updated customer, agreement and recurring-service counts, skipped rows
+Review estimated new/updated customer, agreement and recurring-service counts, skipped rows
 and line-specific errors before writing. Replace the file or commit a valid
 preview. Demo previews have additional size/row limits, expire after 15 minutes
 and commit only once. Failed validation does not mean records were imported.
@@ -582,7 +592,10 @@ and commit only once. Failed validation does not mean records were imported.
 **Route:** Rendered by commit `POST /import`. **Access:** Signed in.
 [Source](../internal/app/templates/import.html).
 
-Shows committed result counts and links to agreements or another import. Verify
+Shows the successful import summary and links to agreements or another import.
+The current PostgreSQL result uses analysis estimates; two rows matching one
+initially unclaimed manual customer can overstate updates and understate creations.
+Verify
 the imported agreements and schedule before using the workspace with a client.
 
 ### JOBS — Standalone job list

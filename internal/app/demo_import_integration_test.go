@@ -343,14 +343,18 @@ func testPublicDemoImportPreviewStoreEnforcesExpiryIsolationAndBudgets(t *testin
 }
 
 func TestPublicDemoCSVPreviewCommitIsBoundedSingleUseAndIsolated(t *testing.T) {
-	databaseURL := integrationDatabaseURL(t)
-	ctx := context.Background()
-	db, err := openDB(ctx, databaseURL)
+	db, err := openDB(context.Background(), integrationDatabaseURL(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
-
+	testPublicDemoCSVPreviewCommitIsBoundedSingleUseAndIsolated(t, db)
+}
+func TestSQLServerPublicDemoCSVPreviewCommitIsBoundedSingleUseAndIsolated(t *testing.T) {
+	testPublicDemoCSVPreviewCommitIsBoundedSingleUseAndIsolated(t, sqlServerTestDB(t))
+}
+func testPublicDemoCSVPreviewCommitIsBoundedSingleUseAndIsolated(t *testing.T, db *DB) {
+	ctx := context.Background()
 	now := time.Date(2026, time.September, 2, 23, 59, 0, 0, time.UTC)
 	clock := &fixedClock{now: now}
 	store := &Store{db: db, clock: clock}
@@ -544,7 +548,7 @@ func assertPublicDemoResponseHeaders(t *testing.T, response *httptest.ResponseRe
 func countShopRows(t *testing.T, ctx context.Context, db *DB, table, shopID string) int {
 	t.Helper()
 	allowed := map[string]bool{
-		"agreements": true, "customers": true, "equipment": true, "plan_templates": true,
+		"agreements": true, "customers": true, "equipment": true, "plan_templates": true, "import_rows": true,
 		"properties": true, "renewal_digest_outbox": true, "renewal_tasks": true,
 		"service_occurrences": true, "service_schedules": true, "visit_dues": true,
 	}
@@ -561,11 +565,11 @@ func countShopRows(t *testing.T, ctx context.Context, db *DB, table, shopID stri
 func countDemoSampleOccurrences(t *testing.T, ctx context.Context, db *DB, shopID string) int {
 	t.Helper()
 	var count int
-	if err := db.Pool.QueryRow(ctx, `
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `
 		SELECT count(*)
 		FROM service_occurrences o
 		JOIN service_schedules sc ON sc.id = o.schedule_id AND sc.shop_id = o.shop_id
-		WHERE o.shop_id = $1 AND sc.external_id LIKE 'demo-csv-service-%'`, shopID).Scan(&count); err != nil {
+		WHERE o.shop_id = $1 AND sc.external_id LIKE 'demo-csv-service-%'`, `SELECT COUNT(*) FROM dbo.service_occurrences o JOIN dbo.service_schedules sc ON sc.id=o.schedule_id AND sc.shop_id=o.shop_id WHERE o.shop_id=CONVERT(uniqueidentifier,@p1) AND sc.external_id LIKE 'demo-csv-service-%'`), shopID).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
 	return count

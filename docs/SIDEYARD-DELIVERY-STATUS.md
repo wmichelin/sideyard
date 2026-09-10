@@ -1439,3 +1439,79 @@ paid integrations or live customer payment collection are configured by this cha
   and `scripts/sqlserver-rehearsal.sh` against a fresh isolated SQL Server.
   Both combined commands exited0. Staging deployment and browser acceptance
   are next; the application database remains PostgreSQL.
+
+### Native CSV import — review and implementation plan
+
+- Product: retain the existing CSV fields, 10,000 customer-row limit, smaller
+  demo limits, exact external identities, captured contract terms and recurrence
+  correction rules. Demo attempts remain charged after protected-preview admission.
+- Architect/staff: use a native shop-exclusive transaction gate before domain
+  locks; resolve external customer identity before consumptive manual adoption.
+  Revalidate templates and service ownership in that transaction. Preserve property
+  identity/history and detach only affected agreements included in the batch;
+  unrelated agreements/jobs must reject incompatible property customer moves.
+- Unit testing: share existing idempotent landscaping import, property-address
+  correction and moved-visit tests; add exact long/Unicode keys, competing imports,
+  late-write rollback and one-connection/cancellation cases against native SQL.
+- DevOps: append a separate native ledger migration; preserve immutable PostgreSQL
+  migrations. Use full text plus indexed hashes for exact identities, no MERGE,
+  no pool queries while the import transaction holds locks and no write replay.
+  Actual Azure large-file timings remain an activation gate.
+- QA: reanalyze at commit, keep useful row errors, return generic unconfirmed-save
+  guidance for unavailable storage instead of raw SQL or an unproven rollback claim.
+  Exercise preview/commit/re-import and isolation through staging routes.
+- Staging https://clubdue-staging.michelindigitalmedia.com: deploying public-demo
+  source b1efeae; CSV slice implementation starting. Production unchanged.
+
+- Public-demo source `b1efeae8762112f611cc18ffc75f448c92304984` passed CI
+  [34433647967](https://github.com/wmichelin/clubdue/actions/runs/34433647967)
+  and staging [34433647893](https://github.com/wmichelin/clubdue/actions/runs/34433647893).
+  Manual smoke and revision/image readback passed: image
+  `ghcr.io/wmichelin/clubdue@sha256:c60ea4d969e7e65bc877dbfb1b79f385251cc34d6cc2cee20e18eeeaa4dea314`.
+  Browser acceptance passed two isolated demos, foreign-customer404, private
+  entry, curated work/renewal/history, and390/1440px layouts without errors.
+  The app remains on PostgreSQL; production unchanged.
+
+### Native CSV import — implementation and focused evidence
+
+- Native ledger migration 029 preserves full text identities with separate indexed
+  hashes and opaque historical entity IDs. The import transaction retains current
+  template/parent records, updates all affected properties before reattaching only
+  included agreements, and commits domain rows, provenance and activation together.
+- Existing external customer identity now wins before manual matching on both
+  engines. Native committed counts use actual transaction state; PostgreSQL counts
+  remain preview estimates. The Azure plan records the native batch-address matching
+  difference for historical property reassignment files and its rehearsal gate.
+- Five shared contracts passed on PostgreSQL and native SQL: landscaping imports,
+  moved visits, property-address corrections/history, all rejected preview rows,
+  and bounded single-use isolated demo imports (15.582 seconds combined).
+- Focused native checks passed exact long/Unicode/case/space identities, immutable
+  snapshots and usage, schedule no-op preservation, provenance retention/cascade,
+  competing reversed imports, cancellation and one available connection. Late
+  ledger/activation failures restore property ownership, photos, equipment, private
+  histories and reset occurrence notes. Outside-file agreement/job conflicts reject.
+- Real commits followed by simulated lost acknowledgements verify generic 503
+  feedback, retained saved records and consumed demo allowance. Interrupted preview
+  admission explains its uncertain allowance state separately. Row validation and
+  relationship conflicts remain useful, escaped 422/409 feedback.
+- Review found an activation lock inversion. Native standalone event writes now
+  take shop S before event keys. A real import holding shop X blocks activation and
+  work completion, then all three finish after release. Concurrent template edit/
+  delete tests verify retained snapshots. Empty-table snapshot test normalization
+  was corrected; cancellation-after-write and year-one rollback checks then passed.
+- Architect/staff and DevOps final reviews found no remaining implementation blocker.
+  Full fresh-database suite, vet, static build and isolated SQL rehearsal are running.
+  Staging https://clubdue-staging.michelindigitalmedia.com remains verified at b1efeae;
+  CSV deployment pending. Native runtime and actual Azure large-file performance
+  remain gated; production unchanged.
+
+- Full importer suite passed on fresh PostgreSQL and native SQL (app 240.546s),
+  followed by `go vet ./...` and the static build; combined command exited 0.
+  Product/unit/QA final review also found no remaining implementation blocker.
+  Mermaid validation passed 36 nodes / 64 edges and `git diff --check` passed.
+- The first isolated rehearsal exposed missing runtime test fixtures in its
+  container, not a domain failure. The script now mounts the repository's testdata
+  read-only at its test working directory; shell syntax passed and the complete
+  isolated rehearsal is running again before publication.
+- Corrected isolated rehearsal passed in full, including the shared landscaping
+  fixture test. All local gates are complete; CSV slice is ready for staging.

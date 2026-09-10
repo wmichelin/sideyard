@@ -87,12 +87,12 @@ func (s *Server) handleImportDryRun(w http.ResponseWriter, r *http.Request, user
 	analysis, err := s.store.AnalyzeImport(r.Context(), user.ShopID, rows)
 	if err != nil {
 		log.Printf("import analyze: %v", err)
-		http.Error(w, "server error", http.StatusInternalServerError)
+		http.Error(w, "Import preview is temporarily unavailable. Upload the file again to retry.", http.StatusServiceUnavailable)
 		return
 	}
 	if err := s.store.RecordPilotActivation(r.Context(), user.ShopID, pilotEventImportPreviewed); err != nil {
 		log.Printf("pilot activation import preview: %v", err)
-		http.Error(w, "server error", http.StatusInternalServerError)
+		http.Error(w, "Import preview is temporarily unavailable. Upload the file again to retry.", http.StatusServiceUnavailable)
 		return
 	}
 
@@ -186,7 +186,7 @@ func (s *Server) handleImportCommit(w http.ResponseWriter, r *http.Request, user
 		}
 		if err != nil {
 			log.Printf("public demo import preview consume: %v", err)
-			http.Error(w, "The demo could not commit that preview.", http.StatusServiceUnavailable)
+			http.Error(w, "Demo preview admission could not be confirmed. Its row and visit allowance may already have been consumed. Upload the file again to create a new preview.", http.StatusServiceUnavailable)
 			return
 		}
 		raw = demoPayload.CSV
@@ -204,27 +204,42 @@ func (s *Server) handleImportCommit(w http.ResponseWriter, r *http.Request, user
 
 	rows, err := parseImportCSVWithLimits(strings.NewReader(string(raw)), maxRows, maxCellBytes)
 	if err != nil {
-		s.renderImportUpload(w, r, user, err.Error())
+		message := err.Error()
+		if user.IsDemo {
+			message += " The admitted demo allowance remains consumed. Upload the file again."
+		}
+		s.renderImportUpload(w, r, user, message)
 		return
 	}
 	if user.IsDemo {
 		projectedOccurrences, projectionErr := projectedImportOccurrenceCount(rows, demoPayload.ProjectionDate)
 		if projectionErr != nil || len(rows) != demoPayload.RowCount || projectedOccurrences != demoPayload.ProjectedOccurrences {
 			log.Printf("public demo import control mismatch request_id=%s", requestIDFromContext(r.Context()))
-			http.Error(w, "The demo could not verify that preview. Upload the file again.", http.StatusServiceUnavailable)
+			http.Error(w, "The demo could not verify that preview. Its admitted allowance remains consumed. Upload the file again.", http.StatusServiceUnavailable)
 			return
 		}
 	}
 
 	result, err := s.store.CommitImport(r.Context(), user.ShopID, rows)
 	if err != nil {
-		if user.IsDemo {
-			log.Printf("public demo import commit failed request_id=%s", requestIDFromContext(r.Context()))
-			s.renderImportUpload(w, r, user, "Import failed safely. Preview the file again and retry.")
+		var rowError *importRowError
+		status := http.StatusServiceUnavailable
+		message := "The import could not be confirmed. Check the customer and agreement lists before uploading the file again."
+		if errors.As(err, &rowError) {
+			status = http.StatusUnprocessableEntity
+			if rowError.Conflict {
+				status = http.StatusConflict
+			}
+			message = rowError.Error() + " Preview the file again after correcting it."
 		} else {
-			log.Printf("import commit: %v", err)
-			s.renderImportUpload(w, r, user, "Import failed: "+err.Error())
+			log.Printf("import commit unconfirmed request_id=%s error=%v", requestIDFromContext(r.Context()), err)
 		}
+		if user.IsDemo {
+			message += " The demo preview has been used; its admitted row and visit allowance remains consumed."
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(status)
+		s.renderImportUpload(w, r, user, message)
 		return
 	}
 

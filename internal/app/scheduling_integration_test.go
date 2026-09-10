@@ -293,12 +293,18 @@ func TestPublicDemoVisitDateUsesRealRoutesAndRejectsStaleChanges(t *testing.T) {
 }
 
 func TestMoveServiceVisitImportAndConcurrentChanges(t *testing.T) {
-	ctx := context.Background()
-	db, err := openDB(ctx, integrationDatabaseURL(t))
+	db, err := openDB(context.Background(), integrationDatabaseURL(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	testMoveServiceVisitImportAndConcurrentChanges(t, db)
+}
+func TestSQLServerMoveServiceVisitImportAndConcurrentChanges(t *testing.T) {
+	testMoveServiceVisitImportAndConcurrentChanges(t, sqlServerTestDB(t))
+}
+func testMoveServiceVisitImportAndConcurrentChanges(t *testing.T, db *DB) {
+	ctx := context.Background()
 	now := time.Date(2026, 9, 7, 12, 0, 0, 0, time.UTC)
 	store := &Store{db: db, clock: fixedClock{now: now}}
 	shop := createTestShop(t, ctx, db, fmt.Sprintf("move-import-%d", time.Now().UnixNano()))
@@ -388,7 +394,7 @@ func TestMoveServiceVisitImportAndConcurrentChanges(t *testing.T) {
 	if err := store.MoveServiceVisit(ctx, shop, work[0].ID, now.AddDate(0, 0, 1), 0); !errors.Is(err, servicework.ErrVisitUnavailable) {
 		t.Fatalf("skipped move allowed: %v", err)
 	}
-	if _, err := db.Pool.Exec(ctx, `UPDATE agreements SET status='cancelled' WHERE shop_id=$1`, shop); err != nil {
+	if _, err := db.Pool.Exec(ctx, database.Statement(db.Pool.Dialect(), `UPDATE agreements SET status='cancelled' WHERE shop_id=$1`, `UPDATE dbo.agreements SET status='cancelled' WHERE shop_id=CONVERT(uniqueidentifier,@p1)`), shop); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.MoveServiceVisit(ctx, shop, work[1].ID, now.AddDate(0, 0, 1), 0); !errors.Is(err, servicework.ErrVisitUnavailable) {

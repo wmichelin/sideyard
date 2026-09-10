@@ -51,5 +51,6 @@ docker run --rm --network "$test_name" --env-file "$test_work/test.env" \
   golang:1.23-alpine /sqlserver.test -test.count=1 -test.v
 docker run --rm --network "$test_name" --env-file "$test_work/test.env" \
   -v "$test_work/app.test:/app.test:ro" \
+  -v "$repo_root/internal/app/testdata:/work/testdata:ro" -w /work \
   golang:1.23-alpine /app.test -test.count=1 -test.v -test.run '^TestSQLServer'
 echo "SQL Server connection and migration rehearsal passed"

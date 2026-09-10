@@ -39,12 +39,18 @@ func TestPropertyAddressValidation(t *testing.T) {
 }
 
 func TestPropertyAddressCorrectionsRetainRecordsAndRejectStaleImports(t *testing.T) {
-	ctx := context.Background()
-	db, err := openDB(ctx, integrationDatabaseURL(t))
+	db, err := openDB(context.Background(), integrationDatabaseURL(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(db.Close)
+	defer db.Close()
+	testPropertyAddressCorrectionsRetainRecordsAndRejectStaleImports(t, db)
+}
+func TestSQLServerPropertyAddressCorrectionsRetainRecordsAndRejectStaleImports(t *testing.T) {
+	testPropertyAddressCorrectionsRetainRecordsAndRejectStaleImports(t, sqlServerTestDB(t))
+}
+func testPropertyAddressCorrectionsRetainRecordsAndRejectStaleImports(t *testing.T, db *DB) {
+	ctx := context.Background()
 	s := &Store{db: db}
 	stamp := time.Now().Format("150405.000000000")
 	shop := createTestShop(t, ctx, db, "address-"+stamp)
@@ -114,11 +120,11 @@ func TestPropertyAddressCorrectionsRetainRecordsAndRejectStaleImports(t *testing
 		t.Fatal("address correction changed equipment")
 	}
 	var retainedProperty, retainedCustomer string
-	if err := db.Pool.QueryRow(ctx, `SELECT property_id,customer_id FROM agreements WHERE id=$1`, agreementID).Scan(&retainedProperty, &retainedCustomer); err != nil || retainedProperty != id || retainedCustomer != customer {
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `SELECT property_id,customer_id FROM agreements WHERE id=$1`, `SELECT LOWER(CONVERT(char(36),property_id)),LOWER(CONVERT(char(36),customer_id)) FROM dbo.agreements WHERE id=CONVERT(uniqueidentifier,@p1)`), agreementID).Scan(&retainedProperty, &retainedCustomer); err != nil || retainedProperty != id || retainedCustomer != customer {
 		t.Fatal("address correction changed agreement identity")
 	}
 	// Exercise the existing CSV import upsert, not just this editor's write path.
-	if _, err := db.Pool.Exec(ctx, `UPDATE properties SET external_id='address-import' WHERE id=$1`, id); err != nil {
+	if _, err := db.Pool.Exec(ctx, database.Statement(db.Pool.Dialect(), `UPDATE properties SET external_id='address-import' WHERE id=$1`, `UPDATE dbo.properties SET external_id='address-import' WHERE id=CONVERT(uniqueidentifier,@p1)`), id); err != nil {
 		t.Fatal(err)
 	}
 	tx, err := db.Pool.Begin(ctx)

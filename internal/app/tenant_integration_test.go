@@ -581,7 +581,7 @@ func TestRecurringServiceOccurrencesAreIdempotentTenantScopedAndFinal(t *testing
 		t.Fatal("bulk update with a missing occurrence unexpectedly succeeded")
 	}
 	var statusAfterFailedBatch string
-	if err := db.Pool.QueryRow(ctx, `SELECT status FROM service_occurrences WHERE id = $1`, occurrenceID).Scan(&statusAfterFailedBatch); err != nil {
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `SELECT status FROM service_occurrences WHERE id = $1`, `SELECT status FROM dbo.service_occurrences WHERE id=CONVERT(uniqueidentifier,@p1)`), occurrenceID).Scan(&statusAfterFailedBatch); err != nil {
 		t.Fatal(err)
 	}
 	if statusAfterFailedBatch != "due" {
@@ -688,10 +688,10 @@ func TestPublicDemoCreatesIsolatedExpiringFictionalTenants(t *testing.T) {
 		if err := db.Pool.QueryRow(ctx, `SELECT kind FROM shops WHERE id = $1`, result.ShopID).Scan(&kind); err != nil {
 			t.Fatal(err)
 		}
-		if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM customers WHERE shop_id = $1`, result.ShopID).Scan(&customers); err != nil {
+		if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `SELECT count(*) FROM customers WHERE shop_id = $1`, `SELECT COUNT(*) FROM dbo.customers WHERE shop_id=CONVERT(uniqueidentifier,@p1)`), result.ShopID).Scan(&customers); err != nil {
 			t.Fatal(err)
 		}
-		if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM service_schedules WHERE shop_id = $1`, result.ShopID).Scan(&schedules); err != nil {
+		if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `SELECT count(*) FROM service_schedules WHERE shop_id = $1`, `SELECT COUNT(*) FROM dbo.service_schedules WHERE shop_id=CONVERT(uniqueidentifier,@p1)`), result.ShopID).Scan(&schedules); err != nil {
 			t.Fatal(err)
 		}
 		if kind != "demo_sandbox" || customers != publicDemoCustomerCount || schedules != publicDemoScheduleCount {
@@ -784,18 +784,22 @@ func TestPublicDemoCreatesIsolatedExpiringFictionalTenants(t *testing.T) {
 }
 
 func TestLandscapingSheetsImportCreatesIdempotentRecurringWork(t *testing.T) {
-	databaseURL := integrationDatabaseURL(t)
-	ctx := context.Background()
-	db, err := openDB(ctx, databaseURL)
+	db, err := openDB(context.Background(), integrationDatabaseURL(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	testLandscapingSheetsImportCreatesIdempotentRecurringWork(t, db)
+}
+func TestSQLServerLandscapingSheetsImportCreatesIdempotentRecurringWork(t *testing.T) {
+	testLandscapingSheetsImportCreatesIdempotentRecurringWork(t, sqlServerTestDB(t))
+}
+func testLandscapingSheetsImportCreatesIdempotentRecurringWork(t *testing.T, db *DB) {
+	ctx := context.Background()
 	now := time.Date(2026, time.September, 1, 12, 0, 0, 0, time.UTC)
 	store := &Store{db: db, clock: fixedClock{now: now}}
 	stamp := time.Now().UTC().Format("20060102150405.000000000")
 	shopID := createTestShop(t, ctx, db, "landscape-import-"+stamp)
-
 	fixture, err := os.Open("testdata/landscaping-google-sheets-template.csv")
 	if err != nil {
 		t.Fatal(err)
@@ -834,13 +838,13 @@ func TestLandscapingSheetsImportCreatesIdempotentRecurringWork(t *testing.T) {
 		t.Fatal(err)
 	}
 	var customers, agreements, schedules int
-	if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM customers WHERE shop_id = $1`, shopID).Scan(&customers); err != nil {
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `SELECT count(*) FROM customers WHERE shop_id = $1`, `SELECT COUNT(*) FROM dbo.customers WHERE shop_id=CONVERT(uniqueidentifier,@p1)`), shopID).Scan(&customers); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM agreements WHERE shop_id = $1`, shopID).Scan(&agreements); err != nil {
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `SELECT count(*) FROM agreements WHERE shop_id = $1`, `SELECT COUNT(*) FROM dbo.agreements WHERE shop_id=CONVERT(uniqueidentifier,@p1)`), shopID).Scan(&agreements); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM service_schedules WHERE shop_id = $1`, shopID).Scan(&schedules); err != nil {
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `SELECT count(*) FROM service_schedules WHERE shop_id = $1`, `SELECT COUNT(*) FROM dbo.service_schedules WHERE shop_id=CONVERT(uniqueidentifier,@p1)`), shopID).Scan(&schedules); err != nil {
 		t.Fatal(err)
 	}
 	if customers != 3 || agreements != 3 || schedules != 3 {
@@ -857,9 +861,9 @@ func TestLandscapingSheetsImportCreatesIdempotentRecurringWork(t *testing.T) {
 	var planTemplateID *string
 	var capturedPlan string
 	var capturedVisits, entitledVisits int
-	if err := db.Pool.QueryRow(ctx, `
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `
 		SELECT plan_template_id, plan_snapshot_name, plan_snapshot_visits_per_year, visits_entitled
-		FROM agreements WHERE shop_id = $1 AND external_id = $2`, shopID, rows[0].ExternalID,
+		FROM agreements WHERE shop_id = $1 AND external_id = $2`, `SELECT LOWER(CONVERT(char(36),plan_template_id)),plan_snapshot_name,plan_snapshot_visits_per_year,visits_entitled FROM dbo.agreements WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND external_id=@p2`), shopID, rows[0].ExternalID,
 	).Scan(&planTemplateID, &capturedPlan, &capturedVisits, &entitledVisits); err != nil {
 		t.Fatal(err)
 	}
@@ -871,16 +875,16 @@ func TestLandscapingSheetsImportCreatesIdempotentRecurringWork(t *testing.T) {
 		t.Fatal(err)
 	}
 	var cadence int
-	if err := db.Pool.QueryRow(ctx, `
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `
 		SELECT cadence_interval FROM service_schedules
-		WHERE shop_id = $1 AND external_id = $2`, shopID, rows[0].ServiceExternalID).Scan(&cadence); err != nil {
+		WHERE shop_id = $1 AND external_id = $2`, `SELECT cadence_interval FROM dbo.service_schedules WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND external_id=@p2`), shopID, rows[0].ServiceExternalID).Scan(&cadence); err != nil {
 		t.Fatal(err)
 	}
 	if cadence != 2 {
 		t.Fatalf("corrected recurrence cadence = %d, want 2", cadence)
 	}
 	var preservedStatus string
-	if err := db.Pool.QueryRow(ctx, `SELECT status FROM service_occurrences WHERE id = $1`, overdueID).Scan(&preservedStatus); err != nil {
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `SELECT status FROM service_occurrences WHERE id = $1`, `SELECT status FROM dbo.service_occurrences WHERE id=CONVERT(uniqueidentifier,@p1)`), overdueID).Scan(&preservedStatus); err != nil {
 		t.Fatalf("corrected recurrence deleted unresolved overdue work: %v", err)
 	}
 	if preservedStatus != "due" {
