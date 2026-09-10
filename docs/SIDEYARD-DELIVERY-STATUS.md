@@ -1761,8 +1761,16 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   nullable versus empty values, trailing spaces and supplementary Unicode. Each
   round trip asserts every source table is nonempty, compares its destination row
   count, and still requires the complete root reconciliation.
+- The internal deterministic recovery package contains only a canonical manifest
+  followed by the exact logical archive. Its manifest binds the release artifact,
+  migration ledger, archive digest/size, logical root and exhaustive photo-object
+  inventory derived while walking those same validated snapshot bytes. The current
+  profile scopes versions to an exact Azure storage resource/account and `photos`
+  container; v29 explicitly uses inline-only recovery. Active, pending, interrupted
+  legacy backfill, retired orphan and linked/orphan purged states are covered. Build
+  and open enforce absolute 240 MiB archive and 250 MiB pre-encryption package caps.
 - This library has no operator command and is not a backup release. Encrypted Blob
-  wrapping, exact photo-object/version manifests, least-privilege exporter/importer
+  wrapping and exact-version remote readback, least-privilege exporter/importer
   identities, Terraform-derived disposable targets and oldest/newest recovery
   drills remain. The staging selector is still PostgreSQL; production is unchanged.
 - Source `bf01490788b4c99d0de53de2d4a5cbe4fc78ae3d` passed all four CI

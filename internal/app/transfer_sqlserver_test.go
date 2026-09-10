@@ -112,6 +112,31 @@ func assertLogicalRoundTrip(t *testing.T, ctx context.Context, source *DB, sourc
 	if err != nil {
 		t.Fatal(err)
 	}
+	photoSource := transfer.AzurePhotoSource("sideyardfixture", "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/sideyard-staging/providers/Microsoft.Storage/storageAccounts/sideyardfixture")
+	if logicalSchema == transfer.ProductionV29LogicalSchema {
+		photoSource = transfer.InlinePhotoSource()
+	}
+	packageOptions := transfer.LogicalPackageOptions{ReleaseArtifact: "sha256:test-release", PhotoSource: photoSource}
+	var logicalPackage bytes.Buffer
+	manifest, err := transfer.BuildLogicalPackage(bytes.NewReader(archive.Bytes()), &logicalPackage, packageOptions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, err := transfer.OpenLogicalPackage(bytes.NewReader(logicalPackage.Bytes()), packageOptions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = opened.Close() })
+	if manifest.ArchiveSHA256 != inspection.ArtifactSHA256 || manifest.RootSHA256 != footer.RootSHA256 {
+		t.Fatal("logical package did not bind the exact archive and root")
+	}
+	if logicalSchema == transfer.ProductionV29LogicalSchema {
+		if len(manifest.Assets) != 0 {
+			t.Fatal("production v29 package unexpectedly requires Blob assets")
+		}
+	} else {
+		assertLogicalPackageAssets(t, manifest.Assets)
+	}
 	badDigest := strings.Repeat("0", 64)
 	if _, err := transfer.RestoreSQLServer(ctx, target.Pool, bytes.NewReader(archive.Bytes()), transfer.RestoreOptions{
 		Environment: environment, Generation: transferTestGeneration,
@@ -158,6 +183,38 @@ func assertLogicalRoundTrip(t *testing.T, ctx context.Context, source *DB, sourc
 	}
 	if !resumed.Resumed || !resumed.Verified {
 		t.Fatal("completed logical restore was not safely resumable")
+	}
+}
+
+func assertLogicalPackageAssets(t *testing.T, assets []transfer.PhotoAsset) {
+	t.Helper()
+	if len(assets) != 6 {
+		t.Fatalf("logical package has %d assets, want 6", len(assets))
+	}
+	type expectedAsset struct {
+		photo, hash, mime, version string
+		size                       int64
+		required, retired, purged  bool
+	}
+	expected := map[byte]expectedAsset{
+		'a': {"f1000000-0000-4000-8000-000000000033", "039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81", "image/png", "", 3, false, false, false},
+		'b': {"f1000000-0000-4000-8000-000000000034", "d798d1fac6bd4bb1c11f50312760351013379a0ab6f0a8c0af8a506b96b2525a", "image/jpeg", "version-retired", 2, true, true, false},
+		'c': {"f1000000-0000-4000-8000-000000000035", "5a8814ae66ff07179d2c22381da6221f6fe754e6175c47d7d87846080f0a9715", "image/png", "version-purged", 2, false, true, true},
+		'd': {"f1000000-0000-4000-8000-000000000016", "5240672d7b51756b829ad0ef8d9468b7a078afa2f410484fd3892dab47becb72", "image/png", "version-1", 3, true, false, false},
+		'e': {"f1000000-0000-4000-8000-000000000036", "787c798e39a5bc1910355bae6d0cd87a36b2e10fd0202a83e3bb6b005da83472", "image/png", "", 3, false, false, false},
+		'f': {"f1000000-0000-4000-8000-000000000037", "5a8814ae66ff07179d2c22381da6221f6fe754e6175c47d7d87846080f0a9715", "image/png", "version-linked-purged", 2, false, true, true},
+	}
+	for _, asset := range assets {
+		want, ok := expected[asset.ObjectKey[0]]
+		version := ""
+		if asset.VersionID != nil {
+			version = *asset.VersionID
+		}
+		if !ok || asset.ObjectKey != strings.Repeat(string(asset.ObjectKey[0]), 64) || asset.ShopID != "f1000000-0000-4000-8000-000000000001" ||
+			asset.PhotoID != want.photo || asset.ContentSHA256 != want.hash || asset.ContentType != want.mime || version != want.version ||
+			asset.ByteLength != want.size || asset.Required != want.required || (asset.RetiredAt != nil) != want.retired || (asset.PurgedAt != nil) != want.purged {
+			t.Fatalf("logical package asset = %+v, want %+v", asset, want)
+		}
 	}
 }
 
