@@ -13,13 +13,13 @@ for the distinction between provisioned resources and deployed app behavior.
 
 ## Availability snapshot
 
-Reviewed September 9, 2026 against staging release `06d0953` and the recorded
+Reviewed September 9, 2026 against staging release `e5653e6` and the recorded
 release verification. These are verified release states, not a live deployment monitor.
 
 | Label | Meaning |
 | --- | --- |
 | **Live** | Available in production at [getsideyard.com](https://getsideyard.com), source `ae6f16a`, and on staging. The legacy ClubDue hostname remains supported. |
-| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), release `06d0953`: standalone jobs/site surveys, the single-line work-status badge fix, and configured private Azure photo storage. |
+| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), release `e5653e6`: standalone jobs/site surveys, the single-line work-status badge fix, and configured private Azure photo storage. |
 | **Conditional** | Implemented but requires explicit deployment configuration; not a promise of availability to clients. |
 
 Unless marked otherwise, catalog nodes are **Live**. “Signed in” means a user
@@ -96,9 +96,9 @@ flowchart TB
     NEWAGREEMENT["NEWAGREEMENT · Create agreement<br/>Save / number feedback on staging"]
     AGREEMENT["AGREEMENT · Terms / recurring services<br/>Save / number feedback on staging"]
     RENEWALS["RENEWALS · Renewal follow-up queue"]
-    WORK["WORK · Service work"]
-    SCHEDULE["SCHEDULE · Last / next service"]
-    DATE["DATE · Change one recurring visit date"]
+    WORK["WORK · Service work<br/>Save availability prepared for staging"]
+    SCHEDULE["SCHEDULE · Last / next service<br/>Availability prepared for staging"]
+    DATE["DATE · Change one recurring visit date<br/>Availability prepared for staging"]
     RHISTORY["RHISTORY · Recurring visit notes"]
     SHISTORY["SHISTORY · Seasonal visit notes"]
     CSV["CSV · Work export download"]
@@ -431,6 +431,7 @@ before retrying. Creation has no general duplicate-submission key.
 - Generate a 30-day customer renewal link via `POST /agreements/{id}/renewal-link`, then copy/share it manually. No automatic email/SMS is sent by this action.
 - Agreement pricing does not implement deposits, installments, per-treatment invoices or live payment collection.
 - **Staging:** reads distinguish missing/malformed records (404) from unavailable storage (503). Failed saves cannot redirect as successful; malformed/overflowing numbers are rejected. Stale deleted-template references conflict. Ordinary edits still have no revision check. The recurring-service creation action also distinguishes unavailable agreement lookup from a missing record.
+- **Prepared for staging:** invalid recurring-service inputs return 422 and retain the name, cadence, interval, dates and entitlement choice. Unconfirmed creation/pause/resume returns 503 with instructions to check the agreement before retrying; an agreement that became inactive before creation returns 409. [Handler](../internal/app/servicework_handlers.go).
 
 ### RENEWALS — Renewal follow-up queue
 
@@ -464,6 +465,8 @@ method or general customer portal.
 - Recurring rows link to their agreement and individual date change. Both kinds link owners to their own visit notes. Open SCHEDULE or export the filtered work CSV.
 - Handed-off work has no appointment time. Staging standalone jobs remain in JOBS. **Staging visual change:** status labels such as “Due today” remain on one line.
 
+**Prepared for staging:** recurring outcome dependency failures return 503 without claiming a failed or successful save; selections remain when the work list can reload. An unavailable HTML fallback preserves the unconfirmed-save guidance. Known input, final-state and entitlement errors remain 400. Failed page reads return 503; an already-committed save still reports success if its list refresh fails. [Handler](../internal/app/visits_handlers.go).
+
 ### SCHEDULE — Last and next recurring service
 
 **Route:** `GET /schedule`. **Access:** Signed in.
@@ -475,6 +478,8 @@ the next visit date or open WORK to record completion/view history. Completion
 dates indicate when completion was recorded. This is not a crew dispatch board;
 seasonal windows and standalone jobs are not a combined appointment calendar.
 
+**Prepared for staging:** unavailable schedule reads return 503. [Handler](../internal/app/scheduling_handlers.go).
+
 ### DATE — Change one recurring visit date
 
 **Route:** `GET/POST /service-occurrences/{id}/date`. **Access:** Signed in.
@@ -484,6 +489,8 @@ Review original/current dates and move one pending occurrence within its service
 bounds without shifting the rest of the cadence. Rejects conflicts and changes
 to closed/skipped visits or paused/inactive service. Returns to the originating
 calendar context or schedule. This sets a day, not an arrival-time window.
+
+**Prepared for staging:** unavailable reads/unconfirmed saves return 503; failed saves retain the chosen date. Day/week cadence conflicts remain protected across the full accepted years 1–9999. Date validation follows the stored UTC day. No appointment time is introduced.
 
 ### RHISTORY — Recurring visit notes
 

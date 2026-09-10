@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"github.com/wmichelin/clubdue/internal/database"
 	"html/template"
 	"net/http"
 	"net/http/httptest"
@@ -14,12 +15,15 @@ import (
 )
 
 func TestCalendarCountsPagingAndTenantBoundaries(t *testing.T) {
-	ctx := context.Background()
-	db, err := openDB(ctx, integrationDatabaseURL(t))
+	db, err := openDB(context.Background(), integrationDatabaseURL(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	t.Cleanup(db.Close)
+	testCalendarCountsPagingAndTenantBoundaries(t, db)
+}
+func testCalendarCountsPagingAndTenantBoundaries(t *testing.T, db *DB) {
+	ctx := context.Background()
 	now := time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC)
 	store := &Store{db: db, clock: fixedClock{now: now}}
 	shop := createTestShop(t, ctx, db, fmt.Sprintf("calendar-%d", time.Now().UnixNano()))
@@ -100,7 +104,7 @@ func TestCalendarCountsPagingAndTenantBoundaries(t *testing.T) {
 	if err != nil || filtered.Total != 51 {
 		t.Fatalf("final/inactive filtering: %d %v", filtered.Total, err)
 	}
-	if _, err := db.Pool.Exec(ctx, `UPDATE agreements SET status='cancelled' WHERE id=$1`, agreement); err != nil {
+	if _, err := db.Pool.Exec(ctx, database.Statement(db.Pool.Dialect(), `UPDATE agreements SET status='cancelled' WHERE id=$1`, `UPDATE dbo.agreements SET status=N'cancelled' WHERE id=CONVERT(uniqueidentifier,@p1)`), agreement); err != nil {
 		t.Fatal(err)
 	}
 	filtered, err = store.ServiceCalendar(ctx, shop, month, end, now, 1)

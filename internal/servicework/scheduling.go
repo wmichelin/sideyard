@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/wmichelin/clubdue/internal/database"
@@ -18,7 +20,15 @@ type ScheduleSummary struct {
 }
 
 func (s *Service) ListScheduleSummaries(ctx context.Context, shopID, agreementID string) ([]ScheduleSummary, error) {
-	rows, err := s.pool.Query(ctx, `
+	if err := validateIDs(shopID); err != nil {
+		return nil, err
+	}
+	if agreementID != "" {
+		if err := validateIDs(agreementID); err != nil {
+			return nil, err
+		}
+	}
+	rows, err := s.pool.Query(ctx, database.Statement(s.pool.Dialect(), `
 		SELECT sc.id, sc.agreement_id, c.name,
 		 COALESCE(p.address_line1 || ', ' || p.city || ', ' || p.state || ' ' || p.postal_code, ''),
 		 sc.service_name, sc.cadence_unit, sc.cadence_interval, sc.active, a.status='active', sc.ends_on,
@@ -37,7 +47,7 @@ func (s *Service) ListScheduleSummaries(ctx context.Context, shopID, agreementID
 		 ORDER BY COALESCE(scheduled_on,due_on),due_on,id LIMIT 1
 		) upcoming ON true
 		WHERE sc.shop_id=$1 AND ($2='' OR sc.agreement_id::text=$2)
-		ORDER BY upcoming.next_on NULLS LAST,c.name,sc.service_name,sc.id`, shopID, agreementID)
+		ORDER BY upcoming.next_on NULLS LAST,c.name,sc.service_name,sc.id`, sqlServerListSummaries), shopID, agreementID)
 	if err != nil {
 		return nil, err
 	}
@@ -74,6 +84,28 @@ func (s *Service) ListScheduleSummaries(ctx context.Context, shopID, agreementID
 		}
 		result = append(result, item)
 	}
+	if s.pool.Dialect() == database.SQLServer {
+		slices.SortFunc(result, func(a, b ScheduleSummary) int {
+			if a.NextOn == nil && b.NextOn != nil {
+				return 1
+			}
+			if a.NextOn != nil && b.NextOn == nil {
+				return -1
+			}
+			if a.NextOn != nil && b.NextOn != nil {
+				if n := a.NextOn.Compare(*b.NextOn); n != 0 {
+					return n
+				}
+			}
+			if n := strings.Compare(a.CustomerName, b.CustomerName); n != 0 {
+				return n
+			}
+			if n := strings.Compare(a.ServiceName, b.ServiceName); n != 0 {
+				return n
+			}
+			return strings.Compare(a.ID, b.ID)
+		})
+	}
 	return result, rows.Err()
 }
 
@@ -92,7 +124,10 @@ var ErrDateOutsideSchedule = errors.New("Choose a date within this service's sta
 
 func (s *Service) GetVisitDate(ctx context.Context, shopID, occurrenceID string) (VisitDate, error) {
 	var visit VisitDate
-	err := s.pool.QueryRow(ctx, `
+	if err := validateIDs(shopID, occurrenceID); err != nil {
+		return visit, err
+	}
+	err := s.pool.QueryRow(ctx, database.Statement(s.pool.Dialect(), `
 	 SELECT o.id,o.schedule_id,sc.agreement_id,c.name,
 	 COALESCE(p.address_line1 || ', ' || p.city || ', ' || p.state || ' ' || p.postal_code,''),
 	 sc.service_name,COALESCE(o.scheduled_on,o.due_on),o.due_on,o.schedule_revision,
@@ -102,7 +137,7 @@ func (s *Service) GetVisitDate(ctx context.Context, shopID, occurrenceID string)
 	 JOIN agreements a ON a.id=sc.agreement_id AND a.shop_id=sc.shop_id
 	 JOIN customers c ON c.id=a.customer_id AND c.shop_id=a.shop_id
 	 LEFT JOIN properties p ON p.id=a.property_id AND p.shop_id=a.shop_id
-	 WHERE o.shop_id=$1 AND o.id=$2`, shopID, occurrenceID).Scan(
+	 WHERE o.shop_id=$1 AND o.id=$2`, `SELECT LOWER(CONVERT(char(36),o.id)),LOWER(CONVERT(char(36),o.schedule_id)),LOWER(CONVERT(char(36),sc.agreement_id)),c.name,`+sqlServerPropertyAddress+`,sc.service_name,o.effective_on,o.due_on,o.schedule_revision,sc.starts_on,sc.ends_on,CONVERT(bit,CASE WHEN o.status=N'due' AND sc.active=1 AND a.status=N'active' THEN 1 ELSE 0 END)`+sqlServerOccurrenceJoins+` WHERE o.shop_id=CONVERT(uniqueidentifier,@p1) AND o.id=CONVERT(uniqueidentifier,@p2)`), shopID, occurrenceID).Scan(
 		&visit.ID, &visit.ScheduleID, &visit.AgreementID, &visit.CustomerName, &visit.PropertyAddress,
 		&visit.ServiceName, &visit.CurrentOn, &visit.OriginalOn, &visit.Revision, &visit.StartsOn, &visit.EndsOn, &visit.Actionable)
 	return visit, err
@@ -110,8 +145,11 @@ func (s *Service) GetVisitDate(ctx context.Context, shopID, occurrenceID string)
 
 // MoveVisit changes one obligation's planned date, never its recurrence identity.
 func (s *Service) MoveVisit(ctx context.Context, shopID, occurrenceID string, newDate time.Time, expectedRevision int) error {
-	if newDate.IsZero() || newDate.Year() < 1 || newDate.Year() > 9999 {
+	if newDate.IsZero() || !validDate(newDate) {
 		return ErrDateOutsideSchedule
+	}
+	if err := validateIDs(shopID, occurrenceID); err != nil {
+		return ErrVisitUnavailable
 	}
 	newDate = dateOnly(newDate)
 	tx, err := s.pool.Begin(ctx)
@@ -120,13 +158,28 @@ func (s *Service) MoveVisit(ctx context.Context, shopID, occurrenceID string, ne
 	}
 	defer tx.Rollback(ctx)
 	var schedule Schedule
+	var nativeMapping resolvedOccurrence
+	if s.pool.Dialect() == database.SQLServer {
+		values, err := prepareSQLServerOccurrences(ctx, tx, shopID, []string{occurrenceID})
+		if errors.Is(err, database.ErrNoRows) {
+			return ErrVisitUnavailable
+		}
+		if err != nil {
+			return err
+		}
+		nativeMapping = values[0]
+	}
 	// Match generation, pause and import: lock the schedule before its child.
-	err = tx.QueryRow(ctx, `
+	var scheduleArgument = occurrenceID
+	if s.pool.Dialect() == database.SQLServer {
+		scheduleArgument = nativeMapping.schedule
+	}
+	err = tx.QueryRow(ctx, database.Statement(s.pool.Dialect(), `
 	 SELECT sc.id,sc.cadence_unit,sc.cadence_interval,sc.starts_on,sc.ends_on
 	 FROM service_schedules sc JOIN agreements a ON a.id=sc.agreement_id AND a.shop_id=sc.shop_id
 	 WHERE sc.shop_id=$1 AND sc.active AND a.status='active'
 	 AND EXISTS (SELECT 1 FROM service_occurrences o WHERE o.shop_id=sc.shop_id AND o.schedule_id=sc.id AND o.id=$2)
-	 FOR UPDATE OF sc`, shopID, occurrenceID).Scan(&schedule.ID, &schedule.CadenceUnit, &schedule.CadenceInterval, &schedule.StartsOn, &schedule.EndsOn)
+	 FOR UPDATE OF sc`, `SELECT LOWER(CONVERT(char(36),id)),cadence_unit,cadence_interval,starts_on,ends_on FROM dbo.service_schedules WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND id=CONVERT(uniqueidentifier,@p2)`), shopID, scheduleArgument).Scan(&schedule.ID, &schedule.CadenceUnit, &schedule.CadenceInterval, &schedule.StartsOn, &schedule.EndsOn)
 	if errors.Is(err, database.ErrNoRows) {
 		return ErrVisitUnavailable
 	}
@@ -136,8 +189,12 @@ func (s *Service) MoveVisit(ctx context.Context, shopID, occurrenceID string, ne
 	var original, current time.Time
 	var revision int
 	var status string
-	err = tx.QueryRow(ctx, `SELECT due_on,COALESCE(scheduled_on,due_on),schedule_revision,status
-	 FROM service_occurrences WHERE shop_id=$1 AND id=$2 FOR UPDATE`, shopID, occurrenceID).Scan(&original, &current, &revision, &status)
+	occurrenceArgs := []any{shopID, occurrenceID}
+	if s.pool.Dialect() == database.SQLServer {
+		occurrenceArgs = append(occurrenceArgs, nativeMapping.schedule)
+	}
+	err = tx.QueryRow(ctx, database.Statement(s.pool.Dialect(), `SELECT due_on,COALESCE(scheduled_on,due_on),schedule_revision,status
+	 FROM service_occurrences WHERE shop_id=$1 AND id=$2 FOR UPDATE`, `SELECT due_on,effective_on,schedule_revision,status FROM dbo.service_occurrences WITH(UPDLOCK,HOLDLOCK) WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND id=CONVERT(uniqueidentifier,@p2) AND schedule_id=CONVERT(uniqueidentifier,@p3)`), occurrenceArgs...).Scan(&original, &current, &revision, &status)
 	if errors.Is(err, database.ErrNoRows) || (err == nil && status != "due") {
 		return ErrVisitUnavailable
 	}
@@ -154,9 +211,11 @@ func (s *Service) MoveVisit(ctx context.Context, shopID, occurrenceID string, ne
 		return tx.Commit(ctx)
 	}
 	var collision, anchorExists bool
-	err = tx.QueryRow(ctx, `SELECT
+	err = tx.QueryRow(ctx, database.Statement(s.pool.Dialect(), `SELECT
 	 EXISTS(SELECT 1 FROM service_occurrences WHERE shop_id=$1 AND schedule_id=$2 AND id<>$3 AND COALESCE(scheduled_on,due_on)=$4),
-	 EXISTS(SELECT 1 FROM service_occurrences WHERE shop_id=$1 AND schedule_id=$2 AND due_on=$4)`, shopID, schedule.ID, occurrenceID, newDate).Scan(&collision, &anchorExists)
+	 EXISTS(SELECT 1 FROM service_occurrences WHERE shop_id=$1 AND schedule_id=$2 AND due_on=$4)`, `SELECT
+ CONVERT(bit,CASE WHEN EXISTS(SELECT 1 FROM dbo.service_occurrences WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND schedule_id=CONVERT(uniqueidentifier,@p2) AND id<>CONVERT(uniqueidentifier,@p3) AND effective_on=CONVERT(date,@p4)) THEN 1 ELSE 0 END),
+ CONVERT(bit,CASE WHEN EXISTS(SELECT 1 FROM dbo.service_occurrences WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND schedule_id=CONVERT(uniqueidentifier,@p2) AND due_on=CONVERT(date,@p4)) THEN 1 ELSE 0 END)`), shopID, schedule.ID, occurrenceID, dateArgument(s.pool.Dialect(), newDate)).Scan(&collision, &anchorExists)
 	if err != nil {
 		return err
 	}
@@ -165,10 +224,10 @@ func (s *Service) MoveVisit(ctx context.Context, shopID, occurrenceID string, ne
 	if collision || (!anchorExists && occurrenceAt(schedule, index).Equal(newDate)) {
 		return ErrDateConflict
 	}
-	_, err = tx.Exec(ctx, `UPDATE service_occurrences
+	_, err = tx.Exec(ctx, database.Statement(s.pool.Dialect(), `UPDATE service_occurrences
 	 SET scheduled_on=CASE WHEN due_on=$3 THEN NULL ELSE $3 END,
 	 schedule_revision=schedule_revision+1,updated_at=$4
-	 WHERE shop_id=$1 AND id=$2`, shopID, occurrenceID, newDate, s.now())
+	 WHERE shop_id=$1 AND id=$2`, `UPDATE dbo.service_occurrences SET scheduled_on=CASE WHEN due_on=CONVERT(date,@p3) THEN NULL ELSE CONVERT(date,@p3) END,schedule_revision=schedule_revision+1,updated_at=@p4 WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND id=CONVERT(uniqueidentifier,@p2)`), shopID, occurrenceID, dateArgument(s.pool.Dialect(), newDate), s.now())
 	if err != nil {
 		return fmt.Errorf("move service visit: %w", err)
 	}

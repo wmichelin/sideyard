@@ -14,16 +14,20 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/wmichelin/clubdue/internal/database"
 	"github.com/wmichelin/clubdue/internal/servicework"
 )
 
 func TestMoveServiceVisitPreservesCadenceAndSummaries(t *testing.T) {
-	ctx := context.Background()
-	db, err := openDB(ctx, integrationDatabaseURL(t))
+	db, err := openDB(context.Background(), integrationDatabaseURL(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	t.Cleanup(db.Close)
+	testMoveServiceVisitPreservesCadenceAndSummaries(t, db)
+}
+func testMoveServiceVisitPreservesCadenceAndSummaries(t *testing.T, db *DB) {
+	ctx := context.Background()
 	now := time.Date(2034, 1, 31, 12, 0, 0, 0, time.UTC)
 	store := &Store{db: db, clock: fixedClock{now: now}}
 	for _, tc := range []struct {
@@ -129,7 +133,7 @@ func TestMoveServiceVisitPreservesCadenceAndSummaries(t *testing.T) {
 				t.Fatalf("used due date instead of recorded completion: %+v", summaries[0])
 			}
 			var usage int
-			if err := db.Pool.QueryRow(ctx, `SELECT visits_used FROM agreements WHERE id=$1`, agreement).Scan(&usage); err != nil || usage != 0 {
+			if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `SELECT visits_used FROM agreements WHERE id=$1`, `SELECT visits_used FROM dbo.agreements WHERE id=CONVERT(uniqueidentifier,@p1)`), agreement).Scan(&usage); err != nil || usage != 0 {
 				t.Fatalf("move changed entitlement: %d %v", usage, err)
 			}
 			// Independent second service has no inherited completion history.
@@ -158,12 +162,15 @@ func TestMoveServiceVisitPreservesCadenceAndSummaries(t *testing.T) {
 }
 
 func TestMoveServiceVisitPauseResetsFutureWork(t *testing.T) {
-	ctx := context.Background()
-	db, err := openDB(ctx, integrationDatabaseURL(t))
+	db, err := openDB(context.Background(), integrationDatabaseURL(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	t.Cleanup(db.Close)
+	testMoveServiceVisitPauseResetsFutureWork(t, db)
+}
+func testMoveServiceVisitPauseResetsFutureWork(t *testing.T, db *DB) {
+	ctx := context.Background()
 	now := time.Date(2034, 1, 31, 12, 0, 0, 0, time.UTC)
 	store := &Store{db: db, clock: fixedClock{now: now}}
 	shop := createTestShop(t, ctx, db, fmt.Sprintf("move-pause-%d", time.Now().UnixNano()))

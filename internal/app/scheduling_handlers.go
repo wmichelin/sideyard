@@ -17,7 +17,7 @@ func (s *Server) handleSchedule(w http.ResponseWriter, r *http.Request) {
 	schedules, err := s.store.ListServiceScheduleSummaries(r.Context(), user.ShopID)
 	if err != nil {
 		log.Printf("schedule list request_id=%s error=%v", requestIDFromContext(r.Context()), err)
-		http.Error(w, "Could not load the schedule. Reload to try again.", http.StatusInternalServerError)
+		http.Error(w, "Could not load the schedule. Reload to try again.", http.StatusServiceUnavailable)
 		return
 	}
 	s.renderLayout(w, r, "Schedule — Sideyard", "schedule_content", map[string]any{
@@ -34,7 +34,7 @@ func (s *Server) handleVisitDate(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
 		} else {
 			log.Printf("visit date load request_id=%s error=%v", requestIDFromContext(r.Context()), err)
-			http.Error(w, "Could not load this visit.", http.StatusInternalServerError)
+			http.Error(w, "Could not load this visit.", http.StatusServiceUnavailable)
 		}
 		return
 	}
@@ -82,7 +82,7 @@ func (s *Server) handleVisitDate(w http.ResponseWriter, r *http.Request) {
 				message, status = err.Error(), http.StatusBadRequest
 			default:
 				log.Printf("visit date save request_id=%s error=%v", requestIDFromContext(r.Context()), err)
-				message, status = "Could not confirm the date change. Your chosen date is kept below; check the current date before retrying.", http.StatusInternalServerError
+				message, status = "Could not confirm the date change. Your chosen date is kept below; check the current date before retrying.", http.StatusServiceUnavailable
 			}
 			// Refresh the revision after a conflict but retain the user's chosen date.
 			if current, loadErr := s.store.GetServiceVisitDate(r.Context(), user.ShopID, id); loadErr == nil {

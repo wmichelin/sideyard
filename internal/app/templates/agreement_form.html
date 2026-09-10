@@ -88,13 +88,13 @@
   <form method="post" action="/agreements/{{ .Form.ID }}/service-schedules" class="form-stack">
     {{ template "csrf_field" . }}
     <div class="form-row">
-      <label><span>Service name</span><input name="service_name" required placeholder="Weekly lawn care"></label>
-      <label><span>Every</span><input type="number" name="cadence_interval" min="1" max="365" value="1" required></label>
-      <label><span>Cadence</span><select name="cadence_unit"><option value="week">Week(s)</option><option value="day">Day(s)</option><option value="month">Month(s)</option></select></label>
-      <label><span>Starts</span><input type="date" name="starts_on" value="{{ .ServiceStartDate }}" required></label>
-      <label><span>Ends (optional)</span><input type="date" name="ends_on"></label>
+      <label><span>Service name</span><input name="service_name" value="{{ with .Form.ServiceDraft }}{{ .Name }}{{ end }}" required placeholder="Weekly lawn care"></label>
+      <label><span>Every</span><input type="number" name="cadence_interval" min="1" max="365" value="{{ with .Form.ServiceDraft }}{{ .Interval }}{{ else }}1{{ end }}" required></label>
+      <label><span>Cadence</span><select name="cadence_unit"><option value="week">Week(s)</option><option value="day"{{ with .Form.ServiceDraft }}{{ if eq .Unit "day" }} selected{{ end }}{{ end }}>Day(s)</option><option value="month"{{ with .Form.ServiceDraft }}{{ if eq .Unit "month" }} selected{{ end }}{{ end }}>Month(s)</option></select></label>
+      <label><span>Starts</span><input type="date" name="starts_on" value="{{ with .Form.ServiceDraft }}{{ .StartsOn }}{{ else }}{{ .ServiceStartDate }}{{ end }}" required></label>
+      <label><span>Ends (optional)</span><input type="date" name="ends_on" value="{{ with .Form.ServiceDraft }}{{ .EndsOn }}{{ end }}"></label>
     </div>
-    <label class="checkbox-label"><input type="checkbox" name="counts_toward_entitlement" value="1"> Count completions toward this agreement’s included services</label>
+    <label class="checkbox-label"><input type="checkbox" name="counts_toward_entitlement" value="1"{{ with .Form.ServiceDraft }}{{ if .Counts }} checked{{ end }}{{ end }}> Count completions toward this agreement’s included services</label>
     <button type="submit" class="secondary-btn">Add recurring service</button>
   </form>
 

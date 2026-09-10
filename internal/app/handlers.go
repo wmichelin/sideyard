@@ -637,6 +637,7 @@ func (s *Server) handleAgreementEdit(w http.ResponseWriter, r *http.Request) {
 }
 
 type agreementFormData struct {
+	ServiceDraft    *serviceScheduleFormData
 	ID              string
 	CustomerID      string
 	PropertyID      string

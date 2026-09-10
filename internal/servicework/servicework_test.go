@@ -113,3 +113,38 @@ func TestValidateScheduleRejectsAmbiguousOrUnsafeInputs(t *testing.T) {
 		}
 	}
 }
+
+func TestCadenceAcrossCenturiesAndBoundedDateExtremes(t *testing.T) {
+	anchor := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	for _, unit := range []string{"day", "week"} {
+		schedule := Schedule{CadenceUnit: unit, CadenceInterval: 1, StartsOn: anchor}
+		index := 1000000
+		if unit == "week" {
+			index = 300000
+		}
+		target := occurrenceAt(schedule, index)
+		if got := firstOccurrenceIndex(schedule, target); got != index {
+			t.Fatalf("%s index %d want %d", unit, got, index)
+		}
+		dates := occurrenceDates(schedule, target, target)
+		if len(dates) != 1 || !dates[0].Equal(target) {
+			t.Fatalf("%s far cadence lost: %v", unit, dates)
+		}
+	}
+	for _, date := range []time.Time{time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(9999, 12, 31, 0, 0, 0, 0, time.UTC)} {
+		first, last := planningWindow(date)
+		if !validDate(first) || !validDate(last) || date.Before(first) || date.After(last) {
+			t.Fatal("planning overflow", first, last)
+		}
+	}
+	for _, text := range []string{"x\x00y", string([]byte{0xff})} {
+		if err := (&Service{}).UpdateOccurrenceStatuses(context.Background(), "shop", []string{"visit"}, "skipped", text); err == nil {
+			t.Fatal("invalid notes accepted")
+		}
+	}
+	// Validation follows the stored UTC day, including offset crossings at year 1.
+	bad := time.Date(1, 1, 1, 0, 0, 0, 0, time.FixedZone("east", 3600))
+	if err := (&Service{}).MoveVisit(context.Background(), "shop", "visit", bad, 0); err != ErrDateOutsideSchedule {
+		t.Fatal(err)
+	}
+}

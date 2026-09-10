@@ -3,7 +3,10 @@ package app
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/wmichelin/clubdue/internal/database"
+	"github.com/wmichelin/clubdue/internal/servicework"
 	"log"
 	"net/http"
 	"sort"
@@ -93,6 +96,10 @@ func (s *Server) handleVisits(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Printf("work outcome request_id=%s kind=%s error=%v", requestIDFromContext(r.Context()), submission.kind, err)
+		if submission.kind == "recurring" && !errors.Is(err, database.ErrNoRows) && !errors.Is(err, servicework.ErrOutcomeInput) && !errors.Is(err, servicework.ErrOutcomeConflict) {
+			s.workSaveErrorStatus(w, r, user, dueOnly, "Could not confirm this save. Reload to check the recorded outcomes before retrying.", http.StatusServiceUnavailable)
+			return
+		}
 		s.workSaveError(w, r, user, dueOnly, "Could not save this selection. A visit may have changed or reached its service limit. Review the selected visits and try again.")
 		return
 	}
@@ -121,16 +128,19 @@ func (s *Server) handleVisits(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) workSaveError(w http.ResponseWriter, r *http.Request, user *User, dueOnly bool, message string) {
+	s.workSaveErrorStatus(w, r, user, dueOnly, message, http.StatusBadRequest)
+}
+func (s *Server) workSaveErrorStatus(w http.ResponseWriter, r *http.Request, user *User, dueOnly bool, message string, status int) {
 	if strings.Contains(r.Header.Get("Accept"), "application/json") {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
-		w.WriteHeader(http.StatusBadRequest)
+		w.WriteHeader(status)
 		if err := json.NewEncoder(w).Encode(map[string]string{"error": message}); err != nil {
 			log.Printf("work error response: %v", err)
 		}
 		return
 	}
-	s.renderVisitsPage(w, r, user, dueOnly, http.StatusBadRequest, message)
+	s.renderVisitsPage(w, r, user, dueOnly, status, message)
 }
 
 func (s *Server) visitsPageData(r *http.Request, user *User, dueOnly bool) (map[string]any, error) {
@@ -161,7 +171,11 @@ func (s *Server) renderVisitsPage(w http.ResponseWriter, r *http.Request, user *
 	data, err := s.visitsPageData(r, user, dueOnly)
 	if err != nil {
 		log.Printf("list work request_id=%s error=%v", requestIDFromContext(r.Context()), err)
-		http.Error(w, "Could not load service work. Reload this page to try again.", http.StatusInternalServerError)
+		feedback := "Could not load service work. Reload this page to try again."
+		if message != "" {
+			feedback = message + " The work list is temporarily unavailable."
+		}
+		http.Error(w, feedback, http.StatusServiceUnavailable)
 		return
 	}
 	if message != "" {
@@ -196,13 +210,13 @@ func (s *Server) handleVisitsExport(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.store.VisitExportRows(r.Context(), user.ShopID, dueOnly)
 	if err != nil {
 		log.Printf("visit export: %v", err)
-		http.Error(w, "server error", http.StatusInternalServerError)
+		http.Error(w, "server error", http.StatusServiceUnavailable)
 		return
 	}
 	serviceRows, err := s.store.ServiceOccurrenceExportRows(r.Context(), user.ShopID, dueOnly)
 	if err != nil {
 		log.Printf("recurring service export: %v", err)
-		http.Error(w, "server error", http.StatusInternalServerError)
+		http.Error(w, "server error", http.StatusServiceUnavailable)
 		return
 	}
 	for _, serviceRow := range serviceRows {

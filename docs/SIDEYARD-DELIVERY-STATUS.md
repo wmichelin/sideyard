@@ -1050,3 +1050,95 @@ paid integrations or live customer payment collection are configured by this cha
   views, notes and activation/transfer gates remain unfinished.
 - Staging: https://clubdue-staging.michelindigitalmedia.com (verified `06d0953`;
   seasonal slice pending deployment). Production remains unchanged.
+
+
+### Native recurring work — review and plan
+
+- Product: preserve independent services, cadence anchors, moved dates, pause/resume,
+  completion/skip history and optional shared agreement entitlements. No billing or
+  dispatch feature is added. Existing final-outcome retries keep their first notes
+  and timestamps; recurring retries still require an active agreement and schedule.
+- Architect: composite agreement → schedule → occurrence cascade, exact hashed
+  external identities, immutable due-date uniqueness and a nonunique effective-date
+  index. Discover mappings, then shop/shared → sorted agreements/update → sorted
+  schedules/update → occurrence locks; revalidate both parent links before changes.
+- Staff: keep Go cadence and the 500-date checkpoint. Close source cursors before
+  nested work. Replace saturating duration subtraction with UTC day arithmetic for
+  far-apart dates. Keep UUID validation at repository boundaries because import
+  projections deliberately accept external agreement identities.
+- Unit testing: generation/checkpoint and activation failure rollback, pause cleanup
+  in both moved-date directions, final-history retries, stale moves, opposite-order
+  batches, seasonal/recurring contention for the last entitlement and parent races.
+- DevOps: calendar requires transaction snapshot isolation, not ReadOnly or RCSI
+  alone. Native activation must verify ALLOW_SNAPSHOT_ISOLATION. Preserve checkpoints,
+  original IDs, revisions and all history on transfer; do not regenerate restored
+  work. Import changes and idle worker/request budgets remain separate gates.
+- QA: exact ordering before 50-row pagination, consistent counts/page across a
+  concurrent move, December 9999 without binding year 10000, one available connection,
+  tenant cascades, Unicode/byte limits, and dependency failures distinguished from
+  missing/input errors. Staging exercises two services, moved-date/calendar return,
+  pause/resume, complete/skip, stale tabs and retained selections at mobile/desktop.
+- Implementation sequence: schema and generation, then moves/outcomes, then reads
+  and calendar; focused checks precede full regression and isolated SQL rehearsal.
+- Staging: https://clubdue-staging.michelindigitalmedia.com (seasonal source
+  e5653e6 passed CI 34426830524 and staging 34426830547; manual smoke and running
+  revision readback passed; browser verification in progress). Production unchanged.
+
+
+- Seasonal source `e5653e6c21de5011af3667c795e651e5026cd077` passed CI
+  [34426830524](https://github.com/wmichelin/clubdue/actions/runs/34426830524) and
+  staging [34426830547](https://github.com/wmichelin/clubdue/actions/runs/34426830547).
+  Manual smoke and independent running revision/image readback passed:
+  `ghcr.io/wmichelin/clubdue@sha256:63de75378fc2aced3b52d2de11a67fd4b2e806c5fb6a019991ac1be6fb16a607`.
+  Browser handoff, exhausted-batch rollback, completion/retry, retained other-group
+  selection, due/all filters and 390/1440px checks passed without browser errors.
+  The test's direct retry initially read form.action, shadowed by the named action
+  control; reading the action attribute fixed the browser harness, not the app.
+
+### Native recurring work — implementation and focused verification
+
+- Migration 021 preserves unbounded identities/names/notes, positive historical
+  cadence intervals and signed revisions, nullable timestamps and original-date
+  uniqueness. Composite tenant keys follow one agreement/schedule/occurrence cascade.
+  Explicit native queries keep Go recurrence; all inserts and checkpoint advancement
+  share a transaction, including the 500-date catch-up cap. Old source cursors close
+  before nested work. No new timer or runtime database selection is enabled.
+- Native mutations lock shop/shared, sorted agreements/update, schedules/update,
+  then occurrences. Both discovered parent links are rechecked. Native calendar
+  uses transaction snapshot isolation and UTF-8/canonical UUID order before paging.
+  December 9999 uses an inclusive last day; planning boundaries clamp to years
+  1–9999. Day/week indexing uses UTC day distance instead of saturating time.Sub.
+- Architect/staff and DevOps found default-collation NULLIF could erase U+2060
+  (WORD JOINER). Both free-text saves now use DATALENGTH; exact identity uniqueness
+  and note-preservation tests pass. Active/schedule-date indexes were restored.
+- Shared PostgreSQL/native tests pass weekly/biweekly/monthly moved-date identity,
+  summaries, pause reset in both date directions, tenant boundaries and calendar
+  pagination. Native tests pass seasonal-versus-recurring final-entitlement races,
+  noncounting/skip behavior, original retry notes/time, later-exhausted and foreign
+  batches, reversed batches, activation failures and inactive retry rejection.
+- Native rollback tests pass initial and later checkpoint failures, three 500-date
+  catch-up chunks, failed pause cleanup, one remaining connection for global/local
+  generation and summaries, global demo exclusion and local demo generation.
+  Calendar tests preserve a 58-row result across a concurrent committed move,
+  verify exact Unicode page membership, year-9999 cursor/retry and distant cadence
+  collisions. Engine-observed mapping-change, move/pause and move/completion races
+  pass, as do signed/overflow revisions, historical interval breadth and tenant
+  cascades/rollback without crossing into another shop.
+- Product/unit/QA: invalid service forms retain submitted configuration with 422.
+  Unconfirmed creates/pause/resume, date saves and recurring outcomes return 503
+  with check-before-retry guidance. Date input and work selections are retained when the form/list can reload;
+  committed work still reports success if refresh fails. Known input/conflicts
+  remain distinct. QA found the no-JavaScript fallback could lose unconfirmed-save
+  guidance when its list refresh also failed; the plain fallback now preserves that
+  guidance without claiming selections are retained. Focused HTTP tests cover both
+  JSON and HTML fallback responses on both engines.
+- Full regression, vet, static build and isolated rehearsal are running.
+  Staging: https://clubdue-staging.michelindigitalmedia.com (verified e5653e6;
+  recurring slice pending). Production remains PostgreSQL on its approved artifact.
+
+- Full Go regression with PostgreSQL and SQL Server passed (app suite 156.110s),
+  as did vet, static build and the isolated SQL rehearsal. The final HTML fallback
+  correction passed focused form tests on both engines and a fresh vet/build.
+  The directed product map renders 36 nodes/64 edges. Architect/staff final review
+  found no remaining blocker; QA's final fallback correction is covered explicitly.
+  CI and staging/browser checks are the remaining recurring-slice gates.
