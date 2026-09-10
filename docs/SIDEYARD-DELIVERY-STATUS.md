@@ -1651,4 +1651,15 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   customer-form draft recovery, recurring/seasonal unavailable saves, demo capacity,
   notification durability, both customer-deletion race orderings and tenant
   isolation. Independent architecture, operations and QA final reviews found no
-  remaining publication blocker. CI and verified staging deployment remain gates.
+  remaining publication blocker.
+- Source `e7d1019e4cf78b260fb20cae244007be8274fca1` passed CI
+  [34505795306](https://github.com/wmichelin/clubdue/actions/runs/34505795306),
+  including formatting, vet, PostgreSQL integration, the full Go suite, build,
+  production recovery, onboarding and native SQL Server rehearsals. Staging
+  deployment [34505795287](https://github.com/wmichelin/clubdue/actions/runs/34505795287)
+  published immutable image
+  `ghcr.io/wmichelin/clubdue@sha256:2bcee50804176c13878d75ef07633be137da862962c5ead797cd120c26a2578b`.
+  The complete manual staging smoke then passed health, readiness, rollback
+  safety, interest, closed signup, legacy login, isolated writable demos,
+  expiration, import, work, renewal and CSV checks. Staging still uses
+  PostgreSQL and production remains unchanged.
