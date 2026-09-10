@@ -23,13 +23,18 @@ docker run -d --name "$container" --network "$network" --network-alias clubdue-s
   postgres:16-alpine >/dev/null
 ready=false
 for _ in $(seq 1 30); do
-  if docker exec "$container" pg_isready -U clubdue -d clubdue >/dev/null 2>&1; then
+  if docker run --rm --network "$network" postgres:16-alpine \
+      pg_isready -h clubdue-staging-db -U clubdue -d clubdue >/dev/null 2>&1; then
     ready=true
     break
   fi
   sleep 1
 done
-[ "$ready" = true ] || { echo 'Disposable PostgreSQL did not become ready' >&2; exit 1; }
+[ "$ready" = true ] || {
+  echo 'Disposable PostgreSQL did not become reachable from its isolated client network' >&2
+  docker logs "$container" >&2
+  exit 1
+}
 docker run --rm --network "$network" \
   -e DATABASE_URL='postgres://clubdue:exporter-rehearsal-password@clubdue-staging-db:5432/clubdue?sslmode=disable' \
   -e CLUBDUE_REQUIRE_POSTGRES_INTEGRATION=1 \
