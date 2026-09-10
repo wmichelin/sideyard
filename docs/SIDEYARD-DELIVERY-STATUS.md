@@ -1213,3 +1213,90 @@ paid integrations or live customer payment collection are configured by this cha
   vet, static build and isolated SQL rehearsal. The inverse-UUID ordering fixture
   passes and graph validation renders36 nodes/64 edges. All reviewed deletion,
   identity, pause and fallback cases passed. CI/staging/browser gates remain.
+
+
+### Native renewals — review and plan
+
+- Product: preserve exact expiring keyed-hash links, current displayed agreement
+  fields, multiple still-valid links and manual outcome behavior. Public content
+  remains limited; cancelled/lost agreements' existing links remain usable until
+  expiry. Rename the amount label from Annual price to Plan price without changing
+  the amount. Production checkout stays disabled; digest queuing sends no email.
+- Architect/staff: links/tasks use composite agreement cascades; digest rows have
+  only shop cascade because task IDs are a historical membership snapshot. Preserve
+  full exact token identity with a hash-backed index and exact residual comparison.
+  Native outcomes discover then lock shop/shared → agreement/update → task/update,
+  revalidate the mapping and retain all sibling/rollover/activation changes in one
+  transaction. No active-agreement requirement for manual outcome updates.
+- Unit testing: shared milestone/cycle/renewal/link tests, exact token and expiry
+  boundaries, Go AddDate month normalization, unrepresentable computed dates,
+  conflicting and identical final retries, activation/next-task failure rollback,
+  parent changes and final-entitlement races against other work domains.
+- DevOps: materialize/close global shop and agreement cursors; one available
+  connection must suffice. Native generation re-reads each locked agreement and
+  commits its five milestones atomically. Digest uses one source statement snapshot,
+  closes it, groups ordered IDs in Go and inserts each absent shop/day key in one
+  transaction. Existing sent/failed/queued rows stay untouched. No new timer.
+- QA: preserve overlapping dashboard renewal buckets, anniversary-based due state,
+  non-open future tasks and bigint dashboard aggregation after per-record annual
+  price division. Public/link responses are private/no-store; outages become generic
+  503 while missing/expired links remain indistinguishable404. Failed manual outcomes
+  preserve draft/guidance where possible and distinguish input/conflict/unconfirmed.
+- Compatibility decision: retain the pre-existing ability of an older open-cycle
+  task to renew after a separate anniversary edit; this can move the anniversary
+  backwards/reset usage. Test/document parity instead of silently changing policy
+  during a provider migration. Resolving stale-cycle actions is separate future work.
+  Go renewal AddDate normalization differs from recurring month-end clamping and
+  must remain. Reject computed task dates outside1–9999 before changes; read-only
+  range upper bounds may clamp to the greatest representable date.
+- Transfer must audit tenant/date and UUID-array shape/nullability, preserve original
+  cycles, hashes and digest membership, and keep all runtime/notification gates.
+- Staging: https://clubdue-staging.michelindigitalmedia.com (visit-history source
+  5fdf1fe deploying; renewal implementation pending). Production unchanged.
+
+
+- Visit-history source `5fdf1fea5fd5d1e2a0402cdaab33b4f6f3bc5668` passed CI
+  [34429403992](https://github.com/wmichelin/clubdue/actions/runs/34429403992) and
+  staging [34429403946](https://github.com/wmichelin/clubdue/actions/runs/34429403946).
+  Manual smoke and independent running revision/image readback passed:
+  `ghcr.io/wmichelin/clubdue@sha256:c9a641305ee15fc7398fadeae298c06d558f4dec106a011dd4406cf6d9b4bc1f`.
+  Browser DST-fold choice, retained invalid draft, exact retry, changed-retry409,
+  moved-visit history, date-only seasonal note, private CSV omission, pending-history
+  pause deletion and unaffected seasonal history passed.390/1440px checks passed
+  without browser errors. Renewal implementation remains local/in progress.
+
+
+### Native renewals — implementation and focused verification
+
+- Migrations 026/027 preserve exact unbounded token identity, tenant agreement
+  cascades, cycle/milestone uniqueness and ordered historical digest membership.
+  Digest arrays allow nulls, duplicates and deleted task IDs; malformed UUID values,
+  nested arrays and empty payloads fail without truncation. No digest sender added.
+- Existing milestone, rollover, daily digest, public-link and actionable due-state
+  tests now run on both engines. Native tests pass non-UTC expiry at microsecond
+  boundaries, long/case/space/Unicode token identity, live terms, exact final retries,
+  activation/late-milestone rollback, generation rollback, competing final outcomes,
+  changed-parent revalidation and renewal versus seasonal/recurring counter locks.
+- Native checks also pass iterative Go month normalization, the documented old-cycle
+  parity, date underflow/overflow rejection, December9999 reads, bigint MRR, overlapping
+  dashboard buckets, global demo exclusion/local generation and one available
+  connection. Large130-ID digests keep canonical UUID ordering, survive agreement
+  deletion, preserve sent/failed snapshots and deduplicate concurrent queue calls.
+  Failure on a later shop rolls back all digest inserts in that invocation.
+- Shared HTTP checks pass generic404/503 distinctions, retained queue draft when
+  reload succeeds, unconfirmed guidance when it fails, private bearer redirect
+  destinations and unchanged production contact-only payment behavior. Plan price
+  replaces Annual price without changing the amount. JavaScript creation uses
+  unconfirmed guidance for unavailable/network/malformed-response failures.
+- Architect/staff, DevOps and product/unit/QA final actual-code reviews found no
+  remaining implementation blocker. Reviewed UTC-expiry and no-store fixes are
+  implemented. Before native activation verify RCSI and snapshot database options;
+  transfer, runtime ownership, cold-start and recovery gates remain open.
+- Product graph validation passed36 nodes/64 edges. Full checks and clean SQL
+  rehearsal running; staging https://clubdue-staging.michelindigitalmedia.com is
+  verified at5fdf1fe, renewal slice pending. Production unchanged.
+
+- Renewal full checks passed: fresh PostgreSQL plus native Go regression (app
+  suite182.086s), `go vet ./...`, static build and isolated SQL rehearsal. Both
+  counter-race variants and all reviewed rollback/digest/date/HTTP cases passed.
+  Staging deployment and browser verification are next; production unchanged.

@@ -20,7 +20,7 @@
     <section class="form-panel renewal-card">
       <h2 class="section-title">{{ .Renewal.PlanName }}</h2>
       <p><strong>Renewal date:</strong> {{ .AnniversaryFmt }}</p>
-      <p><strong>Annual price:</strong> {{ .PriceFmt }}</p>
+      <p><strong>Plan price:</strong> {{ .PriceFmt }}</p>
       {{ if .TestPaymentStub }}
         {{ if .Paid }}
         <p class="success-banner">Test payment acknowledged. No card was charged.</p>

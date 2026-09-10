@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/wmichelin/clubdue/internal/activation"
+	"github.com/wmichelin/clubdue/internal/database"
 )
 
 type RenewalTask struct {
@@ -52,6 +53,15 @@ func DueState(days int) string {
 }
 
 func (s *Service) GenerateRenewalTasks(ctx context.Context, shopID string, asOf time.Time) error {
+	if err := validateIDs(shopID); err != nil {
+		return err
+	}
+	if !validDate(asOf) {
+		return ErrInput
+	}
+	if s.pool.Dialect() == database.SQLServer {
+		return s.generateSQLServerTasks(ctx, shopID, asOf)
+	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, anniversary_date, plan_snapshot_term_months
 		FROM agreements
@@ -63,13 +73,25 @@ func (s *Service) GenerateRenewalTasks(ctx context.Context, shopID string, asOf 
 
 	today := time.Date(asOf.UTC().Year(), asOf.UTC().Month(), asOf.UTC().Day(), 0, 0, 0, 0, time.UTC)
 	latestStart := today.AddDate(0, 0, 90)
+	type candidate struct {
+		id          string
+		anniversary time.Time
+		term        int
+	}
+	var candidates []candidate
 	for rows.Next() {
-		var agreementID string
-		var cycleStart time.Time
-		var termMonths int
-		if err := rows.Scan(&agreementID, &cycleStart, &termMonths); err != nil {
+		var item candidate
+		if err := rows.Scan(&item.id, &item.anniversary, &item.term); err != nil {
 			return err
 		}
+		candidates = append(candidates, item)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	rows.Close()
+	for _, item := range candidates {
+		agreementID, cycleStart, termMonths := item.id, item.anniversary, item.term
 		cycleStart, err = renewalCycleStart(cycleStart, today, termMonths)
 		if err != nil {
 			return fmt.Errorf("agreement %s: %w", agreementID, err)
@@ -92,16 +114,24 @@ func (s *Service) GenerateRenewalTasks(ctx context.Context, shopID string, asOf 
 }
 
 func (s *Service) GenerateAllRenewalTasks(ctx context.Context, asOf time.Time) error {
-	rows, err := s.pool.Query(ctx, `SELECT id FROM shops WHERE kind <> 'demo_sandbox'`)
+	rows, err := s.pool.Query(ctx, database.Statement(s.pool.Dialect(), `SELECT id FROM shops WHERE kind <> 'demo_sandbox'`, `SELECT LOWER(CONVERT(char(36),id)) FROM dbo.shops WHERE kind<>N'demo_sandbox'`))
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
+	var shops []string
 	for rows.Next() {
-		var shopID string
-		if err := rows.Scan(&shopID); err != nil {
+		var shop string
+		if err := rows.Scan(&shop); err != nil {
 			return err
 		}
+		shops = append(shops, shop)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	rows.Close()
+	for _, shopID := range shops {
 		if err := s.GenerateRenewalTasks(ctx, shopID, asOf); err != nil {
 			return err
 		}
@@ -113,6 +143,12 @@ func (s *Service) GenerateAllRenewalTasks(ctx context.Context, asOf time.Time) e
 // day. It intentionally does not send anything; a configured delivery worker
 // can later claim the durable outbox record.
 func (s *Service) QueueRenewalDigests(ctx context.Context, asOf time.Time) error {
+	if !validDate(asOf) {
+		return ErrInput
+	}
+	if s.pool.Dialect() == database.SQLServer {
+		return s.queueSQLServerDigests(ctx, dateOnly(asOf))
+	}
 	digestDate := time.Date(asOf.UTC().Year(), asOf.UTC().Month(), asOf.UTC().Day(), 0, 0, 0, 0, time.UTC)
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO renewal_digest_outbox (shop_id, digest_date, task_ids)
@@ -126,8 +162,11 @@ func (s *Service) QueueRenewalDigests(ctx context.Context, asOf time.Time) error
 }
 
 func (s *Service) ListRenewalTasks(ctx context.Context, shopID string) ([]RenewalTask, error) {
-	asOf := s.now()
-	rows, err := s.pool.Query(ctx, `
+	if err := validateIDs(shopID); err != nil {
+		return nil, err
+	}
+	asOf := s.now().UTC().Format("2006-01-02")
+	rows, err := s.pool.Query(ctx, database.Statement(s.pool.Dialect(), `
 		SELECT t.id, a.id, c.id, c.name, COALESCE(c.email, ''), COALESCE(c.phone, ''),
 			COALESCE(p.address_line1 || ', ' || p.city || ', ' || p.state || ' ' || p.postal_code, ''),
 			a.plan_snapshot_name, a.anniversary_date, t.due_at, t.milestone_days,
@@ -137,7 +176,7 @@ func (s *Service) ListRenewalTasks(ctx context.Context, shopID string) ([]Renewa
 		JOIN customers c ON c.id = a.customer_id
 		LEFT JOIN properties p ON p.id = a.property_id
 		WHERE t.shop_id = $1 AND (t.due_at <= $2::date OR t.status <> 'open')
-		ORDER BY t.due_at, a.anniversary_date, t.milestone_days DESC`, shopID, asOf)
+		ORDER BY t.due_at, a.anniversary_date, t.milestone_days DESC`, sqlServerListTasks), shopID, asOf)
 	if err != nil {
 		return nil, err
 	}
@@ -158,11 +197,20 @@ func (s *Service) ListRenewalTasks(ctx context.Context, shopID string) ([]Renewa
 }
 func (s *Service) UpdateRenewalTask(ctx context.Context, shopID, id, status, notes string) error {
 	if status != "open" && status != "contacted" && status != "renewed" && status != "lost" {
-		return fmt.Errorf("invalid status")
+		return ErrInput
 	}
 	notes = strings.TrimSpace(notes)
 	if len(notes) > 2000 {
-		return fmt.Errorf("renewal notes must not exceed 2000 bytes")
+		return fmt.Errorf("renewal notes must not exceed 2000 bytes: %w", ErrInput)
+	}
+	if !validText(notes) {
+		return ErrInput
+	}
+	if err := validateIDs(shopID, id); err != nil {
+		return err
+	}
+	if s.pool.Dialect() == database.SQLServer {
+		return s.updateSQLServerTask(ctx, shopID, id, status, notes)
 	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -181,13 +229,13 @@ func (s *Service) UpdateRenewalTask(ctx context.Context, shopID, id, status, not
 		FOR UPDATE`, shopID, id,
 	).Scan(&agreementID, &cycleStart, &currentStatus, &termMonths)
 	if err != nil {
-		return fmt.Errorf("task not found")
+		return fmt.Errorf("load renewal task: %w", err)
 	}
 	if currentStatus == "renewed" || currentStatus == "lost" {
 		if currentStatus == status {
 			return tx.Commit(ctx)
 		}
-		return fmt.Errorf("task outcome is already final")
+		return ErrConflict
 	}
 
 	if _, err := tx.Exec(ctx, `

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/wmichelin/clubdue/internal/database"
+	"github.com/wmichelin/clubdue/internal/renewals"
 )
 
 type Server struct {
@@ -609,6 +610,7 @@ func (s *Server) handleAgreementNew(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAgreementEdit(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "private, no-store")
 	user := userFromContext(r.Context())
 	id := r.PathValue("id")
 	a, err := s.store.GetAgreement(r.Context(), user.ShopID, id)
@@ -817,7 +819,11 @@ func (s *Server) handleRenewals(w http.ResponseWriter, r *http.Request) {
 		}
 		if err := s.store.UpdateRenewalTask(r.Context(), user.ShopID, r.FormValue("task_id"), r.FormValue("status"), r.FormValue("notes")); err != nil {
 			log.Printf("renewal update: %v", err)
-			s.renderRenewalQueue(w, r, user, "Could not save this renewal outcome. It may already be final or no longer available.", http.StatusBadRequest)
+			message, status := "Could not save this renewal outcome. It may already be final or no longer available.", http.StatusBadRequest
+			if !errors.Is(err, database.ErrNoRows) && !errors.Is(err, renewals.ErrInput) && !errors.Is(err, renewals.ErrConflict) {
+				message, status = "Could not confirm this renewal outcome. Reload to check the recorded outcome before retrying.", http.StatusServiceUnavailable
+			}
+			s.renderRenewalQueue(w, r, user, message, status)
 			return
 		}
 		http.Redirect(w, r, "/renewals", http.StatusSeeOther)
@@ -830,10 +836,21 @@ func (s *Server) renderRenewalQueue(w http.ResponseWriter, r *http.Request, user
 	tasks, err := s.store.ListRenewalTasks(r.Context(), user.ShopID)
 	if err != nil {
 		log.Printf("renewal queue: %v", err)
-		http.Error(w, "server error", http.StatusInternalServerError)
+		message := "The renewal queue is temporarily unavailable. Please retry."
+		if updateError != "" {
+			message = updateError + " The renewal queue is temporarily unavailable."
+		}
+		http.Error(w, message, http.StatusServiceUnavailable)
 		return
 	}
 	if updateError != "" {
+		for i := range tasks {
+			if strings.EqualFold(tasks[i].ID, r.PostForm.Get("task_id")) {
+				tasks[i].Status = r.PostForm.Get("status")
+				tasks[i].Notes = r.PostForm.Get("notes")
+			}
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(status)
 	}
 	s.renderLayout(w, r, "Renewals — Sideyard", "renewals_content", map[string]any{

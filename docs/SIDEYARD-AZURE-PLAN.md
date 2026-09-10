@@ -4,9 +4,9 @@
 
 Status: implementing — user authorized Azure SQL, versioned Blob and seven-day backups.
 Last completed: both environments provisioned; staging Blob and connection foundation verified; both Azure exports restored; real idle/resume probe completed in 45 seconds.
-Now: native accounts, customer/property/photo records, assets, jobs, business setup, agreements, seasonal and recurring work verified in isolated engines; visit history in final checks. Renewals, import/demo maintenance, transfer and idle runtime wiring remain.
+Now: native accounts, customer/property/photo records, assets, jobs, business setup, agreements, seasonal and recurring work verified in isolated engines; visit history verified on staging. Native renewals are in final verification; import/demo maintenance, transfer and idle runtime wiring remain.
 Next: verify both database backends and idle behavior before a reviewed database cutover.
-Evidence: recurring staging release `9531079` verified; exact artifacts in the delivery status.
+Evidence: visit-history staging release `5fdf1fe` verified; exact artifacts in the delivery status.
 Staging: https://clubdue-staging.michelindigitalmedia.com (verified for Azure Blob; application database remains PostgreSQL).
 Blocker: no sign-in blocker. The live free SQL API requires a 60-minute idle delay; the plan below reflects that correction.
 
@@ -240,6 +240,12 @@ production infrastructure apply on push.
 
 ### A2 — Port PostgreSQL behavior and make idle time work
 
+Before native runtime activation, verify both `READ_COMMITTED_SNAPSHOT ON`
+and `ALLOW_SNAPSHOT_ISOLATION ON` on the actual target database. Digest capture
+uses one read-committed statement snapshot; paged calendar reads use an explicit
+snapshot transaction. Successful schema migration alone does not prove these
+database options are enabled.
+
 Relevant current boundaries include [connection/migrations](../internal/postgres/db.go),
 [app startup](../internal/app/main.go), [maintenance](../internal/app/runtime.go),
 [notification worker](../internal/app/interest_notifications.go) and
@@ -444,22 +450,13 @@ backups are recoverable and billing matches the configured offer.
 
 ## Operating from the road
 
-The implementation will provide documented wrappers under `scripts/azure/` for
-bootstrap, plan/apply, status/quota, backup, isolated restore and credential
-rotation. The following illustrates the intended workflow; these paths/scripts
-do not exist yet:
-
-```sh
-az login --use-device-code
-az account set --subscription '<verified-subscription-id>'
-git pull --ff-only
-terraform -chdir=infra/azure/environments/staging init
-terraform -chdir=infra/azure/environments/staging fmt -check
-terraform -chdir=infra/azure/environments/staging validate
-terraform -chdir=infra/azure/environments/staging plan -out=reviewed.tfplan
-# Review the resource changes and cost/offer checks before the next command.
-terraform -chdir=infra/azure/environments/staging apply reviewed.tfplan
-```
+Provisioning, state initialization, status and encrypted PostgreSQL backup/restore
+commands are implemented in [the Azure CLI/Terraform runbook](../infra/azure/README.md).
+Use its shared `infra/azure/environments` configuration with separate environment
+variable files, backend keys and `TF_DATA_DIR` values. Do not invent per-environment
+configuration directories. Native SQL application transfer and recovery commands
+remain implementation work; use the recorded PostgreSQL recovery procedure until
+those gates pass.
 
 Authentication can require device/browser approval, but routine provisioning,
 configuration, monitoring and recovery will use CLI/API. An ephemeral Cloud

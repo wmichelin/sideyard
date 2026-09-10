@@ -10,6 +10,8 @@ renewalLinkForm?.addEventListener("submit", async (event) => {
   button.disabled = true;
   status.hidden = true;
 
+  let failureMessage = "Could not confirm the renewal link. Reload the agreement before trying again.";
+
   try {
     const response = await fetch(renewalLinkForm.action, {
       method: "POST",
@@ -21,6 +23,9 @@ renewalLinkForm?.addEventListener("submit", async (event) => {
       credentials: "same-origin",
     });
     if (!response.ok) {
+      if (response.status === 404) {
+        failureMessage = "This agreement is no longer available. Reload the agreement list.";
+      }
       throw new Error("create renewal link failed");
     }
 
@@ -34,7 +39,7 @@ renewalLinkForm?.addEventListener("submit", async (event) => {
     status.textContent = "Renewal link created.";
     status.hidden = false;
   } catch {
-    status.textContent = "Could not create the renewal link. Please try again.";
+    status.textContent = failureMessage;
     status.hidden = false;
   } finally {
     button.disabled = false;

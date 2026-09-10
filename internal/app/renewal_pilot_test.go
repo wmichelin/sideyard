@@ -11,16 +11,23 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/wmichelin/clubdue/internal/database"
 )
 
 func TestRenewalTasksKeepFutureDueTodayAndPastDueCyclesActionable(t *testing.T) {
-	databaseURL := integrationDatabaseURL(t)
-	ctx := context.Background()
-	db, err := openDB(ctx, databaseURL)
+	db, err := openDB(context.Background(), integrationDatabaseURL(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	testRenewalTasksKeepFutureDueTodayAndPastDueCyclesActionable(t, db)
+}
+func TestSQLServerRenewalTasksKeepFutureDueTodayAndPastDueCyclesActionable(t *testing.T) {
+	testRenewalTasksKeepFutureDueTodayAndPastDueCyclesActionable(t, sqlServerTestDB(t))
+}
+func testRenewalTasksKeepFutureDueTodayAndPastDueCyclesActionable(t *testing.T, db *DB) {
+	ctx := context.Background()
 	store := &Store{db: db}
 
 	stamp := time.Now().UTC().Format("20060102150405.000000000")
@@ -41,7 +48,7 @@ func TestRenewalTasksKeepFutureDueTodayAndPastDueCyclesActionable(t *testing.T) 
 	for _, tc := range cases {
 		customerID := createTestCustomer(t, ctx, db, shopID, tc.name+" renewal customer")
 		propertyID := createTestProperty(t, ctx, db, shopID, customerID, tc.name+" renewal street")
-		if _, err := db.Pool.Exec(ctx, `UPDATE customers SET email = $2, phone = $3 WHERE id = $1`, customerID, tc.name+"@example.test", "555-0100"); err != nil {
+		if _, err := db.Pool.Exec(ctx, database.Statement(db.Pool.Dialect(), `UPDATE customers SET email = $2, phone = $3 WHERE id = $1`, `UPDATE dbo.customers SET email=@p2,phone=@p3 WHERE id=CONVERT(uniqueidentifier,@p1)`), customerID, tc.name+"@example.test", "555-0100"); err != nil {
 			t.Fatal(err)
 		}
 		agreementID, err := store.CreateAgreement(ctx, shopID, CreateAgreementInput{
@@ -59,7 +66,7 @@ func TestRenewalTasksKeepFutureDueTodayAndPastDueCyclesActionable(t *testing.T) 
 	}
 	for _, tc := range cases {
 		var cycleStart time.Time
-		if err := db.Pool.QueryRow(ctx, `SELECT cycle_start_date FROM renewal_tasks WHERE agreement_id = $1 AND milestone_days = 30`, agreementIDs[tc.name]).Scan(&cycleStart); err != nil {
+		if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `SELECT cycle_start_date FROM renewal_tasks WHERE agreement_id = $1 AND milestone_days = 30`, `SELECT cycle_start_date FROM dbo.renewal_tasks WHERE agreement_id=CONVERT(uniqueidentifier,@p1) AND milestone_days=30`), agreementIDs[tc.name]).Scan(&cycleStart); err != nil {
 			t.Fatalf("read %s cycle: %v", tc.name, err)
 		}
 		wantCycle := time.Date(tc.anniversary.Year(), tc.anniversary.Month(), tc.anniversary.Day(), 0, 0, 0, 0, time.UTC)
@@ -90,13 +97,18 @@ func TestRenewalTasksKeepFutureDueTodayAndPastDueCyclesActionable(t *testing.T) 
 }
 
 func TestRenewalMutationErrorsRenderAndProductionRenewalHasNoPaymentCTA(t *testing.T) {
-	databaseURL := integrationDatabaseURL(t)
-	ctx := context.Background()
-	db, err := openDB(ctx, databaseURL)
+	db, err := openDB(context.Background(), integrationDatabaseURL(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	testRenewalMutationErrorsRenderAndProductionRenewalHasNoPaymentCTA(t, db)
+}
+func TestSQLServerRenewalMutationErrorsRenderAndProductionRenewalHasNoPaymentCTA(t *testing.T) {
+	testRenewalMutationErrorsRenderAndProductionRenewalHasNoPaymentCTA(t, sqlServerTestDB(t))
+}
+func testRenewalMutationErrorsRenderAndProductionRenewalHasNoPaymentCTA(t *testing.T, db *DB) {
+	ctx := context.Background()
 	store := &Store{db: db}
 	stamp := time.Now().UTC().Format("20060102150405.000000000")
 	shopID := createTestShop(t, ctx, db, "renewal-render-"+stamp)
@@ -129,14 +141,18 @@ func TestRenewalMutationErrorsRenderAndProductionRenewalHasNoPaymentCTA(t *testi
 }
 
 func TestRenewalLinkCreationReturnsJSONForInPlaceSubmission(t *testing.T) {
-	databaseURL := integrationDatabaseURL(t)
-	ctx := context.Background()
-	db, err := openDB(ctx, databaseURL)
+	db, err := openDB(context.Background(), integrationDatabaseURL(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
-
+	testRenewalLinkCreationReturnsJSONForInPlaceSubmission(t, db)
+}
+func TestSQLServerRenewalLinkCreationReturnsJSONForInPlaceSubmission(t *testing.T) {
+	testRenewalLinkCreationReturnsJSONForInPlaceSubmission(t, sqlServerTestDB(t))
+}
+func testRenewalLinkCreationReturnsJSONForInPlaceSubmission(t *testing.T, db *DB) {
+	ctx := context.Background()
 	store := &Store{db: db}
 	stamp := time.Now().UTC().Format("20060102150405.000000000")
 	shopID := createTestShop(t, ctx, db, "renewal-link-json-"+stamp)

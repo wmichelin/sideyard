@@ -639,8 +639,15 @@ func (s *Store) UpdateAgreement(ctx context.Context, shopID, agreementID string,
 
 func (s *Store) DashboardStats(ctx context.Context, shopID string) (DashboardStats, error) {
 	var stats DashboardStats
+	if err := validateRecordIDs(shopID); err != nil {
+		return stats, err
+	}
 	asOf := s.nowUTC()
-	err := s.db.Pool.QueryRow(ctx, `
+	var err error
+	if s.db.Pool.Dialect() == database.SQLServer {
+		stats, err = s.sqlServerDashboardCounts(ctx, shopID, asOf)
+	} else {
+		err = s.db.Pool.QueryRow(ctx, `
 		SELECT
 			COUNT(*) FILTER (WHERE a.status = 'active'),
 			COUNT(*) FILTER (WHERE a.status = 'active'
@@ -657,12 +664,13 @@ func (s *Store) DashboardStats(ctx context.Context, shopID string) (DashboardSta
 			), 0)
 		FROM agreements a
 		WHERE a.shop_id = $1`, shopID, asOf).Scan(
-		&stats.ActiveCount,
-		&stats.RenewalsDueMonth,
-		&stats.RenewalsDue90,
-		&stats.LapsedMTD,
-		&stats.MRRCents,
-	)
+			&stats.ActiveCount,
+			&stats.RenewalsDueMonth,
+			&stats.RenewalsDue90,
+			&stats.LapsedMTD,
+			&stats.MRRCents,
+		)
+	}
 	if err != nil {
 		return stats, err
 	}
@@ -676,8 +684,11 @@ func (s *Store) DashboardStats(ctx context.Context, shopID string) (DashboardSta
 }
 
 func (s *Store) RenewalQueue(ctx context.Context, shopID string) ([]RenewalBucket, error) {
+	if err := validateRecordIDs(shopID); err != nil {
+		return nil, err
+	}
 	asOf := s.nowUTC()
-	rows, err := s.db.Pool.Query(ctx, `
+	query := `
 		SELECT
 			a.id,
 			c.name,
@@ -692,7 +703,17 @@ func (s *Store) RenewalQueue(ctx context.Context, shopID string) ([]RenewalBucke
 		WHERE a.shop_id = $1
 		  AND a.status = 'active'
 		  AND a.anniversary_date BETWEEN $2::date AND $2::date + 90
-		ORDER BY a.anniversary_date`, shopID, asOf)
+		ORDER BY a.anniversary_date`
+	args := []any{shopID, asOf}
+	if s.db.Pool.Dialect() == database.SQLServer {
+		query = sqlServerRenewalQueue
+		horizon := asOf.UTC().AddDate(0, 0, 90)
+		if horizon.Year() > 9999 {
+			horizon = time.Date(9999, 12, 31, 0, 0, 0, 0, time.UTC)
+		}
+		args = []any{shopID, asOf.UTC().Format("2006-01-02"), horizon.Format("2006-01-02")}
+	}
+	rows, err := s.db.Pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

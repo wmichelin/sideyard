@@ -208,14 +208,18 @@ func TestRetireLegacySharedDemoIsNarrowAndIdempotent(t *testing.T) {
 }
 
 func TestGenerateRenewalTasksCreatesCycleAwareMilestonesIdempotently(t *testing.T) {
-	databaseURL := integrationDatabaseURL(t)
-
-	ctx := context.Background()
-	db, err := openDB(ctx, databaseURL)
+	db, err := openDB(context.Background(), integrationDatabaseURL(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	testGenerateRenewalTasksCreatesCycleAwareMilestonesIdempotently(t, db)
+}
+func TestSQLServerGenerateRenewalTasksCreatesCycleAwareMilestonesIdempotently(t *testing.T) {
+	testGenerateRenewalTasksCreatesCycleAwareMilestonesIdempotently(t, sqlServerTestDB(t))
+}
+func testGenerateRenewalTasksCreatesCycleAwareMilestonesIdempotently(t *testing.T, db *DB) {
+	ctx := context.Background()
 	store := &Store{db: db}
 	stamp := time.Now().UTC().Format("20060102150405.000000000")
 	shopID := createTestShop(t, ctx, db, "renewal-"+stamp)
@@ -238,7 +242,7 @@ func TestGenerateRenewalTasksCreatesCycleAwareMilestonesIdempotently(t *testing.
 	}
 
 	var count int
-	if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM renewal_tasks WHERE shop_id = $1 AND agreement_id = $2`, shopID, agreementID).Scan(&count); err != nil {
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `SELECT count(*) FROM renewal_tasks WHERE shop_id = $1 AND agreement_id = $2`, `SELECT COUNT(*) FROM dbo.renewal_tasks WHERE shop_id=CONVERT(uniqueidentifier,@p1) AND agreement_id=CONVERT(uniqueidentifier,@p2)`), shopID, agreementID).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
 	if count != 5 {
@@ -246,7 +250,7 @@ func TestGenerateRenewalTasksCreatesCycleAwareMilestonesIdempotently(t *testing.
 	}
 
 	var cycleStart, dueAt time.Time
-	if err := db.Pool.QueryRow(ctx, `SELECT cycle_start_date, due_at FROM renewal_tasks WHERE agreement_id = $1 AND milestone_days = 30`, agreementID).Scan(&cycleStart, &dueAt); err != nil {
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `SELECT cycle_start_date, due_at FROM renewal_tasks WHERE agreement_id = $1 AND milestone_days = 30`, `SELECT cycle_start_date,due_at FROM dbo.renewal_tasks WHERE agreement_id=CONVERT(uniqueidentifier,@p1) AND milestone_days=30`), agreementID).Scan(&cycleStart, &dueAt); err != nil {
 		t.Fatal(err)
 	}
 	expectedCycleStart := time.Date(2030, time.July, 1, 0, 0, 0, 0, time.UTC)
@@ -257,13 +261,18 @@ func TestGenerateRenewalTasksCreatesCycleAwareMilestonesIdempotently(t *testing.
 }
 
 func TestRenewedTaskRollsAgreementAndRetiresCycle(t *testing.T) {
-	databaseURL := integrationDatabaseURL(t)
-	ctx := context.Background()
-	db, err := openDB(ctx, databaseURL)
+	db, err := openDB(context.Background(), integrationDatabaseURL(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	testRenewedTaskRollsAgreementAndRetiresCycle(t, db)
+}
+func TestSQLServerRenewedTaskRollsAgreementAndRetiresCycle(t *testing.T) {
+	testRenewedTaskRollsAgreementAndRetiresCycle(t, sqlServerTestDB(t))
+}
+func testRenewedTaskRollsAgreementAndRetiresCycle(t *testing.T, db *DB) {
+	ctx := context.Background()
 	store := &Store{db: db}
 	stamp := time.Now().UTC().Format("20060102150405.000000000")
 	shopID := createTestShop(t, ctx, db, "rollover-"+stamp)
@@ -282,7 +291,7 @@ func TestRenewedTaskRollsAgreementAndRetiresCycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	var taskID string
-	if err := db.Pool.QueryRow(ctx, `SELECT id FROM renewal_tasks WHERE agreement_id = $1 AND milestone_days = 30`, agreementID).Scan(&taskID); err != nil {
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `SELECT id FROM renewal_tasks WHERE agreement_id = $1 AND milestone_days = 30`, `SELECT LOWER(CONVERT(char(36),id)) FROM dbo.renewal_tasks WHERE agreement_id=CONVERT(uniqueidentifier,@p1) AND milestone_days=30`), agreementID).Scan(&taskID); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.UpdateRenewalTask(ctx, shopID, taskID, "renewed", "confirmed"); err != nil {
@@ -291,21 +300,21 @@ func TestRenewedTaskRollsAgreementAndRetiresCycle(t *testing.T) {
 
 	var anniversary time.Time
 	var visitsUsed int
-	if err := db.Pool.QueryRow(ctx, `SELECT anniversary_date, visits_used FROM agreements WHERE id = $1`, agreementID).Scan(&anniversary, &visitsUsed); err != nil {
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `SELECT anniversary_date, visits_used FROM agreements WHERE id = $1`, `SELECT anniversary_date,visits_used FROM dbo.agreements WHERE id=CONVERT(uniqueidentifier,@p1)`), agreementID).Scan(&anniversary, &visitsUsed); err != nil {
 		t.Fatal(err)
 	}
 	if !anniversary.Equal(time.Date(2032, time.March, 31, 0, 0, 0, 0, time.UTC)) || visitsUsed != 0 {
 		t.Fatalf("renewal did not advance term/reset visits: anniversary=%s visits=%d", anniversary, visitsUsed)
 	}
 	var staleOpen int
-	if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM renewal_tasks WHERE agreement_id = $1 AND cycle_start_date = $2 AND status IN ('open', 'contacted')`, agreementID, cycleStart).Scan(&staleOpen); err != nil {
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `SELECT count(*) FROM renewal_tasks WHERE agreement_id = $1 AND cycle_start_date = $2 AND status IN ('open', 'contacted')`, `SELECT COUNT(*) FROM dbo.renewal_tasks WHERE agreement_id=CONVERT(uniqueidentifier,@p1) AND cycle_start_date=CONVERT(date,@p2) AND status IN(N'open',N'contacted')`), agreementID, cycleStart).Scan(&staleOpen); err != nil {
 		t.Fatal(err)
 	}
 	if staleOpen != 0 {
 		t.Fatalf("expected no open tasks in renewed cycle, got %d", staleOpen)
 	}
 	var nextCycleTasks int
-	if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM renewal_tasks WHERE agreement_id = $1 AND cycle_start_date = $2`, agreementID, anniversary).Scan(&nextCycleTasks); err != nil {
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `SELECT count(*) FROM renewal_tasks WHERE agreement_id = $1 AND cycle_start_date = $2`, `SELECT COUNT(*) FROM dbo.renewal_tasks WHERE agreement_id=CONVERT(uniqueidentifier,@p1) AND cycle_start_date=CONVERT(date,@p2)`), agreementID, anniversary).Scan(&nextCycleTasks); err != nil {
 		t.Fatal(err)
 	}
 	if nextCycleTasks != 5 {
@@ -314,20 +323,25 @@ func TestRenewedTaskRollsAgreementAndRetiresCycle(t *testing.T) {
 }
 
 func TestQueueRenewalDigestsIsDailyAndIdempotent(t *testing.T) {
-	databaseURL := integrationDatabaseURL(t)
-	ctx := context.Background()
-	db, err := openDB(ctx, databaseURL)
+	db, err := openDB(context.Background(), integrationDatabaseURL(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	testQueueRenewalDigestsIsDailyAndIdempotent(t, db)
+}
+func TestSQLServerQueueRenewalDigestsIsDailyAndIdempotent(t *testing.T) {
+	testQueueRenewalDigestsIsDailyAndIdempotent(t, sqlServerTestDB(t))
+}
+func testQueueRenewalDigestsIsDailyAndIdempotent(t *testing.T, db *DB) {
+	ctx := context.Background()
 	store := &Store{db: db}
 	stamp := time.Now().UTC().Format("20060102150405.000000000")
 	shopID := createTestShop(t, ctx, db, "digest-"+stamp)
 	customerID := createTestCustomer(t, ctx, db, shopID, "Digest Customer")
 	planID := createTestPlan(t, ctx, db, shopID, "Digest Plan")
 	asOf := time.Date(2032, time.August, 1, 0, 0, 0, 0, time.UTC)
-	_, err = store.CreateAgreement(ctx, shopID, CreateAgreementInput{
+	_, err := store.CreateAgreement(ctx, shopID, CreateAgreementInput{
 		CustomerID: customerID, PlanTemplateID: planID, Status: AgreementActive,
 		AnniversaryDate: asOf.AddDate(0, 0, 30), VisitsEntitled: 2, PriceCents: 19900,
 	})
@@ -345,7 +359,7 @@ func TestQueueRenewalDigestsIsDailyAndIdempotent(t *testing.T) {
 	}
 
 	var count, taskCount int
-	if err := db.Pool.QueryRow(ctx, `SELECT count(*), cardinality(task_ids) FROM renewal_digest_outbox WHERE shop_id = $1 GROUP BY task_ids`, shopID).Scan(&count, &taskCount); err != nil {
+	if err := db.Pool.QueryRow(ctx, database.Statement(db.Pool.Dialect(), `SELECT count(*), cardinality(task_ids) FROM renewal_digest_outbox WHERE shop_id = $1 GROUP BY task_ids`, `SELECT (SELECT COUNT(*) FROM dbo.renewal_digest_outbox WHERE shop_id=CONVERT(uniqueidentifier,@p1)),(SELECT COUNT(*) FROM OPENJSON(d.task_ids)) FROM dbo.renewal_digest_outbox d WHERE shop_id=CONVERT(uniqueidentifier,@p1)`), shopID).Scan(&count, &taskCount); err != nil {
 		t.Fatal(err)
 	}
 	if count != 1 || taskCount != 3 {

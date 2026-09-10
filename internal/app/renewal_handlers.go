@@ -2,6 +2,8 @@ package app
 
 import (
 	"encoding/json"
+	"errors"
+	"github.com/wmichelin/clubdue/internal/database"
 	"log"
 	"net/http"
 	"net/url"
@@ -12,16 +14,21 @@ import (
 const renewalLinkTTL = 30 * 24 * time.Hour
 
 func (s *Server) handleAgreementRenewalLink(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "private, no-store")
 	user := userFromContext(r.Context())
 	token, err := randomToken(32)
 	if err != nil {
-		http.Error(w, "could not create renewal link", http.StatusInternalServerError)
+		http.Error(w, "could not create renewal link", http.StatusServiceUnavailable)
 		return
 	}
 	if err := s.store.CreateRenewalLink(r.Context(), user.ShopID, r.PathValue("id"),
 		hashToken(token, s.auth.sessionSecret), s.renewalLinkExpiry()); err != nil {
 		log.Printf("create renewal link: %v", err)
-		http.NotFound(w, r)
+		if errors.Is(err, database.ErrNoRows) {
+			http.NotFound(w, r)
+		} else {
+			http.Error(w, "Could not confirm the renewal link. Reload the agreement before trying again.", http.StatusServiceUnavailable)
+		}
 		return
 	}
 	if strings.Contains(r.Header.Get("Accept"), "application/json") {
@@ -36,13 +43,14 @@ func (s *Server) handleAgreementRenewalLink(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *Server) handleHomeownerRenewal(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "private, no-store")
 	if s.demo {
 		http.NotFound(w, r)
 		return
 	}
 	renewal, err := s.store.GetHomeownerRenewal(r.Context(), hashToken(r.PathValue("token"), s.auth.sessionSecret))
 	if err != nil {
-		http.NotFound(w, r)
+		renewalReadError(w, r, err)
 		return
 	}
 	s.render(w, r, "renewal.html", map[string]any{
@@ -55,6 +63,7 @@ func (s *Server) handleHomeownerRenewal(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) handleHomeownerRenewalPayment(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "private, no-store")
 	// Deliberately a non-charging placeholder until Stripe Checkout and webhook
 	// verification are configured. Revalidate the expiring token before replying.
 	if s.demo || !s.config.TestPaymentStubEnabled() {
@@ -62,8 +71,17 @@ func (s *Server) handleHomeownerRenewalPayment(w http.ResponseWriter, r *http.Re
 		return
 	}
 	if _, err := s.store.GetHomeownerRenewal(r.Context(), hashToken(r.PathValue("token"), s.auth.sessionSecret)); err != nil {
-		http.NotFound(w, r)
+		renewalReadError(w, r, err)
 		return
 	}
 	http.Redirect(w, r, "/renew/"+url.PathEscape(r.PathValue("token"))+"?payment=stub", http.StatusSeeOther)
+}
+
+func renewalReadError(w http.ResponseWriter, r *http.Request, err error) {
+	if errors.Is(err, database.ErrNoRows) {
+		http.NotFound(w, r)
+		return
+	}
+	// Never include the bearer token or customer details in feedback or logs.
+	http.Error(w, "This renewal page is temporarily unavailable. Please retry.", http.StatusServiceUnavailable)
 }
