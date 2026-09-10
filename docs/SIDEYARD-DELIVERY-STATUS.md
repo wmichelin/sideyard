@@ -1765,12 +1765,12 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   wrapping, exact photo-object/version manifests, least-privilege exporter/importer
   identities, Terraform-derived disposable targets and oldest/newest recovery
   drills remain. The staging selector is still PostgreSQL; production is unchanged.
-- Source `8af5371f0bbdb437e2e923f67a2cd27d136670bf` passed all four CI
-  jobs [34523739030](https://github.com/wmichelin/clubdue/actions/runs/34523739030)
+- Source `bf01490788b4c99d0de53de2d4a5cbe4fc78ae3d` passed all four CI
+  jobs [34526440832](https://github.com/wmichelin/clubdue/actions/runs/34526440832)
   and staging deployment
-  [34523738972](https://github.com/wmichelin/clubdue/actions/runs/34523738972).
+  [34526440707](https://github.com/wmichelin/clubdue/actions/runs/34526440707).
   The running revision label, restart policy and immutable manifest were read back
-  as `ghcr.io/wmichelin/clubdue@sha256:a33e9552e6391190019ad06ddf4ff188f1279c645ee1434d9cffc4fda2557458`.
+  as `ghcr.io/wmichelin/clubdue@sha256:b57c30b3be474aab7a6a14f686278b0f06e9362b22e17b1c2c2a47e888d27b8b`.
   The workflow smoke and a separate complete live smoke passed; recent application
   logs showed the exercised requests completing without server errors. The runtime
   backend/generation fence remains on PostgreSQL and production is unchanged.
