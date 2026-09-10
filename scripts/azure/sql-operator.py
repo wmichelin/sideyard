@@ -90,6 +90,8 @@ def main():
             [
                 "docker", "run", "--rm",
                 "-e", "GOTOOLCHAIN=local", "-e", "CGO_ENABLED=0",
+                "-v", "sideyard-go-modules:/go/pkg/mod",
+                "-v", "sideyard-go-build:/root/.cache/go-build",
                 "-v", f"{root}:/workspace:ro", "-v", f"{temporary}:/output",
                 "-w", "/workspace", "golang:1.23-alpine",
                 "go", "build", "-trimpath", "-o", "/output/clubdue", "./cmd/clubdue",
