@@ -1837,3 +1837,15 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
 - Activation remains blocked on Azure sign-in, a reviewed staging plan/apply, two
   live least-privilege canaries, and the later PostgreSQL exporter/disposable SQL
   importer slices. Staging and production continue to use PostgreSQL.
+- Source `0c130e7733a8ea1a633cae63e9445526acdac6f8` passed all four CI
+  jobs [34536382079](https://github.com/wmichelin/clubdue/actions/runs/34536382079),
+  including the native SQL Server and production recovery rehearsals, Terraform
+  formatting/validation and all nine recovery-identity plans, plus all 32 focused
+  lifecycle tests. Staging deployment
+  [34536382044](https://github.com/wmichelin/clubdue/actions/runs/34536382044)
+  published immutable image
+  `ghcr.io/wmichelin/clubdue@sha256:65637972abbd80ddfad50a16595073cdf191de14d53734447a02f7ec2abd542b`.
+  The running revision, `unless-stopped` policy, PostgreSQL backend and generation
+  `765629bc-8d1b-4e04-9f80-4c3c22cca1c9` were read back independently; health,
+  landing and login checks returned 200. No Azure identity was activated and
+  production is unchanged.
