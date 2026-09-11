@@ -1,11 +1,17 @@
 # Sideyard delivery status
 
-Status: verified — nine foundational slices in production; standalone jobs and the badge fix verified on staging. Overall execution plan remains in progress.
-Last completed: approved production promotion, standalone job/site-survey workflow and single-line status badges.
-Now: durable handoff and staging review.
-Next: calendar integration, appointments and remaining scheduling work; new production promotion only after approval.
-Staging: https://clubdue-staging.michelindigitalmedia.com (verified through standalone jobs and the badge fix).
-Blocker: none for continued development. Production requires review and approval.
+Status: verified — nine foundational slices in production; Azure logical
+publication and crash-safe host release are verified on staging. The overall
+execution plan remains in progress.
+Last completed: browserless Azure synthetic publication and a disposable droplet
+host-release crash/retry rehearsal without customer data.
+Now: immutable logical-recovery key preparation, two-copy recovery verification
+and mechanical custody gates.
+Next: owner-controlled off-device custody, one retained customer-data staging
+export, then the scheduled seven-day backup and monitoring path.
+Staging: https://clubdue-staging.michelindigitalmedia.com (verified at `d943359`).
+Blocker: customer-data publication requires the owner's two-copy custody
+attestation. Production requires review and explicit approval.
 
 The user explicitly authorized continued building on September 8, 2026, and
 production promotion through visit-linked notes on September 9. The earlier
@@ -2025,6 +2031,27 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   export spool. Customer-data release remains blocked on separately recoverable
   off-device custody for both keys. Timers, ordinary backup-success markers,
   runtime selectors and production are unchanged.
+
+### Logical recovery key custody — local candidate
+
+- Added a staging-only key command that creates two distinct 256-bit values once
+  in the existing owner-only configuration directory and emits only domain-separated
+  key IDs plus a deterministic key-set ID. Its atomic, fsynced preparation receipt
+  remains `local_prepared`; it never claims that a local copy is off-device.
+- Copy A and copy B must be freshly retrieved into different owner-only files and
+  use distinct abstract labels. Each exact-compares one descriptor-read canonical
+  key set, runs the production AES-256-CBC/PBKDF2-SHA256 and descriptor-bound HMAC
+  recovery path on synthetic data, and persists a non-secret copy receipt. The
+  supplied retrieval is retained unless the operator explicitly requests cleanup;
+  cleanup rechecks the verified inode before unlink.
+- The final HMAC-authenticated `custody_verified` receipt requires the owner's
+  explicit attestation and binds both exact copy receipts to the active key set.
+  Handoff and publisher entrypoints reject absent, partial, stale or mismatched
+  custody before SSH or Azure authentication, compare the exact verified key set
+  immediately before Blob publication, and check it again before host release.
+- The tool and gates are not deployed, no real recovery keys have been generated,
+  and no custody assertion has been made. The owner must transfer and freshly
+  retrieve two independent copies before customer-data execution can begin.
 
 ### Azure staging foundation and browserless Terraform — live verified
 

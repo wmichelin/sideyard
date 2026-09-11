@@ -34,6 +34,7 @@ def load_module(name, path):
 STORE = load_module("sideyard_logical_store", HERE / "logical-backup-store.py")
 PREPARE = load_module("sideyard_logical_prepare", HERE / "prepare-logical-postgres-publication.py")
 CERT = load_module("sideyard_recovery_certificate", HERE / "verify-recovery-certificate.py")
+KEYS = load_module("sideyard_logical_recovery_keys", HERE / "logical-recovery-keys.py")
 RECEIPT_MAGIC = b"Sideyard logical publication receipt v1\n"
 HOST_RELEASE_MAGIC = b"Sideyard logical host release receipt v1\n"
 PHASES = ("intent", "ciphertext", "components", "completion", "verified")
@@ -517,6 +518,7 @@ def reviewed_tooling():
         "scripts/azure/publish-logical-postgres-publication.py", "scripts/azure/prepare-logical-postgres-publication.py",
         "scripts/azure/logical-backup-store.py", "scripts/azure/verify-recovery-certificate.py", "scripts/azure/bin/az",
         "scripts/azure/logical-export-handoff.sh",
+        "scripts/azure/logical-recovery-keys.py",
     )
     if not re.fullmatch(r"[0-9a-f]{40}",revision): raise ValueError("reviewed publication revision is invalid")
     blobs={}
@@ -564,6 +566,20 @@ def certificate_only_environment(runner, runner_config):
     return environment
 
 
+def run_custody_bound_publication(args, folder, backup, photos, identities, active_key_set, reviewed_release_helper):
+    passphrase,authentication_key,publication_key_set=KEYS.read_verified_keys(args.key_file,args.custody_attestation)
+    if publication_key_set!=active_key_set:
+        raise ValueError("logical recovery key set changed before publication")
+    receipt=run_publication(folder,backup,photos,identities,passphrase,authentication_key)
+    if not args.release_host_package:
+        return receipt,None
+    _,release_authentication_key,release_key_set=KEYS.read_verified_keys(args.key_file,args.custody_attestation)
+    if release_key_set!=publication_key_set:
+        raise ValueError("logical recovery key set changed before host release")
+    host_release=release_host_package(folder,receipt,release_authentication_key,reviewed_release_helper,args.ssh_target)
+    return receipt,host_release
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("environment",choices=("staging",)); parser.add_argument("--export-id",required=True)
@@ -571,10 +587,12 @@ def main():
     parser.add_argument("--ssh-target",default="pantry-droplet")
     parser.add_argument("--work-root",type=Path,default=Path.home()/".local"/"share"/"sideyard-logical-recovery"/"staging")
     parser.add_argument("--key-file",type=Path,default=Path.home()/".config"/"sideyard-azure"/"staging-logical-recovery.env")
+    parser.add_argument("--custody-attestation",type=Path,default=Path.home()/".config"/"sideyard-azure"/"staging-logical-recovery-custody.json")
     parser.add_argument("--terraform-directory",type=Path,default=ROOT/"infra"/"azure"/"environments")
     args=parser.parse_args(); os.umask(0o077)
     if not UUID.fullmatch(args.export_id): raise ValueError("export ID must be a UUID")
     _,reviewed_release_helper=reviewed_tooling(); PREPARE.private_directory(args.work_root)
+    _,_,active_key_set=KEYS.read_verified_keys(args.key_file,args.custody_attestation)
     config=Path.home()/".config"/"sideyard-azure"; CERT.require_private_path(config,directory=True)
     certificate_lock=CERT.acquire_recovery_lock(config); publication_lock=None
     try:
@@ -599,10 +617,10 @@ def main():
     finally:
         certificate_lock.close()
     try:
-        passphrase,authentication_key=PREPARE.read_keys(args.key_file)
         folder=args.work_root/args.export_id; PREPARE.private_path(folder,directory=True)
-        receipt=run_publication(folder,backup,photos,identities,passphrase,authentication_key)
-        host_release=release_host_package(folder,receipt,authentication_key,reviewed_release_helper,args.ssh_target) if args.release_host_package else None
+        receipt,host_release=run_custody_bound_publication(
+            args,folder,backup,photos,identities,active_key_set,reviewed_release_helper
+        )
     finally:
         if publication_lock is not None: publication_lock.close()
     payload=receipt["payload"]

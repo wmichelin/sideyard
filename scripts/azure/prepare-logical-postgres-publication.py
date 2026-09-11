@@ -25,6 +25,10 @@ STORE_SOURCE = Path(__file__).with_name("logical-backup-store.py")
 SPEC = importlib.util.spec_from_file_location("sideyard_logical_backup_store", STORE_SOURCE)
 STORE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(STORE)
+KEYS_SOURCE = Path(__file__).with_name("logical-recovery-keys.py")
+KEYS_SPEC = importlib.util.spec_from_file_location("sideyard_logical_recovery_keys", KEYS_SOURCE)
+KEYS = importlib.util.module_from_spec(KEYS_SPEC)
+KEYS_SPEC.loader.exec_module(KEYS)
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 SHA = re.compile(r"[0-9a-f]{64}")
 REVISION = re.compile(r"[0-9a-f]{40}")
@@ -75,6 +79,7 @@ def reviewed_revision_and_helper():
         "scripts/azure/prepare-logical-postgres-publication.py",
         "scripts/azure/logical-export-handoff.sh",
         "scripts/azure/logical-backup-store.py",
+        "scripts/azure/logical-recovery-keys.py",
     ]
     blobs = {}
     for path in reviewed:
@@ -392,13 +397,16 @@ def main():
     parser.add_argument("--ssh-target", default="pantry-droplet")
     parser.add_argument("--work-root", type=Path, default=Path.home()/".local"/"share"/"sideyard-logical-recovery"/"staging")
     parser.add_argument("--key-file", type=Path, default=Path.home()/".config"/"sideyard-azure"/"staging-logical-recovery.env")
+    parser.add_argument("--custody-attestation", type=Path, default=Path.home()/".config"/"sideyard-azure"/"staging-logical-recovery-custody.json")
     args = parser.parse_args()
     os.umask(0o077)
     private_directory(args.work_root)
     require_free_space(args.work_root)
     lock = acquire_lock(args.work_root)
     try:
-        passphrase, authentication_key = read_keys(args.key_file)
+        passphrase, authentication_key, _ = KEYS.read_verified_keys(
+            args.key_file, args.custody_attestation
+        )
         revision, helper_source = reviewed_revision_and_helper()
         with tempfile.TemporaryFile(dir=args.work_root) as package:
             journal, offset = fetch_claim(args.ssh_target, revision, helper_source, package)

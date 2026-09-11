@@ -3,12 +3,21 @@
 ## Status update
 
 Status: implementing — user authorized Azure SQL, versioned Blob and seven-day backups.
-Last completed: both environments provisioned; staging Blob and connection foundation verified; both Azure exports restored; real idle/resume probe completed in 45 seconds.
-Now: native accounts, customer/property/photo records, assets, jobs, business setup, agreements, seasonal and recurring work verified in isolated engines; visit history verified on staging. Native renewals verified on staging; demo controls verified on staging. Native demo fixture seeding verified on staging. Domain CSV import implementation and native transaction tests are in progress; transfer and idle runtime wiring remain.
-Next: verify both database backends and idle behavior before a reviewed database cutover.
-Evidence: demo-seeding staging release `b1efeae` verified; exact artifacts in the delivery status.
+Last completed: crash-safe browserless logical Blob publication and explicit host
+release are staging verified, including real Azure synthetic publication and a
+synthetic droplet crash/retry rehearsal. No customer data was used.
+Now: a local key-custody candidate prepares one immutable two-key set, verifies
+two independently retrieved off-device copies with the production crypto path,
+and mechanically gates handoff, Blob publication and host release on an explicit
+owner attestation.
+Next: deploy and verify that custody tool, complete the owner-controlled two-copy
+ceremony, then publish one retained customer-data staging export and automate its
+seven-day backup/monitoring window. Azure SQL runtime soak and cutover remain later gates.
+Evidence: host-release staging revision `3f49952` and exact artifacts are in the delivery status.
 Staging: https://clubdue-staging.michelindigitalmedia.com (verified for Azure Blob; application database remains PostgreSQL).
-Blocker: no sign-in blocker. The live free SQL API requires a 60-minute idle delay; the plan below reflects that correction.
+Blocker: no sign-in blocker. Customer-data logical publication is blocked only on
+the owner-controlled two-copy custody ceremony; production still requires explicit
+approval. The live free SQL API requires a 60-minute idle delay.
 
 The user accepted Blob Storage's 12-month free offer, the 0.5–1 vCore database
 configuration and seven-day backups, and requested implementation. The initial
@@ -458,16 +467,19 @@ configuration directories. The internal native logical-transfer contract and
 resumable SQL restore are implemented and exercised across the current staging
 schema and frozen production migration 29 schema. They are deliberately not
 operator commands yet. The internal staging-only Blob contract now binds its
-encrypted package identity, exact object versions and required-photo inventory,
-but authenticated encryption/operator wiring, database identities,
-Terraform-derived disposable restore targets and oldest/newest recovery drills
-remain implementation work. A staging-only lifecycle now prepares distinct Blob
+encrypted package identity, exact object versions and required-photo inventory.
+Browserless authenticated encryption, create-only publication, exact-version
+readback and crash-safe host release are implemented as staging-only manual
+operator commands and have passed synthetic Azure/droplet rehearsals. A local
+two-copy custody candidate now guards customer-data use; Terraform-derived
+disposable restore targets and oldest/newest recovery drills remain implementation
+work. A staging-only lifecycle prepares distinct Blob
 publisher and photo-reader credentials from exact Terraform resource IDs. Separate
 container roles grant only backup read/write or photo read, while resource
 preconditions reject production use and principal overlap. Both staging identities
 are assigned at their exact container scopes and their positive/negative canaries
-passed on September 11, 2026. No publication service or customer-data package is
-active yet.
+passed on September 11, 2026. No scheduled publication service or customer-data
+package is active yet.
 Use the recorded PostgreSQL recovery procedure until all gates pass.
 
 Authentication can require device/browser approval, but routine provisioning,

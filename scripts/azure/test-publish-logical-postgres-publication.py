@@ -265,13 +265,53 @@ class PublicationTests(unittest.TestCase):
         source=PUBLISH.reviewed_tooling.__code__.co_consts
         self.assertTrue(any(isinstance(value,tuple) and "scripts/azure/bin/az" in value for value in source))
         self.assertTrue(any(isinstance(value,tuple) and "scripts/azure/logical-export-handoff.sh" in value for value in source))
+        self.assertTrue(any(isinstance(value,tuple) and "scripts/azure/logical-recovery-keys.py" in value for value in source))
+
+    def test_missing_custody_fails_before_azure_authentication(self):
+        arguments=[str(PUBLISH.HERE/"publish-logical-postgres-publication.py"),"staging","--export-id",EXPORT]
+        with (
+            mock.patch.object(PUBLISH.sys,"argv",arguments),
+            mock.patch.object(PUBLISH,"reviewed_tooling",return_value=("a"*40,b"helper")),
+            mock.patch.object(PUBLISH.PREPARE,"private_directory"),
+            mock.patch.object(PUBLISH.PREPARE,"read_keys",return_value=(b"passphrase",b"authentication")),
+            mock.patch.object(PUBLISH.KEYS,"read_verified_keys",side_effect=ValueError("custody missing")),
+            mock.patch.object(PUBLISH.CERT,"acquire_recovery_lock") as azure_auth,
+        ):
+            with self.assertRaisesRegex(ValueError,"custody missing"):
+                PUBLISH.main()
+        azure_auth.assert_not_called()
+
+    def test_changed_key_set_blocks_before_blob_publication(self):
+        args=mock.Mock(key_file=self.root/"keys",custody_attestation=self.root/"custody",release_host_package=False,ssh_target="pantry-droplet")
+        publish=mock.Mock()
+        with (
+            mock.patch.object(PUBLISH.KEYS,"read_verified_keys",return_value=(b"pass",b"auth",{"kit_id":"new"})),
+            mock.patch.object(PUBLISH,"run_publication",publish),
+        ):
+            with self.assertRaisesRegex(ValueError,"changed before publication"):
+                PUBLISH.run_custody_bound_publication(args,self.root,None,None,None,{"kit_id":"old"},b"helper")
+        publish.assert_not_called()
+
+    def test_changed_key_set_blocks_before_release_ssh(self):
+        args=mock.Mock(key_file=self.root/"keys",custody_attestation=self.root/"custody",release_host_package=True,ssh_target="pantry-droplet")
+        key_set={"kit_id":"same"}; receipt={"payload":{"source_journal":{}}}; release=mock.Mock()
+        reads=[(b"pass",b"auth",key_set),(b"pass",b"other",{"kit_id":"changed"})]
+        with (
+            mock.patch.object(PUBLISH.KEYS,"read_verified_keys",side_effect=reads),
+            mock.patch.object(PUBLISH,"run_publication",return_value=receipt) as publish,
+            mock.patch.object(PUBLISH,"release_host_package",release),
+        ):
+            with self.assertRaisesRegex(ValueError,"changed before host release"):
+                PUBLISH.run_custody_bound_publication(args,self.root,None,None,None,key_set,b"helper")
+        publish.assert_called_once()
+        release.assert_not_called()
 
     def test_review_gate_rejects_modified_release_helper(self):
-        root=self.root/"repo"; paths=("scripts/azure/publish-logical-postgres-publication.py","scripts/azure/prepare-logical-postgres-publication.py","scripts/azure/logical-backup-store.py","scripts/azure/verify-recovery-certificate.py","scripts/azure/bin/az","scripts/azure/logical-export-handoff.sh")
+        root=self.root/"repo"; paths=("scripts/azure/publish-logical-postgres-publication.py","scripts/azure/prepare-logical-postgres-publication.py","scripts/azure/logical-backup-store.py","scripts/azure/verify-recovery-certificate.py","scripts/azure/bin/az","scripts/azure/logical-export-handoff.sh","scripts/azure/logical-recovery-keys.py")
         reviewed={}
         for name in paths:
             path=root/name; path.parent.mkdir(parents=True,exist_ok=True); path.write_bytes((name+"\n").encode()); reviewed[name]=path.read_bytes()
-        (root/paths[-1]).write_bytes(b"modified destructive helper\n")
+        (root/"scripts/azure/logical-export-handoff.sh").write_bytes(b"modified destructive helper\n")
         def git(command,**_):
             if command[1:]==["rev-parse","HEAD"]: return mock.Mock(stdout="a"*40+"\n",returncode=0)
             return mock.Mock(stdout=reviewed[command[2].removeprefix("HEAD:")],returncode=0)

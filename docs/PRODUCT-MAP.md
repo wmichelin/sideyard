@@ -747,8 +747,12 @@ fresh exact-version retrieval, decryption and authenticated receipt checks, it
 sends a bounded non-secret authorization through the pinned SSH alias. The host
 uses the shared database lock, verifies the authoritative PostgreSQL generation
 and exact package, then records durable pending/released state around unlink; an
-old retry cannot delete a newer export. Customer-data release remains blocked
-until both recovery keys have verified off-device custody. A zero-customer-data
+old retry cannot delete a newer export. A local candidate now mechanically blocks
+handoff, Blob publication and host release unless an HMAC-authenticated final
+owner attestation binds the exact active key set to two independently retrieved
+custody copies; preparation or one verified copy is insufficient. Customer-data
+release remains blocked until both recovery keys have verified off-device custody.
+A zero-customer-data
 synthetic droplet rehearsal passed the crash-after-package-delete and exact-retry
 path at revision `3f499526d99ec9e44201494b659154bb2e0dd687`. This operator-only handoff
 is available from the staging-deployed revision
@@ -778,11 +782,13 @@ alerts are configured to route to `wmichelin@gmail.com`; synthetic email deliver
 remains unverified. Terraform reports no drift after the recovery assignments.
 These resources
 remain conditional infrastructure: no product request uses Azure SQL and no
-logical package has been published to Blob yet.
+customer-data logical package has been published to Blob. The only completed
+logical publication used a synthetic zero-customer-data package.
 [Transfer contract](../internal/transfer/catalog.go) ·
 [Restore implementation](../internal/transfer/restore.go) ·
 [Logical Blob contract](../scripts/azure/logical-backup-store.py) ·
 [Resumable logical publisher](../scripts/azure/publish-logical-postgres-publication.py) ·
+[Recovery key custody](../scripts/azure/logical-recovery-keys.py) ·
 [Recovery certificate verification](../scripts/azure/verify-recovery-certificate.py) ·
 [PostgreSQL exporter boundary](../internal/postgres/exporter_permissions.go) ·
 [Real-engine rehearsal](../internal/app/transfer_sqlserver_test.go).

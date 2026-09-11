@@ -41,6 +41,20 @@ class PrepareLogicalPublicationTests(unittest.TestCase):
             f"SIDEYARD_LOGICAL_AUTHENTICATION_KEY={self.auth}\n"
         )
         self.keys.chmod(0o600)
+        prepared_receipt=self.root/"staging-logical-recovery-prepared.json"
+        copy_a=self.root/"staging-logical-recovery-copy-a.json"
+        copy_b=self.root/"staging-logical-recovery-copy-b.json"
+        self.attestation=self.root/"staging-logical-recovery-custody.json"
+        with mock.patch.object(PREPARE.KEYS,"reviewed_revision",return_value=REVISION):
+            PREPARE.KEYS.initialize(self.keys,prepared_receipt)
+        for slot,label,receipt in (("a","manager-copy",copy_a),("b","offline-media",copy_b)):
+            retrieved_folder=self.root/f"retrieved-{slot}"; retrieved_folder.mkdir(mode=0o700)
+            retrieved=retrieved_folder/"keys.env"; retrieved.write_bytes(self.keys.read_bytes()); retrieved.chmod(0o600)
+            evidence=PREPARE.KEYS.expected_synthetic_digests()
+            with mock.patch.object(PREPARE.KEYS,"reviewed_revision",return_value=REVISION),mock.patch.object(PREPARE.KEYS,"synthetic_recovery",return_value=evidence):
+                PREPARE.KEYS.verify_copy(self.keys,prepared_receipt,retrieved,receipt,slot,label)
+        with mock.patch.object(PREPARE.KEYS,"reviewed_revision",return_value=REVISION):
+            PREPARE.KEYS.attest(self.keys,prepared_receipt,copy_a,copy_b,self.attestation,True)
         self.package = self.root / "package.tar"
         self.manifest = {
             "type":"logical-package","format":1,"environment":"staging","generation":GENERATION,
@@ -72,10 +86,11 @@ class PrepareLogicalPublicationTests(unittest.TestCase):
     def write_claim(self,journal,package):
         self.claim.write_bytes(json.dumps(journal,sort_keys=True,separators=(",",":")).encode()+b"\n"+package)
 
-    def run_prepare(self, extra_environment=None, target=None):
+    def run_prepare(self, extra_environment=None, target=None, custody=True):
         environment={**os.environ,"SIDEYARD_RECOVERY_TEST_MODE":"1","SIDEYARD_RECOVERY_EXPECTED_REVISION":REVISION,"SIDEYARD_RECOVERY_SSH":str(self.ssh),"SIDEYARD_TEST_CLAIM":str(self.claim),"SIDEYARD_TEST_SSH_LOG":str(self.log)}
         environment.update(extra_environment or {})
         command=["python3",str(SCRIPT),"staging","--work-root",str(self.work),"--key-file",str(self.keys)]
+        command.extend(["--custody-attestation",str(self.attestation if custody else self.root/"missing-custody.json")])
         if target: command.extend(["--ssh-target",target])
         return subprocess.run(command,cwd=ROOT,env=environment,text=True,capture_output=True)
 
@@ -104,7 +119,14 @@ class PrepareLogicalPublicationTests(unittest.TestCase):
         self.keys.write_text(f"SIDEYARD_LOGICAL_ENCRYPTION_PASSPHRASE={'9'*64}\nSIDEYARD_LOGICAL_AUTHENTICATION_KEY={self.auth}\n")
         self.keys.chmod(0o600)
         wrong_key=self.run_prepare(); self.assertNotEqual(wrong_key.returncode,0)
-        self.assertIn("does not decrypt with the current key",wrong_key.stderr)
+        self.assertIn("custody does not match",wrong_key.stderr)
+
+    def test_missing_custody_blocks_before_ssh_or_plaintext(self):
+        result=self.run_prepare(custody=False)
+        self.assertNotEqual(result.returncode,0)
+        self.assertIn("logical recovery file is unavailable",result.stderr)
+        self.assertFalse(self.log.exists())
+        self.assertEqual(list(self.work.iterdir()),[self.work/".publication.lock"])
 
     def test_changed_package_is_rejected_without_linked_plaintext(self):
         changed=bytearray(self.package.read_bytes()); changed[-1]^=1

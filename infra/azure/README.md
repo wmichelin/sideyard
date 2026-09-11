@@ -550,12 +550,65 @@ artifact, enable a timer, update the ordinary backup-success marker, or delete t
 host copy until off-host verification and the later completion-marker workflow
 succeed.
 
-The first operator-local handoff slice implements that copy and encryption
-boundary without activating publication. Create a separately recoverable,
-owner-only `~/.config/sideyard-azure/staging-logical-recovery.env` containing two
-distinct 64-character random hexadecimal values named
-`SIDEYARD_LOGICAL_ENCRYPTION_PASSPHRASE` and
-`SIDEYARD_LOGICAL_AUTHENTICATION_KEY`, then run from the exact reviewed revision:
+The key-custody command creates the owner-only
+`~/.config/sideyard-azure/staging-logical-recovery.env` once, with two distinct
+256-bit values, and records only non-secret key IDs in its preparation receipt:
+
+```sh
+python3 scripts/azure/logical-recovery-keys.py staging prepare
+```
+
+This preparation does **not** permit a handoff or publication. Store the exact
+file as a secure-file object in an owner-controlled secret manager and as a
+second copy on independently encrypted removable media. Do not paste either key
+into chat, a shell command, Cloud Shell, email, notes or a browser form. From a
+fresh session, retrieve copy A into one new owner-only directory and copy B into
+another. Keep provider names, item paths and recovery passwords out of arguments
+and receipts; use abstract labels such as `manager-copy` and `offline-media`:
+
+```sh
+python3 scripts/azure/logical-recovery-keys.py staging verify-copy \
+  --copy-slot a --copy-label manager-copy \
+  --retrieved-key-file '<private-directory>/staging-logical-recovery.env'
+python3 scripts/azure/logical-recovery-keys.py staging verify-copy \
+  --copy-slot b --copy-label offline-media \
+  --retrieved-key-file '<different-private-directory>/staging-logical-recovery.env'
+```
+
+Each verification requires a canonical owner-0600 one-link file distinct from
+the live key file, exact-compares both values, runs the real AES/HMAC recovery
+path against synthetic bytes, and fsyncs a non-secret `copy_verified` receipt.
+The supplied file is retained by default so a mounted custody source cannot be
+deleted accidentally. `--delete-retrieved-copy` is only for a disposable local
+retrieval; unlink is not a promise of secure erasure on SSD or cloud storage.
+After personally confirming that the two copies are in
+independent failure domains and remain under your control, write the final gate:
+
+```sh
+python3 scripts/azure/logical-recovery-keys.py staging attest-off-device \
+  --owner-confirmed-off-device
+python3 scripts/azure/logical-recovery-keys.py staging check
+```
+
+The final `custody_verified` receipt is bound to the exact canonical key-file
+digest, key-set ID, two distinct copy receipts and reviewed revisions. Both the
+handoff command below and the Azure publisher require it before SSH or Blob
+access, recheck it immediately before publication, and check it again before an
+explicit host release. A `local_prepared` or single-copy receipt cannot pass.
+The abstract labels and owner flag are attestations, not automatic proof of two
+providers or physical locations; use them only after a fresh retrieval from two
+independent failure domains. A sync mirror or two files in one account is one copy.
+
+Preserve the non-secret preparation, copy and final receipts with the ordinary
+operator records. After workstation loss, retrieve one exact custody copy directly
+to the owner-0600 canonical key path, run `prepare` to recreate its non-secret
+preparation receipt, then freshly retrieve and verify both independent copies and
+attest again. The key file itself is the recovery authority; receipts alone cannot
+decrypt a backup. A mismatched retrieval is retained for investigation and must be
+cleaned manually without printing it. Never verify a mounted custody source with
+`--delete-retrieved-copy`.
+
+After the final custody check, run from the exact reviewed revision:
 
 ```sh
 python3 scripts/azure/prepare-logical-postgres-publication.py staging
@@ -568,9 +621,9 @@ only in an unlinked owner process file. The command checks the stream digest and
 package manifest, encrypts with AES-256-CBC/PBKDF2-SHA256 at 200,000 iterations,
 creates a descriptor-bound HMAC with the separate authentication key, fsyncs the
 private ciphertext pair, descriptor and exact source journal, and verifies the pair. Retries reuse only
-an exactly matching sealed pair. Back up the two keys outside this workstation;
-losing them makes the encrypted recovery copy unusable. Do not rotate them while
-a retained package depends on them.
+an exactly matching sealed pair. Losing both verified custody copies makes the
+encrypted recovery copy unusable. Do not rotate the key set while a retained
+package depends on it.
 
 The default handoff and publication paths retain the host package. The separately
 reviewed release option described below is explicit and staging-only.
