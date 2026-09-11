@@ -591,7 +591,8 @@ final receipt are owner-only local files. The command retains the host package
 even after remote retrieval and package validation.
 
 Only after both logical recovery keys have separately verified off-device custody,
-repeat the same exact-revision command with the explicit release flag:
+repeat the same exact-revision command with the explicit release flag. The
+synthetic host-release rehearsal is recorded in `docs/SIDEYARD-DELIVERY-STATUS.md`:
 
 ```sh
 python3 scripts/azure/publish-logical-postgres-publication.py staging \
@@ -607,7 +608,7 @@ authoritative PostgreSQL generation and exact package inode/hash, then records a
 durable pending state before unlink. A released tombstone makes lost-response
 retries idempotent without touching a newer export. Local ciphertext, descriptors
 and authenticated receipts remain. Do not use this flag for customer data until
-off-device key custody and the synthetic host-release rehearsal are recorded.
+off-device key custody is recorded.
 
 Download an exact completed backup using protected credentials in the process
 environment (never inline command arguments):

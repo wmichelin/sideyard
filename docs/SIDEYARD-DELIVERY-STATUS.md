@@ -1997,7 +1997,7 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   have separately recoverable off-device custody and the release transition is
   implemented and reviewed.
 
-### Crash-safe host release — local candidate
+### Crash-safe host release — staging verified
 
 - Added an explicit `--release-host-package` option after the ordinary publisher's
   fresh exact-version retrieval, HMAC verification, decryption and package check.
@@ -2010,9 +2010,21 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   then fsyncs pending state before unlink. A final per-export tombstone makes every
   exact retry converge after lost responses and returns before inspecting a newer
   export. Local encrypted material and HMAC-authenticated release evidence remain.
-- This operator path is not deployed or executed. Customer-data release remains
-  blocked on separately recoverable off-device custody for both keys. Timers,
-  ordinary backup-success markers, runtime selectors and production are unchanged.
+- Revision `3f499526d99ec9e44201494b659154bb2e0dd687` deployed to staging as
+  `ghcr.io/wmichelin/clubdue@sha256:39b8c05f14d80eac023ed5e5492bc4d7cfb4fbedcee568bd2b42e71d048caed4`
+  in Actions run `34563097143`; its workflow smoke and an independent staging
+  smoke passed, and CI run `34563097108` completed successfully. A disposable
+  synthetic-only host rehearsal then forced the
+  `after-package-delete` crash point on the shared droplet and proved an exact
+  retry converged to the durable release tombstone. It used export
+  `823e4567-e89b-42d3-a456-426614174000`, release
+  `923e4567-e89b-42d3-a456-426614174000` and reviewed helper SHA-256
+  `af92dcab1823251d5d65af1faa2e58955a5958d4de37c4c093029761d38fd931`;
+  its isolated temporary spool was removed on exit.
+- The rehearsal contained no customer data and did not inspect or change the real
+  export spool. Customer-data release remains blocked on separately recoverable
+  off-device custody for both keys. Timers, ordinary backup-success markers,
+  runtime selectors and production are unchanged.
 
 ### Azure staging foundation and browserless Terraform — live verified
 

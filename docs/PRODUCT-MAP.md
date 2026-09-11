@@ -742,14 +742,15 @@ disabled pending the off-host encrypted publication path. A local conditional
 handoff command can stream that fixed package under the database lock, verify its
 journal and manifest, and write only an authenticated encrypted pair plus descriptor
 to an owner-private workstation directory. The default path retains its plaintext
-host package. An explicit staging-only release option is a local candidate: after
+host package. An explicit staging-only release option is staging verified: after
 fresh exact-version retrieval, decryption and authenticated receipt checks, it
 sends a bounded non-secret authorization through the pinned SSH alias. The host
 uses the shared database lock, verifies the authoritative PostgreSQL generation
 and exact package, then records durable pending/released state around unlink; an
 old retry cannot delete a newer export. Customer-data release remains blocked
-until both recovery keys have verified off-device custody and a synthetic host
-rehearsal passes. This operator-only handoff
+until both recovery keys have verified off-device custody. A zero-customer-data
+synthetic droplet rehearsal passed the crash-after-package-delete and exact-retry
+path at revision `3f499526d99ec9e44201494b659154bb2e0dd687`. This operator-only handoff
 is available from the staging-deployed revision
 `460de6a1f76a4f6120e3cb4dbbfe78b9f5052d88`; its automated contract and normal
 application smoke checks passed without running it against customer data. The application selector
