@@ -1908,7 +1908,7 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   fixed roles, but its login remains `NOLOGIN` with a null password. Azure SQL
   remains conditional and production is unchanged.
 
-### Crash-safe PostgreSQL logical package operator — local candidate
+### Crash-safe PostgreSQL logical package operator — staging verified
 
 - Added a manual staging-only operator that writes a fsynced pre-activation
   journal, removes stale authority before every attempt, activates the fixed
@@ -1925,11 +1925,18 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   activation, then proves the next command removes the password, terminates the
   session and returns the role to its audited dormant state. The full successful
   export/package flow and supervisor retry/corrupt-journal tests also pass.
-- This is not deployed or a recoverable backup yet. Manual direct-SSH handoff,
-  local encryption/authentication, durable descriptor storage, Blob publication,
-  exact completion readback and isolated restore remain before customer-data use.
-  No timer, ordinary backup-success marker, Azure runtime selection or production
-  configuration changes in this slice.
+- Revision `fd133426da7f646fe5c12657947c7ab9b88c9e37` deployed to staging in
+  [run 34556207451](https://github.com/wmichelin/clubdue/actions/runs/34556207451),
+  and the full staging smoke passed. The live dormant-role check passed in
+  [run 34556374725](https://github.com/wmichelin/clubdue/actions/runs/34556374725);
+  emergency reconcile and the post-reconcile check passed in
+  [runs 34556405411](https://github.com/wmichelin/clubdue/actions/runs/34556405411)
+  and [34556439877](https://github.com/wmichelin/clubdue/actions/runs/34556439877).
+- This is not a recoverable backup yet. Manual direct-SSH handoff, local
+  encryption/authentication, durable descriptor storage, Blob publication, exact
+  completion readback and isolated restore remain before customer-data use. No
+  customer-data export was run, and no timer, ordinary backup-success marker,
+  Azure runtime selection or production configuration changed in this slice.
 
 ### Azure staging foundation and browserless Terraform — live verified
 

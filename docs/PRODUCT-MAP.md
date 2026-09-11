@@ -735,7 +735,11 @@ The conditional manual staging command adds server-expiring, memory-only
 activation, a repeatable-read export, verified package creation and revoke-first
 crash reconciliation. It leaves one root-private host package awaiting direct
 operator handoff; it does not publish a backup, run on a timer or change the
-authoritative backup marker. The application selector remains PostgreSQL.
+authoritative backup marker. The command is available in staging as of revision
+`fd133426da7f646fe5c12657947c7ab9b88c9e37`; its dormant-role check, emergency
+reconcile and post-reconcile check passed there, while customer-data export remains
+disabled pending the off-host encrypted publication path. The application selector
+remains PostgreSQL.
 
 The conditional staging Azure foundation was independently read back on September
 10, 2026. Azure SQL uses the free offer with a 0.5-vCore minimum, 32-GB maximum,
