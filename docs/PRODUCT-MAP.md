@@ -738,7 +738,11 @@ operator handoff; it does not publish a backup, run on a timer or change the
 authoritative backup marker. The command is available in staging as of revision
 `fd133426da7f646fe5c12657947c7ab9b88c9e37`; its dormant-role check, emergency
 reconcile and post-reconcile check passed there, while customer-data export remains
-disabled pending the off-host encrypted publication path. The application selector
+disabled pending the off-host encrypted publication path. A local conditional
+handoff command can stream that fixed package under the database lock, verify its
+journal and manifest, and write only an authenticated encrypted pair plus descriptor
+to an owner-private workstation directory. The host retains its plaintext package;
+Blob publication and host release remain future gates. The application selector
 remains PostgreSQL.
 
 The conditional staging Azure foundation was independently read back on September

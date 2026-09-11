@@ -1938,6 +1938,23 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   customer-data export was run, and no timer, ordinary backup-success marker,
   Azure runtime selection or production configuration changed in this slice.
 
+### Direct handoff and local sealing — local candidate
+
+- Added a staging-only host helper that streams only the exact `package_ready`
+  journal and its verified single-link package while holding the shared database
+  lock. It exposes no release or delete action; the host remains authoritative
+  until the later authenticated Azure completion workflow is verified.
+- Added an operator-local command using the pinned OpenSSH alias and strict host
+  keys. It validates the streamed journal and package manifest against the exact
+  reviewed revision, keeps plaintext in an unlinked file, and writes only a
+  private AES-256-CBC/PBKDF2-SHA256 ciphertext, descriptor-bound HMAC and canonical
+  descriptor. Separate 256-bit encryption and authentication keys never enter
+  command arguments or the application host.
+- Focused tests prove digest/manifest mismatch rejection, binary claim integrity,
+  real runtime OpenSSL decrypt equality, owner-only outputs, exact retry, changed
+  key refusal and rejection of unimplemented release. Azure publication and live
+  customer data remain disabled; the host package is retained.
+
 ### Azure staging foundation and browserless Terraform — live verified
 
 - Added a dedicated certificate-authenticated `sideyard-staging-terraform`

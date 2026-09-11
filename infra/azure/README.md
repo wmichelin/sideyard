@@ -550,6 +550,33 @@ artifact, enable a timer, update the ordinary backup-success marker, or delete t
 host copy until off-host verification and the later completion-marker workflow
 succeed.
 
+The first operator-local handoff slice implements that copy and encryption
+boundary without activating publication. Create a separately recoverable,
+owner-only `~/.config/sideyard-azure/staging-logical-recovery.env` containing two
+distinct 64-character random hexadecimal values named
+`SIDEYARD_LOGICAL_ENCRYPTION_PASSPHRASE` and
+`SIDEYARD_LOGICAL_AUTHENTICATION_KEY`, then run from the exact reviewed revision:
+
+```sh
+python3 scripts/azure/prepare-logical-postgres-publication.py staging
+```
+
+The command uses the pinned `pantry-droplet` OpenSSH alias with strict host-key
+checking. The host helper holds the shared database lock, validates and streams
+only the fixed journal-bound package, and retains it. Locally, plaintext exists
+only in an unlinked owner process file. The command checks the stream digest and
+package manifest, encrypts with AES-256-CBC/PBKDF2-SHA256 at 200,000 iterations,
+creates a descriptor-bound HMAC with the separate authentication key, fsyncs the
+private ciphertext pair and descriptor, and verifies the pair. Retries reuse only
+an exactly matching sealed pair. Back up the two keys outside this workstation;
+losing them makes the encrypted recovery copy unusable. Do not rotate them while
+a retained package depends on them.
+
+The host helper exposes no release or delete action. Until exact Blob publication,
+retrieval, durable completion receipt and isolated decryption are wired and
+verified, this sealed local package is not a recoverable Azure backup and the host
+plaintext must remain.
+
 Download an exact completed backup using protected credentials in the process
 environment (never inline command arguments):
 
