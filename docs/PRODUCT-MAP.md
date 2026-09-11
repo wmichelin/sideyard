@@ -19,7 +19,7 @@ release verification. These are verified release states, not a live deployment m
 | Label | Meaning |
 | --- | --- |
 | **Live** | Available in production at [getsideyard.com](https://getsideyard.com), source `ae6f16a`, and on staging. The legacy ClubDue hostname remains supported. |
-| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), release `8af5371`: standalone jobs/site surveys, the single-line work-status badge fix, configured private Azure photo storage, native-compatible CSV import behavior, a guarded Azure SQL runtime boundary, and retryable outage feedback that retains customer, demo and seasonal-work input. The deployed web application still uses PostgreSQL. |
+| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), release `db13dc2`: standalone jobs/site surveys, the single-line work-status badge fix, configured private Azure photo storage, native-compatible CSV import behavior, a guarded Azure SQL runtime boundary, retryable outage feedback that retains customer, demo and seasonal-work input, and the verified dormant PostgreSQL logical-export source. The deployed web application still uses PostgreSQL. |
 | **Conditional** | Present in the staging artifact but disabled pending its operational gates; this includes the staging-only lazy Azure SQL HTTP runtime, its 80-second total request budget, host-owned scheduled work, durable interest-delivery wake and internal logical transfer/restore contract. Conditional behavior is not a promise of availability to clients. |
 
 Unless marked otherwise, catalog nodes are **Live**. “Signed in” means a user
@@ -730,6 +730,17 @@ source-schema drift, row-level security and unexpected role membership. Staging
 bootstrap and an independent audit passed on the exact immutable running revision;
 short-lived activation still belongs to the future export command. The application
 selector therefore remains PostgreSQL.
+
+The conditional staging Azure foundation was independently read back on September
+10, 2026. Azure SQL uses the free offer with a 0.5-vCore minimum, 32-GB maximum,
+60-minute idle pause and `AutoPause` at free-limit exhaustion. Seven-day native
+backup retention has a real restore point. The Hot LRS Blob account uses Entra
+authentication, a deny-by-default firewall, versioning, seven-day blob/container
+soft delete and private `photos` and `backups` containers. Two enabled free-compute
+alerts are configured to route to `wmichelin@gmail.com`; synthetic email delivery
+remains unverified. Terraform reports no drift. These resources
+remain conditional infrastructure: no product request uses Azure SQL and no
+logical package has been published to Blob yet.
 [Transfer contract](../internal/transfer/catalog.go) ·
 [Restore implementation](../internal/transfer/restore.go) ·
 [Logical Blob contract](../scripts/azure/logical-backup-store.py) ·

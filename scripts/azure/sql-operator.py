@@ -56,7 +56,9 @@ def main():
         if args.terraform_directory
         else root / "infra" / "azure" / "environments"
     )
-    backend = terraform_directory / f"{args.environment}.local.hcl"
+    backend = terraform_directory / f"{args.environment}.hcl"
+    if not backend.is_file():
+        backend = terraform_directory / f"{args.environment}.local.hcl"
     terraform_data = terraform_directory / ".terraform" / args.environment
     if not backend.is_file() or not terraform_data.is_dir():
         raise SystemExit(

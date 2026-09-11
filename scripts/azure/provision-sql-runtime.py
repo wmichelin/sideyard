@@ -42,7 +42,9 @@ def parse_timestamp(value, label):
 def terraform_resources(root, terraform_directory):
     environment = os.environ.copy()
     environment["TF_DATA_DIR"] = str(terraform_directory / ".terraform" / "staging")
-    backend = terraform_directory / "staging.local.hcl"
+    backend = terraform_directory / "staging.hcl"
+    if not backend.is_file():
+        backend = terraform_directory / "staging.local.hcl"
     if not backend.is_file() or not Path(environment["TF_DATA_DIR"]).is_dir():
         raise SystemExit("Azure Terraform state is not initialized for staging")
     resources = json_command(

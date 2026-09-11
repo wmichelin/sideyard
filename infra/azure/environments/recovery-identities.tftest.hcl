@@ -5,6 +5,13 @@ mock_provider "azurerm" {
       tenant_id = "22222222-2222-2222-2222-222222222222"
     }
   }
+
+  override_resource {
+    target = azurerm_monitor_action_group.owner
+    values = {
+      id = "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/sideyard-staging/providers/Microsoft.Insights/actionGroups/sideyard-staging-owner"
+    }
+  }
 }
 
 mock_provider "azapi" {}
@@ -17,6 +24,74 @@ variables {
   sql_server_name      = "sideyard-staging-test"
   storage_account_name = "sideyardstagingtest"
   allowed_ipv4         = ["192.0.2.1"]
+}
+
+run "staging_free_foundation_contract" {
+  command = plan
+
+  assert {
+    condition = (
+      azapi_resource.database.body.sku.name == "GP_S_Gen5" &&
+      azapi_resource.database.body.sku.capacity == 1 &&
+      azapi_resource.database.body.properties.useFreeLimit == true &&
+      azapi_resource.database.body.properties.freeLimitExhaustionBehavior == "AutoPause" &&
+      azapi_resource.database.body.properties.minCapacity == 0.5 &&
+      azapi_resource.database.body.properties.autoPauseDelay == 60 &&
+      azapi_resource.database.body.properties.maxSizeBytes == 34359738368 &&
+      azapi_resource.database.body.properties.requestedBackupStorageRedundancy == "Local" &&
+      azapi_update_resource.backup_retention.body.properties.retentionDays == 7
+    )
+    error_message = "Staging SQL must retain the bounded free-offer and seven-day backup contract."
+  }
+
+  assert {
+    condition = (
+      azurerm_storage_account.app.account_tier == "Standard" &&
+      azurerm_storage_account.app.account_replication_type == "LRS" &&
+      azurerm_storage_account.app.access_tier == "Hot" &&
+      azurerm_storage_account.app.shared_access_key_enabled == false &&
+      azurerm_storage_account.app.default_to_oauth_authentication == true &&
+      azurerm_storage_account.app.network_rules[0].default_action == "Deny" &&
+      azurerm_storage_account.app.blob_properties[0].versioning_enabled == true &&
+      azurerm_storage_account.app.blob_properties[0].delete_retention_policy[0].days == 7 &&
+      azurerm_storage_account.app.blob_properties[0].container_delete_retention_policy[0].days == 7 &&
+      alltrue([for container in azurerm_storage_container.private : container.container_access_type == "private"])
+    )
+    error_message = "Staging Blob storage must remain private, keyless, versioned and retained."
+  }
+
+  assert {
+    condition     = length(azurerm_monitor_metric_alert.free_compute) == 2
+    error_message = "Staging must retain warning and critical free-compute alerts."
+  }
+
+  assert {
+    condition     = alltrue([for alert in azurerm_monitor_metric_alert.free_compute : alert.enabled])
+    error_message = "Both free-compute alerts must remain enabled."
+  }
+
+  assert {
+    condition = (
+      toset([for alert in azurerm_monitor_metric_alert.free_compute : alert.criteria[0].metric_name]) == toset(["free_amount_remaining"]) &&
+      toset([for alert in azurerm_monitor_metric_alert.free_compute : alert.criteria[0].threshold]) == toset([10000, 30000])
+    )
+    error_message = "Free-compute alerts must retain their metric and warning thresholds."
+  }
+
+  assert {
+    condition     = alltrue([for alert in azurerm_monitor_metric_alert.free_compute : length(alert.action) == 1])
+    error_message = "Each free-compute alert must retain one action-group binding."
+  }
+
+  assert {
+    condition = (
+      one([for rule in azurerm_storage_management_policy.exports.rule : rule if rule.name == "seven-day-encrypted-exports"]).enabled &&
+      toset(one(one([for rule in azurerm_storage_management_policy.exports.rule : rule if rule.name == "seven-day-encrypted-exports"]).filters).prefix_match) == toset(["backups/postgres/", "backups/logical-completions/"]) &&
+      one([for rule in azurerm_storage_management_policy.exports.rule : rule if rule.name == "eight-day-logical-components"]).enabled &&
+      toset(one(one([for rule in azurerm_storage_management_policy.exports.rule : rule if rule.name == "eight-day-logical-components"]).filters).prefix_match) == toset(["backups/logical-components/"])
+    )
+    error_message = "Logical backup lifecycle prefixes and windows must remain distinct."
+  }
 }
 
 run "distinct_staging_identities" {

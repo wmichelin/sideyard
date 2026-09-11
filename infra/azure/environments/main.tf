@@ -315,6 +315,7 @@ resource "azurerm_monitor_metric_alert" "free_compute" {
   name                = "sideyard-${var.environment}-compute-${each.key}"
   resource_group_name = azurerm_resource_group.app.name
   scopes              = [azapi_resource.database.id]
+  enabled             = true
   severity            = each.key == "critical" ? 1 : 2
   frequency           = "PT15M"
   window_size         = "PT1H"

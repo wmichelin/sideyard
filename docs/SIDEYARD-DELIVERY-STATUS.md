@@ -1886,6 +1886,44 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   `34542916789` and separate read-only audit run `34542967070` then passed against
   exact revision `aebbea66ba98de20186f0a68a7264591aa15ad0f`; the complete staging
   smoke suite passed afterward.
+- The network-readiness correction `db13dc2e664bd4aa5a62f293da9f90de380fe3a8`
+  passed all four CI jobs in run `34543694174`, deployed through staging run
+  `34543694169`, and passed the exact-revision read-only exporter audit in run
+  `34543937439`. The complete live staging smoke passed afterward.
 - This boundary does not export, encrypt, upload or restore data. Staging has the
   fixed roles, but its login remains `NOLOGIN` with a null password. Azure SQL
   remains conditional and production is unchanged.
+
+### Azure staging foundation and browserless Terraform — live verified
+
+- Added a dedicated certificate-authenticated `sideyard-staging-terraform`
+  service principal after tenant Conditional Access rejected Azure CLI device
+  login from an unregistered macOS device with `AADSTS530035`. Azure stores only
+  the public certificate; the private PEM/PFX remains in owner-only local files.
+  The principal has Contributor, RBAC administration and lock management only on
+  `sideyard-staging`, plus Blob data access only on the separate Terraform-state
+  account. It has no client secret and no production assignment.
+- Remote `staging.tfstate` initialization succeeded. The first reviewed saved
+  plan contained two recovery-only custom role definitions, one in-place Blob
+  lifecycle update and zero destroys. Azure applied the authorized lifecycle
+  policy, then rejected the role definitions because custom definitions require
+  subscription-scope write authority. The subscription owner created the two
+  definitions from the reviewed Terraform permissions and resource-group-only
+  assignable scope; they were then imported into remote state. The runner retains
+  no subscription-wide role. All ten infrastructure contract plans pass, and a
+  fresh live Terraform plan reports no changes.
+- Independent Azure REST readback verified the live SQL free offer,
+  `GP_S_Gen5` SKU, 0.5-vCore minimum, 32-GB maximum, 60-minute idle pause,
+  `AutoPause` on free-limit exhaustion and local backup redundancy. Short-term
+  retention is seven days and `earliestRestoreDate` is
+  `2026-09-09T22:02:16Z`, proving a real restore point exists.
+- The live `sideyardstgddd8d30e` account is Hot Standard LRS with shared keys
+  disabled, TLS 1.2/HTTPS enforced, a deny-by-default firewall, Blob versioning,
+  seven-day blob and container soft delete, and private `photos` and `backups`
+  containers. Encrypted exports/completion markers become eligible for asynchronous
+  lifecycle cleanup after seven days and separately prefixed logical components
+  after eight days; soft-deleted bytes can remain longer. Both free-compute alerts
+  and the owner action group are enabled and configured to route to
+  `wmichelin@gmail.com`; synthetic email delivery remains unverified.
+- No application data has moved. Staging web traffic remains on PostgreSQL; no
+  logical backup has been uploaded and production is unchanged.

@@ -31,6 +31,43 @@ Register only Microsoft.Storage, Microsoft.Sql, Microsoft.Insights,
 Microsoft.Authorization and Microsoft.OperationalInsights when needed, using CLI.
 Provider auto-registration is disabled to avoid unrelated subscription changes.
 
+The current tenant's Conditional Access policy rejects Azure CLI device login
+from an unregistered macOS device (`AADSTS530035`). Staging therefore also has a
+dedicated certificate-authenticated `sideyard-staging-terraform` service
+principal. Its private key and PFX stay in mode-0600 files under
+`~/.config/sideyard-azure`; Azure stores only the public certificate. The identity
+has Contributor, Role Based Access Control Administrator and Locks Contributor
+only on `sideyard-staging`, plus Storage Blob Data Contributor only on the
+Terraform-state account. It has no production assignment and no client secret.
+Set `ARM_CLIENT_ID`, `ARM_TENANT_ID`, `ARM_SUBSCRIPTION_ID`,
+`ARM_CLIENT_CERTIFICATE_PATH`, `ARM_CLIENT_CERTIFICATE_PASSWORD` and
+`ARM_USE_AZUREAD` from the protected local environment before Terraform commands.
+
+The current staging runner inventory is intentionally public metadata:
+
+- application/client ID: `f4bb176e-5532-4f16-8412-bcb1278e8222`
+- service-principal object ID: `b2fece45-783c-4eff-99ac-ecb8f92cc6de`
+- certificate SHA-256 fingerprint:
+  `36:7F:2D:23:7D:63:9D:8A:BA:53:60:EB:49:36:B0:C7:F5:C5:3D:F7:12:04:E4:F1:AC:80:C2:8C:18:5B:3B:89`
+- certificate expiry: `2028-09-10T00:03:29Z`
+
+Audit it at least monthly and before every apply. Verify the local directory is
+mode 0700, each key/PFX/environment file is mode 0600, the certificate is valid,
+and `az account show` reports the exact tenant, subscription and client ID above.
+The principal must have only Contributor, Role Based Access Control Administrator
+and Locks Contributor on `sideyard-staging`, plus Storage Blob Data Contributor on
+the state account. Treat any subscription-wide or production assignment as a
+failure. In Cloud Shell, also check `az ad app credential list --id <client-id>`;
+the app must have certificates only and no password credential.
+
+Rotate with overlap: create a new private key locally, upload only its public
+certificate in Cloud Shell, authenticate locally with the new PFX, run an empty
+Terraform plan, then remove the old certificate by its key ID. Never remove the
+old certificate until the new one passes all three checks. If every local copy is
+lost or expired, use the subscription-owner account in Cloud Shell to upload a
+replacement public certificate; Azure cannot recover the private key. Record the
+new fingerprint and expiry here in the same reviewed change.
+
 ## Bootstrap remote state
 
 Create `bootstrap/operator.local.tfvars` with subscription ID, operator object
@@ -54,8 +91,12 @@ configuration; do not enable account keys or public access to work around it.
 ## Separate environment state
 
 `environments/` is a shared configuration used with **different backend keys and
-TF_DATA_DIRs**. Never reuse production state for staging. Create ignored
-`staging.local.hcl` / `production.local.hcl` backend files containing:
+TF_DATA_DIRs**. Never reuse production state for staging. The reviewed staging
+backend and variables are checked in as `staging.hcl` and `staging.tfvars`; they
+contain resource names and principal IDs, never credentials. Production remains
+in ignored `production.local.hcl` and `production.local.tfvars` files. Local
+staging copies may remain for older operator helpers but must match the tracked
+files.
 
 ```hcl
 resource_group_name  = "sideyard-terraform-state"
@@ -66,18 +107,19 @@ use_azuread_auth     = true
 subscription_id     = "<verified-subscription-id>"
 ```
 
-Create matching ignored `staging.local.tfvars` and `production.local.tfvars`
-with the variables in `environments/variables.tf`. Keep resource names unique,
-operator/app IPv4 addresses explicit and runtime identity object IDs scoped to
-the intended environment. Temporary operator/runner IP rules need cleanup when
-traveling or after an interrupted automation job.
+Keep the ignored `staging.local.hcl` alias used by older operator helpers equal
+to `staging.hcl`. Create only the production local files from the variables in
+`environments/variables.tf`. Keep resource names unique, operator/app IPv4
+addresses explicit and runtime identity object IDs scoped to the intended
+environment. Temporary operator/runner IP rules need cleanup when traveling or
+after an interrupted automation job.
 
 ```sh
 export TF_DATA_DIR="$PWD/infra/azure/environments/.terraform/staging"
-terraform -chdir=infra/azure/environments init -backend-config=staging.local.hcl
-terraform -chdir=infra/azure/environments plan -var-file=staging.local.tfvars -out=staging.tfplan
+terraform -chdir=infra/azure/environments init -backend-config=staging.hcl
+terraform -chdir=infra/azure/environments plan -var-file=staging.tfvars -out=staging.tfplan
 terraform -chdir=infra/azure/environments apply staging.tfplan
-terraform -chdir=infra/azure/environments plan -var-file=staging.local.tfvars
+terraform -chdir=infra/azure/environments plan -var-file=staging.tfvars
 ```
 
 The last plan should be empty. Keep saved plans private and delete them after
