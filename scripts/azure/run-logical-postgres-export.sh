@@ -62,8 +62,27 @@ if [ -z "${SIDEYARD_EXPORTER_TEST_MODE:-}" ]; then
   [ "$(stat -c '%u:%g' "$spool")" = 0:0 ] || { echo 'Logical export spool must be root-owned' >&2; exit 77; }
 fi
 
+if [ "$action" != reconcile ]; then python3 - "$spool" <<'PY'
+import json,os,re,stat,sys
+from pathlib import Path
+root=Path(sys.argv[1]); pending=False
+for path in [*root.glob("release-*.json"),*root.glob("released-*.json")]:
+    match=re.fullmatch(r"release-pending-([0-9a-f-]{36})\.json",path.name) or re.fullmatch(r"released-([0-9a-f-]{36})\.json",path.name)
+    if match is None: raise SystemExit("unexpected logical release state")
+    info=path.lstat()
+    if not stat.S_ISREG(info.st_mode) or info.st_nlink!=1 or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600: raise SystemExit("unsafe logical release state")
+    raw=path.read_bytes()
+    try: value=json.loads(raw)
+    except json.JSONDecodeError: raise SystemExit("invalid logical release state") from None
+    phase="pending" if path.name.startswith("release-pending-") else "released"; export_id=path.name.removeprefix("release-pending-").removeprefix("released-").removesuffix(".json")
+    if raw!=json.dumps(value,sort_keys=True,separators=(",",":")).encode()+b"\n" or value.get("format")!=1 or value.get("phase")!=phase or value.get("authorization",{}).get("source",{}).get("export_id")!=export_id: raise SystemExit("invalid logical release state")
+    pending = pending or phase=="pending"
+if pending: raise SystemExit("logical package release is incomplete; retry the authenticated release")
+PY
+fi
+
 python3 - "$database_env" "$secret_mount" <<'PY'
-import os,stat,sys
+import json,os,re,stat,sys
 source,target=sys.argv[1:]
 info=os.lstat(source)
 if not stat.S_ISREG(info.st_mode) or info.st_mode&0o077 or info.st_uid!=os.geteuid(): raise SystemExit("staging database environment file is unsafe")
@@ -151,11 +170,19 @@ PY
 
 remove_incomplete_files() {
   python3 - "$spool" <<'PY'
-import os,stat,sys
+import json,os,re,stat,sys
 from pathlib import Path
 root=Path(sys.argv[1])
 for child in root.iterdir():
     if child.name in ("operator-journal.json",".database-secret.env"): continue
+    if re.fullmatch(r"released-[0-9a-f-]{36}\.json",child.name):
+        info=child.lstat()
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink!=1 or info.st_uid!=os.geteuid() or info.st_mode&0o777!=0o600: raise SystemExit("unsafe logical release tombstone")
+        raw=child.read_bytes()
+        try: value=json.loads(raw)
+        except json.JSONDecodeError: raise SystemExit("invalid logical release tombstone") from None
+        if raw!=json.dumps(value,sort_keys=True,separators=(",",":")).encode()+b"\n" or value.get("format")!=1 or value.get("phase")!="released" or value.get("authorization",{}).get("source",{}).get("export_id")!=child.name[9:-5]: raise SystemExit("invalid logical release tombstone")
+        continue
     if not (child.name.startswith(".database-") or child.name.startswith(".recovery-") or child.name in (".operator-result.json","operator-journal.json.new") or (child.name.startswith("recovery-") and child.name.endswith(".tar"))):
         raise SystemExit("unexpected logical export spool entry")
     info=child.lstat()
@@ -163,6 +190,13 @@ for child in root.iterdir():
     child.unlink()
 PY
 }
+
+if [ "$action" = reconcile ]; then
+  image="$(docker inspect -f '{{.Config.Image}}' "$app_container")"
+  [[ "$image" =~ ^ghcr.io/wmichelin/clubdue@sha256:[0-9a-f]{64}$ ]] || { echo 'running staging image is not immutable' >&2; exit 65; }
+  run_restriction "$image"
+  exit 0
+fi
 
 if [ -e "${journal}.new" ] && [ ! -e "$journal" ]; then
   recovery_image="$(docker inspect -f '{{.Config.Image}}' "$app_container")"
@@ -191,13 +225,6 @@ if [ -e "$journal" ]; then
 import os,sys
 os.unlink(sys.argv[1]); descriptor=os.open(sys.argv[2],os.O_RDONLY); os.fsync(descriptor); os.close(descriptor)
 PY
-fi
-
-if [ "$action" = reconcile ]; then
-  image="$(docker inspect -f '{{.Config.Image}}' "$app_container")"
-  [[ "$image" =~ ^ghcr.io/wmichelin/clubdue@sha256:[0-9a-f]{64}$ ]] || { echo 'running staging image is not immutable' >&2; exit 65; }
-  run_restriction "$image"
-  exit 0
 fi
 
 load_sideyard_runtime_state staging

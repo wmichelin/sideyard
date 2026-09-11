@@ -572,10 +572,8 @@ an exactly matching sealed pair. Back up the two keys outside this workstation;
 losing them makes the encrypted recovery copy unusable. Do not rotate them while
 a retained package depends on them.
 
-The host helper exposes no release or delete action. Until exact Blob publication,
-retrieval, durable completion receipt and isolated decryption are wired and
-verified, this sealed local package is not a recoverable Azure backup and the host
-plaintext must remain.
+The default handoff and publication paths retain the host package. The separately
+reviewed release option described below is explicit and staging-only.
 
 The resumable publication command is staged as an inactive operator tool:
 
@@ -590,8 +588,26 @@ then probes the deterministic component key before attempting its first write. T
 operator's exact egress IP; HTTP 403 is terminal and the command never changes
 firewall rules or falls back to the application host. Publication state and the
 final receipt are owner-only local files. The command retains the host package
-even after remote retrieval and package validation; host release remains a later
-separately reviewed step.
+even after remote retrieval and package validation.
+
+Only after both logical recovery keys have separately verified off-device custody,
+repeat the same exact-revision command with the explicit release flag:
+
+```sh
+python3 scripts/azure/publish-logical-postgres-publication.py staging \
+  --export-id '<sealed-export-uuid>' --release-host-package
+```
+
+The command freshly authenticates and retrieves the exact Blob versions, decrypts
+and validates the package, revalidates its authenticated receipt, then fsyncs a
+local release intent. It streams the HEAD-reviewed helper to the pinned SSH alias
+with only a bounded non-secret source/completion/receipt-hash authorization. The
+host re-restricts the exporter under the shared database lock, verifies the
+authoritative PostgreSQL generation and exact package inode/hash, then records a
+durable pending state before unlink. A released tombstone makes lost-response
+retries idempotent without touching a newer export. Local ciphertext, descriptors
+and authenticated receipts remain. Do not use this flag for customer data until
+off-device key custody and the synthetic host-release rehearsal are recorded.
 
 Download an exact completed backup using protected credentials in the process
 environment (never inline command arguments):

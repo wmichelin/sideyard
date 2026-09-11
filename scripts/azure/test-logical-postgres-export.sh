@@ -97,6 +97,24 @@ value=json.loads((root/'operator-journal.json').read_text()); value={k:value[k] 
 (root/'operator-journal.json.new').write_text('{"interrupted":"transition"}\n'); os.chmod(root/'operator-journal.json.new',0o600)
 (root/'.database-partial').write_text('partial'); os.chmod(root/'.database-partial',0o600)
 PY
+pending="$WORK/spool/release-pending-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee.json"
+python3 - "$pending" <<'PY'
+import json,os,sys
+value={"format":1,"phase":"pending","authorization":{"source":{"export_id":"aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"}}}
+with open(sys.argv[1],"w") as output: json.dump(value,output,sort_keys=True,separators=(",",":")); output.write("\n")
+os.chmod(sys.argv[1],0o600)
+PY
+: > "$WORK/docker.log"
+if run_export export >/dev/null 2>&1; then echo 'export ignored incomplete release' >&2; exit 1; fi
+[ ! -s "$WORK/docker.log" ]
+run_export reconcile >/dev/null
+grep -q reconcile-postgres-exporter "$WORK/docker.log"
+python3 - "$pending" "$WORK/spool/released-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee.json" <<'PY'
+import json,os,sys
+source,target=sys.argv[1:]; value=json.load(open(source)); value["phase"]="released"
+with open(target,"w") as output: json.dump(value,output,sort_keys=True,separators=(",",":")); output.write("\n")
+os.chmod(target,0o600); os.unlink(source)
+PY
 : > "$WORK/docker.log"
 if SIDEYARD_TEST_EXPORT_FAIL=1 run_export export >/dev/null 2>&1; then echo 'synthetic exporter failure succeeded' >&2; exit 1; fi
 [ "$(grep -c export-postgres-logical "$WORK/docker.log")" = 1 ]

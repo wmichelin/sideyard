@@ -264,12 +264,51 @@ class PublicationTests(unittest.TestCase):
     def test_review_gate_includes_azure_cli_wrapper(self):
         source=PUBLISH.reviewed_tooling.__code__.co_consts
         self.assertTrue(any(isinstance(value,tuple) and "scripts/azure/bin/az" in value for value in source))
+        self.assertTrue(any(isinstance(value,tuple) and "scripts/azure/logical-export-handoff.sh" in value for value in source))
+
+    def test_review_gate_rejects_modified_release_helper(self):
+        root=self.root/"repo"; paths=("scripts/azure/publish-logical-postgres-publication.py","scripts/azure/prepare-logical-postgres-publication.py","scripts/azure/logical-backup-store.py","scripts/azure/verify-recovery-certificate.py","scripts/azure/bin/az","scripts/azure/logical-export-handoff.sh")
+        reviewed={}
+        for name in paths:
+            path=root/name; path.parent.mkdir(parents=True,exist_ok=True); path.write_bytes((name+"\n").encode()); reviewed[name]=path.read_bytes()
+        (root/paths[-1]).write_bytes(b"modified destructive helper\n")
+        def git(command,**_):
+            if command[1:]==["rev-parse","HEAD"]: return mock.Mock(stdout="a"*40+"\n",returncode=0)
+            return mock.Mock(stdout=reviewed[command[2].removeprefix("HEAD:")],returncode=0)
+        with mock.patch.object(PUBLISH,"ROOT",root),mock.patch.object(PUBLISH.subprocess,"run",side_effect=git):
+            with self.assertRaisesRegex(ValueError,"reviewed revision"): PUBLISH.reviewed_tooling()
 
     def test_azure_cli_wrapper_pins_local_docker(self):
         wrapper=(PUBLISH.ROOT/"scripts"/"azure"/"bin"/"az").read_text()
         self.assertTrue(wrapper.startswith("#!/bin/bash\n"))
         self.assertIn("exec /usr/bin/docker --host unix:///var/run/docker.sock run",wrapper)
         self.assertNotIn("exec docker ",wrapper)
+
+    def test_explicit_host_release_persists_authenticated_receipt_and_is_idempotent(self):
+        publication=self.publish(PUBLISH.verify_remote_recovery); calls=[]
+        def release(target,authorization,helper):
+            calls.append((target,authorization,helper))
+            serialized=PUBLISH.canonical_file(authorization)
+            self.assertNotIn(self.passphrase,serialized); self.assertNotIn(self.authentication_key.hex().encode(),serialized)
+            return {"environment":"staging","export_id":EXPORT,"package_sha256":self.descriptor["package_sha256"],"phase":"released","release_id":authorization["release_id"]}
+        result=PUBLISH.release_host_package(self.folder,publication,self.authentication_key,b"reviewed helper",transport=release)
+        self.assertEqual(result["phase"],"released"); self.assertEqual(len(calls),1)
+        self.assertFalse((self.folder/"host-release-intent.json").exists()); self.assertTrue((self.folder/"host-release-receipt.json").exists())
+        release_document=PUBLISH.read_canonical(self.folder/"host-release-receipt.json")
+        PUBLISH.write_state(self.folder/"host-release-intent.json",release_document["payload"]["authorization"])
+        result2=PUBLISH.release_host_package(self.folder,publication,self.authentication_key,b"reviewed helper",transport=lambda *_:self.fail("unexpected second SSH"))
+        self.assertEqual(result2,result)
+        self.assertFalse((self.folder/"host-release-intent.json").exists())
+
+    def test_host_release_transport_failure_retains_exact_intent(self):
+        publication=self.publish(PUBLISH.verify_remote_recovery)
+        with self.assertRaisesRegex(OSError,"lost acknowledgement"):
+            PUBLISH.release_host_package(self.folder,publication,self.authentication_key,b"reviewed helper",transport=lambda *_:(_ for _ in ()).throw(OSError("lost acknowledgement")))
+        intent=PUBLISH.read_canonical(self.folder/"host-release-intent.json")
+        self.assertEqual(intent["source"],self.source); self.assertEqual(intent["completion"],publication["payload"]["completion"])
+        tampered=dict(intent,receipt_sha256="0"*64); PUBLISH.write_state(self.folder/"host-release-intent.json",tampered)
+        with self.assertRaisesRegex(ValueError,"does not match"):
+            PUBLISH.release_host_package(self.folder,publication,self.authentication_key,b"reviewed helper",transport=lambda *_:None)
 
 
 if __name__=="__main__": unittest.main()

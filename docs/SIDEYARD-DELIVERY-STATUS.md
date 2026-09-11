@@ -1997,6 +1997,23 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   have separately recoverable off-device custody and the release transition is
   implemented and reviewed.
 
+### Crash-safe host release — local candidate
+
+- Added an explicit `--release-host-package` option after the ordinary publisher's
+  fresh exact-version retrieval, HMAC verification, decryption and package check.
+  The default path retains the host package. The option fsyncs a private local
+  intent and sends only a bounded non-secret source/completion/receipt-hash
+  authorization with the exact HEAD-reviewed helper over pinned SSH.
+- Under the canonical database-operation lock, a first release verifies the
+  protected PostgreSQL generation/current container, re-restricts exporter access,
+  compares the complete canonical source journal and exact open package inode,
+  then fsyncs pending state before unlink. A final per-export tombstone makes every
+  exact retry converge after lost responses and returns before inspecting a newer
+  export. Local encrypted material and HMAC-authenticated release evidence remain.
+- This operator path is not deployed or executed. Customer-data release remains
+  blocked on separately recoverable off-device custody for both keys. Timers,
+  ordinary backup-success markers, runtime selectors and production are unchanged.
+
 ### Azure staging foundation and browserless Terraform — live verified
 
 - Added a dedicated certificate-authenticated `sideyard-staging-terraform`

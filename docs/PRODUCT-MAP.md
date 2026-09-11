@@ -741,22 +741,31 @@ reconcile and post-reconcile check passed there, while customer-data export rema
 disabled pending the off-host encrypted publication path. A local conditional
 handoff command can stream that fixed package under the database lock, verify its
 journal and manifest, and write only an authenticated encrypted pair plus descriptor
-to an owner-private workstation directory. The host retains its plaintext package;
-Blob publication and host release remain future gates. This operator-only handoff
+to an owner-private workstation directory. The default path retains its plaintext
+host package. An explicit staging-only release option is a local candidate: after
+fresh exact-version retrieval, decryption and authenticated receipt checks, it
+sends a bounded non-secret authorization through the pinned SSH alias. The host
+uses the shared database lock, verifies the authoritative PostgreSQL generation
+and exact package, then records durable pending/released state around unlink; an
+old retry cannot delete a newer export. Customer-data release remains blocked
+until both recovery keys have verified off-device custody and a synthetic host
+rehearsal passes. This operator-only handoff
 is available from the staging-deployed revision
 `460de6a1f76a4f6120e3cb4dbbfe78b9f5052d88`; its automated contract and normal
 application smoke checks passed without running it against customer data. The application selector
 remains PostgreSQL.
 
-A staging-only local publication candidate now persists an owner-only intent
+A staging-verified publication path persists an owner-only intent
 before its first Blob write, uses a distinct publication ID for each immutable
 remote attempt, and reconciles conditional component and completion writes by
 exact Blob version. It audits required photo versions, writes completion last,
 retrieves and decrypts the finished package, validates its manifest, and records
 an authenticated private receipt. An incomplete attempt that reaches the
 55-minute completion cutoff is retained for lifecycle expiry while the same
-sealed export moves to a fresh publication namespace. This command remains local
-only: it has not published customer data, enabled a timer or released a host copy.
+sealed export moves to a fresh publication namespace. Its real Azure rehearsal
+used only a synthetic zero-photo package and converged on the same exact versions
+on retry. It has not published customer data, enabled a timer or released a host
+copy.
 
 The conditional staging Azure foundation was independently read back on September
 10, 2026. Azure SQL uses the free offer with a 0.5-vCore minimum, 32-GB maximum,

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Resume one sealed staging logical backup into exact versioned Azure objects."""
 import argparse
+import base64
 import hashlib
 import hmac
 import importlib.util
@@ -9,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import re
+import selectors
 import shutil
 import signal
 import subprocess
@@ -33,6 +35,7 @@ STORE = load_module("sideyard_logical_store", HERE / "logical-backup-store.py")
 PREPARE = load_module("sideyard_logical_prepare", HERE / "prepare-logical-postgres-publication.py")
 CERT = load_module("sideyard_recovery_certificate", HERE / "verify-recovery-certificate.py")
 RECEIPT_MAGIC = b"Sideyard logical publication receipt v1\n"
+HOST_RELEASE_MAGIC = b"Sideyard logical host release receipt v1\n"
 PHASES = ("intent", "ciphertext", "components", "completion", "verified")
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 IDENTITY_FIELDS = {
@@ -67,7 +70,9 @@ def inspect_publication_folder(folder):
     regular = {
         "recovery.tar.enc", "recovery.tar.enc.mac", "descriptor.json", "source-journal.json",
         "publication-journal.json", "completion-receipt.json",
+        "host-release-intent.json", "host-release-receipt.json",
         ".publication-journal.json.new", ".completion-receipt.json.new",
+        ".host-release-intent.json.new", ".host-release-receipt.json.new",
     }
     for path in folder.iterdir():
         abandoned = path.name.removeprefix("publication-abandoned-").removesuffix(".json")
@@ -431,19 +436,97 @@ def run_publication(folder, backup, photos, identities, passphrase, authenticati
     raise ValueError("logical publication could not establish a fresh retention-safe attempt")
 
 
+def release_over_ssh(target, authorization, helper_source):
+    PREPARE.validate_ssh_target(target)
+    ssh=shutil.which("ssh")
+    if not ssh: raise ValueError("OpenSSH is required for logical source release")
+    encoded=base64.urlsafe_b64encode(canonical_file(authorization)).decode()
+    if len(encoded)>32768: raise ValueError("logical source release authorization is too large")
+    command=[ssh,"-o","BatchMode=yes","-o","StrictHostKeyChecking=yes","-o","ConnectTimeout=10","-o","ServerAliveInterval=10","-o","ServerAliveCountMax=3",target,f"bash -s -- staging release {encoded}"]
+    process=subprocess.Popen(command,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True)
+    output=bytearray(); diagnostics=bytearray(); deadline=time.monotonic()+180
+    try:
+        process.stdin.write(helper_source); process.stdin.close()
+        streams=selectors.DefaultSelector(); streams.register(process.stdout,selectors.EVENT_READ,"stdout"); streams.register(process.stderr,selectors.EVENT_READ,"stderr")
+        while streams.get_map():
+            remaining=deadline-time.monotonic()
+            if remaining<=0: raise ValueError("logical source release exceeded its bounded SSH window")
+            events=streams.select(min(remaining,1))
+            if not events and process.poll() is not None: continue
+            for key,_ in events:
+                data=os.read(key.fileobj.fileno(),4096)
+                if not data: streams.unregister(key.fileobj); continue
+                destination=output if key.data=="stdout" else diagnostics; maximum=8192 if key.data=="stdout" else 16384
+                destination.extend(data)
+                if len(destination)>maximum: raise ValueError("logical source release produced excessive output")
+        return_code=process.wait(timeout=max(1,deadline-time.monotonic()))
+    except (BrokenPipeError,subprocess.TimeoutExpired,ValueError) as failure:
+        PREPARE.terminate_process_group(process)
+        if isinstance(failure,ValueError): raise
+        raise ValueError("logical source release exceeded its bounded SSH window") from None
+    finally:
+        if process.poll() is None: PREPARE.terminate_process_group(process)
+    if return_code: raise ValueError(f"logical source release failed with exit status {return_code}")
+    try: result=json.loads(output)
+    except json.JSONDecodeError: raise ValueError("logical source release returned invalid JSON") from None
+    if bytes(output)!=canonical_file(result): raise ValueError("logical source release response is not canonical")
+    expected={"environment":"staging","export_id":authorization["source"]["export_id"],"package_sha256":authorization["source"]["package_sha256"],"phase":"released","release_id":authorization["release_id"]}
+    if result!=expected: raise ValueError("logical source release response does not match its authorization")
+    return result
+
+
+def release_host_package(folder, publication_receipt, authentication_key, helper_source, target="pantry-droplet", transport=release_over_ssh):
+    PREPARE.validate_ssh_target(target)
+    source=publication_receipt["payload"]["source_journal"]; completion=publication_receipt["payload"]["completion"]
+    receipt_sha=hashlib.sha256(canonical_file(publication_receipt)).hexdigest(); intent_path=folder/"host-release-intent.json"; receipt_path=folder/"host-release-receipt.json"
+    def expected_authorization(release_id):
+        return {"format":1,"environment":"staging","release_id":release_id,"target":target,"source_journal_sha256":hashlib.sha256(canonical_file(source)).hexdigest(),"receipt_sha256":receipt_sha,"completion":completion,"source":source}
+    if receipt_path.exists():
+        document=read_canonical(receipt_path)
+        if not isinstance(document,dict) or set(document)!={"payload","hmac"}: raise ValueError("host release receipt is invalid")
+        payload=document["payload"]
+        if not hmac.compare_digest(str(document["hmac"]),hmac.new(authentication_key,HOST_RELEASE_MAGIC+STORE.canonical(payload),hashlib.sha256).hexdigest()): raise ValueError("host release receipt authentication failed")
+        if not isinstance(payload,dict) or set(payload)!={"format","authorization","host"} or payload.get("format")!=1 or not isinstance(payload.get("authorization"),dict): raise ValueError("host release receipt is invalid")
+        authorization=payload["authorization"]
+        if authorization!=expected_authorization(authorization.get("release_id")) or payload.get("host")!={"environment":"staging","export_id":source["export_id"],"package_sha256":source["package_sha256"],"phase":"released","release_id":authorization.get("release_id")}: raise ValueError("host release receipt does not match the publication")
+        if intent_path.exists():
+            if read_canonical(intent_path)!=authorization: raise ValueError("host release intent conflicts with its receipt")
+            intent_path.unlink(); PREPARE.fsync_directory(folder)
+        return payload["host"]
+    if intent_path.exists():
+        authorization=read_canonical(intent_path)
+        release_id=authorization.get("release_id") if isinstance(authorization,dict) else None
+    else:
+        release_id=str(uuid.uuid4()); authorization=None
+    expected=expected_authorization(release_id)
+    if not UUID.fullmatch(str(release_id)) or (authorization is not None and authorization!=expected): raise ValueError("host release intent does not match the publication")
+    if authorization is None: authorization=write_state(intent_path,expected)
+    if not isinstance(helper_source,bytes) or not helper_source: raise ValueError("reviewed logical release helper is unavailable")
+    host=transport(target,authorization,helper_source)
+    payload={"format":1,"authorization":authorization,"host":host}
+    document={"payload":payload,"hmac":hmac.new(authentication_key,HOST_RELEASE_MAGIC+STORE.canonical(payload),hashlib.sha256).hexdigest()}
+    write_state(receipt_path,document); verified=read_canonical(receipt_path)
+    if verified!=document: raise ValueError("host release receipt changed while committing")
+    intent_path.unlink(); PREPARE.fsync_directory(folder)
+    return host
+
+
 def reviewed_tooling():
     revision=subprocess.run(["git","rev-parse","HEAD"],cwd=ROOT,text=True,capture_output=True,check=True).stdout.strip()
     paths=(
         "scripts/azure/publish-logical-postgres-publication.py", "scripts/azure/prepare-logical-postgres-publication.py",
         "scripts/azure/logical-backup-store.py", "scripts/azure/verify-recovery-certificate.py", "scripts/azure/bin/az",
+        "scripts/azure/logical-export-handoff.sh",
     )
     if not re.fullmatch(r"[0-9a-f]{40}",revision): raise ValueError("reviewed publication revision is invalid")
+    blobs={}
     for path in paths:
         blob=subprocess.run(["git","show",f"HEAD:{path}"],cwd=ROOT,capture_output=True)
         local=ROOT/path
         if blob.returncode or not local.is_file() or local.is_symlink() or local.read_bytes()!=blob.stdout:
             raise ValueError("logical publication tooling does not match the reviewed revision")
-    return revision
+        blobs[path]=blob.stdout
+    return revision,blobs["scripts/azure/logical-export-handoff.sh"]
 
 
 def terraform_runner_values(config):
@@ -484,12 +567,14 @@ def certificate_only_environment(runner, runner_config):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("environment",choices=("staging",)); parser.add_argument("--export-id",required=True)
+    parser.add_argument("--release-host-package",action="store_true")
+    parser.add_argument("--ssh-target",default="pantry-droplet")
     parser.add_argument("--work-root",type=Path,default=Path.home()/".local"/"share"/"sideyard-logical-recovery"/"staging")
     parser.add_argument("--key-file",type=Path,default=Path.home()/".config"/"sideyard-azure"/"staging-logical-recovery.env")
     parser.add_argument("--terraform-directory",type=Path,default=ROOT/"infra"/"azure"/"environments")
     args=parser.parse_args(); os.umask(0o077)
     if not UUID.fullmatch(args.export_id): raise ValueError("export ID must be a UUID")
-    reviewed_tooling(); PREPARE.private_directory(args.work_root)
+    _,reviewed_release_helper=reviewed_tooling(); PREPARE.private_directory(args.work_root)
     config=Path.home()/".config"/"sideyard-azure"; CERT.require_private_path(config,directory=True)
     certificate_lock=CERT.acquire_recovery_lock(config); publication_lock=None
     try:
@@ -517,10 +602,13 @@ def main():
         passphrase,authentication_key=PREPARE.read_keys(args.key_file)
         folder=args.work_root/args.export_id; PREPARE.private_path(folder,directory=True)
         receipt=run_publication(folder,backup,photos,identities,passphrase,authentication_key)
+        host_release=release_host_package(folder,receipt,authentication_key,reviewed_release_helper,args.ssh_target) if args.release_host_package else None
     finally:
         if publication_lock is not None: publication_lock.close()
     payload=receipt["payload"]
-    print(json.dumps({"environment":"staging","export_id":payload["source_journal"]["export_id"],"publication_id":payload["publication_id"],"phase":"receipt","completion":payload["completion"]},sort_keys=True,separators=(",",":")))
+    result={"environment":"staging","export_id":payload["source_journal"]["export_id"],"publication_id":payload["publication_id"],"phase":"receipt","completion":payload["completion"]}
+    if host_release is not None: result["host_release"]=host_release
+    print(json.dumps(result,sort_keys=True,separators=(",",":")))
 
 
 if __name__=="__main__":
