@@ -498,6 +498,9 @@ gh workflow run staging-postgres-exporter.yml --ref main -f action=bootstrap
 gh run list --workflow staging-postgres-exporter.yml --limit 1
 # After provisioning, rerun an independent read-only audit:
 gh workflow run staging-postgres-exporter.yml --ref main -f action=check
+# After the export command is on the reviewed staging artifact:
+gh workflow run staging-postgres-exporter.yml --ref main -f action=export
+gh workflow run staging-postgres-exporter.yml --ref main -f action=reconcile
 ```
 
 The workflow copies the reviewed wrapper and runtime-state helper only to a
@@ -526,9 +529,26 @@ the cluster's broad `PUBLIC` database/schema/relation/function/large-object defa
 the owner
 keeps implicit access. This baseline is not rolled back when the dormant exporter
 is later removed. If another login or database owner exists, bootstrap refuses to
-change anything and that principal must be reviewed first. The current slice
-supplies dormant source grants only; the later export command must implement a
-short-lived, crash-recoverable password activation and disable it after use.
+change anything and that principal must be reviewed first.
+
+The conditional export command and host supervisor implement short-lived,
+crash-recoverable activation. `export` holds the shared database-operation lock,
+binds the exact generation, Git revision, immutable image and staging photo
+resource, writes a root-only fsynced journal, and creates one verified package in
+`/var/lib/sideyard-logical-export`. PostgreSQL supplies the 16-minute credential
+deadline. The command closes the snapshot and restores `NOLOGIN PASSWORD NULL`
+before packaging. `reconcile` only removes authority, terminates sessions and
+proves zero remain, so it still works after backend, generation or schema drift.
+The database password is mounted as a protected file and does not appear in Docker
+arguments or metadata.
+
+A `package_ready` journal deliberately blocks another export. The package is a
+manual staging candidate, not a backup: copy it over direct SSH to the owner's
+private local spool, check it against the journal, encrypt locally, and publish
+with the separate certificate identities. Do not upload it through a GitHub
+artifact, enable a timer, update the ordinary backup-success marker, or delete the
+host copy until off-host verification and the later completion-marker workflow
+succeed.
 
 Download an exact completed backup using protected credentials in the process
 environment (never inline command arguments):

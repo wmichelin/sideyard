@@ -4,13 +4,15 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: Bootstrap or audit the dormant staging logical-export roles
+        description: Manage or run the staging logical-export source
         required: true
         default: check
         type: choice
         options:
           - check
           - bootstrap
+          - export
+          - reconcile
 
 concurrency:
   group: staging-database-operations
@@ -32,45 +34,77 @@ jobs:
           host: ${{ secrets.DROPLET_HOST }}
           username: root
           key: ${{ secrets.DROPLET_SSH_KEY }}
-          source: scripts/azure/run-postgres-exporter-access.sh,scripts/azure/runtime-state.sh
+          source: scripts/azure/run-postgres-exporter-access.sh,scripts/azure/run-logical-postgres-export.sh,scripts/azure/runtime-state.sh
           target: /root/.sideyard-postgres-exporter/${{ github.sha }}
           strip_components: 2
 
-      - name: Bootstrap or audit dormant staging exporter
+      - name: Load tracked non-secret Azure storage identity
+        if: inputs.action == 'export'
+        run: |
+          set -euo pipefail
+          subscription="$(sed -n 's/^subscription_id[[:space:]]*=[[:space:]]*"\([0-9a-f-]*\)"$/\1/p' infra/azure/environments/staging.tfvars)"
+          account="$(sed -n 's/^storage_account_name[[:space:]]*=[[:space:]]*"\([a-z0-9]*\)"$/\1/p' infra/azure/environments/staging.tfvars)"
+          [[ "$subscription" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]
+          [[ "$account" =~ ^sideyard[a-z0-9]{1,16}$ ]]
+          echo "SIDEYARD_AZURE_SUBSCRIPTION_ID=$subscription" >> "$GITHUB_ENV"
+          echo "SIDEYARD_PHOTO_ACCOUNT=$account" >> "$GITHUB_ENV"
+
+      - name: Run staging exporter operation
         uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17
         env:
           SIDEYARD_EXPORTER_ACTION: ${{ inputs.action }}
           SIDEYARD_EXPECTED_REVISION: ${{ github.sha }}
+          SIDEYARD_AZURE_SUBSCRIPTION_ID: ${{ env.SIDEYARD_AZURE_SUBSCRIPTION_ID }}
+          SIDEYARD_PHOTO_ACCOUNT: ${{ env.SIDEYARD_PHOTO_ACCOUNT }}
         with:
           host: ${{ secrets.DROPLET_HOST }}
           username: root
           key: ${{ secrets.DROPLET_SSH_KEY }}
-          envs: SIDEYARD_EXPORTER_ACTION,SIDEYARD_EXPECTED_REVISION
+          command_timeout: 25m
+          envs: SIDEYARD_EXPORTER_ACTION,SIDEYARD_EXPECTED_REVISION,SIDEYARD_AZURE_SUBSCRIPTION_ID,SIDEYARD_PHOTO_ACCOUNT
           script: |
             set -euo pipefail
             candidate_root="/root/.sideyard-postgres-exporter/${SIDEYARD_EXPECTED_REVISION}"
             candidate="${candidate_root}/run-postgres-exporter-access.sh"
+            logical_candidate="${candidate_root}/run-logical-postgres-export.sh"
             runtime_state="${candidate_root}/runtime-state.sh"
             trap 'rm -rf "$candidate_root"' EXIT
             [[ "$SIDEYARD_EXPECTED_REVISION" =~ ^[0-9a-f]{40}$ ]]
             [ -f "$candidate" ] && [ ! -L "$candidate" ]
+            [ -f "$logical_candidate" ] && [ ! -L "$logical_candidate" ]
             [ -f "$runtime_state" ] && [ ! -L "$runtime_state" ]
 
             chmod 700 "$candidate"
+            chmod 700 "$logical_candidate"
             chmod 600 "$runtime_state"
             source "$runtime_state"
             prepare_sideyard_lock_root
             exec 9>"${SIDEYARD_LOCK_ROOT}/sideyard-staging-database-window.lock"
             flock -w 120 9
-            load_sideyard_runtime_state staging
-            [ "$SIDEYARD_BACKEND" = postgres ]
-            verify_sideyard_current_container staging clubdue-staging-current
-            revision="$(docker inspect -f '{{ index .Config.Labels "org.opencontainers.image.revision" }}' clubdue-staging-current)"
-            image="$(docker inspect -f '{{.Config.Image}}' clubdue-staging-current)"
-            [ "$revision" = "$SIDEYARD_EXPECTED_REVISION" ]
-            [[ "$image" =~ ^ghcr.io/wmichelin/clubdue@sha256:[0-9a-f]{64}$ ]]
+            if [ "$SIDEYARD_EXPORTER_ACTION" != reconcile ]; then
+              load_sideyard_runtime_state staging
+              [ "$SIDEYARD_BACKEND" = postgres ]
+              verify_sideyard_current_container staging clubdue-staging-current
+              revision="$(docker inspect -f '{{ index .Config.Labels "org.opencontainers.image.revision" }}' clubdue-staging-current)"
+              image="$(docker inspect -f '{{.Config.Image}}' clubdue-staging-current)"
+              [ "$revision" = "$SIDEYARD_EXPECTED_REVISION" ]
+              [[ "$image" =~ ^ghcr.io/wmichelin/clubdue@sha256:[0-9a-f]{64}$ ]]
+            fi
 
-            SIDEYARD_DATABASE_LOCK_HELD=1 \
-              SIDEYARD_RUNTIME_STATE_SCRIPT="$runtime_state" \
-              SIDEYARD_EXPECTED_REVISION="$SIDEYARD_EXPECTED_REVISION" \
-              "$candidate" staging "$SIDEYARD_EXPORTER_ACTION"
+            case "$SIDEYARD_EXPORTER_ACTION" in
+              bootstrap|check)
+                SIDEYARD_DATABASE_LOCK_HELD=1 \
+                  SIDEYARD_RUNTIME_STATE_SCRIPT="$runtime_state" \
+                  SIDEYARD_EXPECTED_REVISION="$SIDEYARD_EXPECTED_REVISION" \
+                  "$candidate" staging "$SIDEYARD_EXPORTER_ACTION"
+                ;;
+              export|reconcile)
+                SIDEYARD_DATABASE_LOCK_HELD=1 \
+                  SIDEYARD_RUNTIME_STATE_SCRIPT="$runtime_state" \
+                  SIDEYARD_EXPECTED_REVISION="$SIDEYARD_EXPECTED_REVISION" \
+                  SIDEYARD_AZURE_SUBSCRIPTION_ID="$SIDEYARD_AZURE_SUBSCRIPTION_ID" \
+                  SIDEYARD_PHOTO_ACCOUNT="$SIDEYARD_PHOTO_ACCOUNT" \
+                  "$logical_candidate" staging "$SIDEYARD_EXPORTER_ACTION"
+                ;;
+              *) exit 64 ;;
+            esac

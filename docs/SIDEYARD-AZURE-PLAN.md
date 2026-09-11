@@ -464,8 +464,10 @@ Terraform-derived disposable restore targets and oldest/newest recovery drills
 remain implementation work. A staging-only lifecycle now prepares distinct Blob
 publisher and photo-reader credentials from exact Terraform resource IDs. Separate
 container roles grant only backup read/write or photo read, while resource
-preconditions reject production use and principal overlap. The identities remain
-unassigned until a reviewed staging plan and live positive/negative canaries pass.
+preconditions reject production use and principal overlap. Both staging identities
+are assigned at their exact container scopes and their positive/negative canaries
+passed on September 11, 2026. No publication service or customer-data package is
+active yet.
 Use the recorded PostgreSQL recovery procedure until all gates pass.
 
 Authentication can require device/browser approval, but routine provisioning,

@@ -1908,6 +1908,29 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   fixed roles, but its login remains `NOLOGIN` with a null password. Azure SQL
   remains conditional and production is unchanged.
 
+### Crash-safe PostgreSQL logical package operator — local candidate
+
+- Added a manual staging-only operator that writes a fsynced pre-activation
+  journal, removes stale authority before every attempt, activates the fixed
+  exporter with a random memory-only password and PostgreSQL-server deadline,
+  exports one repeatable-read snapshot, then restores `NOLOGIN PASSWORD NULL` and
+  proves zero sessions before building and exposing the verified package.
+- The package binds the authoritative generation, exact Git revision, immutable
+  image digest and staging Azure photo resource. Its private host spool rejects
+  symlinks, permissive modes, unexpected files, corrupt journals and overwrites.
+  The database password is read from a mounted root-only file rather than Docker
+  arguments or container metadata.
+- A restriction-only command works independently of backend, generation and
+  schema health. The real PostgreSQL 16 rehearsal sends an actual `SIGKILL` after
+  activation, then proves the next command removes the password, terminates the
+  session and returns the role to its audited dormant state. The full successful
+  export/package flow and supervisor retry/corrupt-journal tests also pass.
+- This is not deployed or a recoverable backup yet. Manual direct-SSH handoff,
+  local encryption/authentication, durable descriptor storage, Blob publication,
+  exact completion readback and isolated restore remain before customer-data use.
+  No timer, ordinary backup-success marker, Azure runtime selection or production
+  configuration changes in this slice.
+
 ### Azure staging foundation and browserless Terraform — live verified
 
 - Added a dedicated certificate-authenticated `sideyard-staging-terraform`

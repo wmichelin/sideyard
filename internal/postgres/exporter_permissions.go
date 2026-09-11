@@ -2,9 +2,12 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -23,6 +26,8 @@ var exporterRoleSettings = []string{
 	"search_path=pg_catalog, public",
 	"statement_timeout=15min",
 }
+
+var exporterPassword = regexp.MustCompile(`^[a-f0-9]{64}$`)
 
 // PrepareLogicalExporter creates a dormant staging login and binds its no-login
 // grant role to the exact columns in one validated transfer profile. It closes
@@ -193,6 +198,104 @@ func CheckLogicalExporterSession(ctx context.Context, exporterURL string, profil
 		if _, err := exporter.Exec(ctx, `SELECT `+strings.Join(columns, ",")+` FROM public.`+quotePostgresIdentifier(relation.name)+` LIMIT 0`); err != nil {
 			return fmt.Errorf("logical exporter cannot read %s: %w", relation.name, err)
 		}
+	}
+	return nil
+}
+
+// ActivateLogicalExporter gives the fixed staging login one short-lived
+// credential after proving its dormant grants still match the embedded profile.
+func ActivateLogicalExporter(ctx context.Context, adminURL string, profile transfer.Profile, password string, before, after func(time.Time) error) (time.Time, error) {
+	if !exporterPassword.MatchString(password) {
+		return time.Time{}, fmt.Errorf("logical exporter credential is invalid")
+	}
+	if err := CheckLogicalExporter(ctx, adminURL, profile); err != nil {
+		return time.Time{}, err
+	}
+	admin, _, _, err := openExporterAdministrator(ctx, adminURL)
+	if err != nil {
+		return time.Time{}, err
+	}
+	defer admin.Close()
+	var statement string
+	var validUntil time.Time
+	if err := admin.QueryRow(ctx, `SELECT expires,format('ALTER ROLE sideyard_staging_logical_exporter LOGIN PASSWORD %L VALID UNTIL %L',$1::text,expires::text) FROM (SELECT clock_timestamp()+interval '16 minutes' AS expires) bounded`, password).Scan(&validUntil, &statement); err != nil {
+		return time.Time{}, fmt.Errorf("build logical exporter activation: %w", err)
+	}
+	validUntil = validUntil.UTC()
+	if before == nil || after == nil {
+		return time.Time{}, fmt.Errorf("logical exporter activation journal is required")
+	}
+	if err := before(validUntil); err != nil {
+		return time.Time{}, fmt.Errorf("record pending logical exporter activation: %w", err)
+	}
+	if _, err := admin.Exec(ctx, statement); err != nil {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		deactivateErr := RestrictLogicalExporter(cleanupCtx, adminURL)
+		cancel()
+		return time.Time{}, errors.Join(fmt.Errorf("activate logical exporter: %w", err), deactivateErr)
+	}
+	if err := after(validUntil); err != nil {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		deactivateErr := RestrictLogicalExporter(cleanupCtx, adminURL)
+		cancel()
+		return time.Time{}, errors.Join(fmt.Errorf("record logical exporter activation: %w", err), deactivateErr)
+	}
+	return validUntil, nil
+}
+
+// DeactivateLogicalExporter terminates every exporter session, removes its
+// password and restores the fully audited dormant boundary.
+func DeactivateLogicalExporter(ctx context.Context, adminURL string, profile transfer.Profile) error {
+	if err := RestrictLogicalExporter(ctx, adminURL); err != nil {
+		return err
+	}
+	if err := CheckLogicalExporter(ctx, adminURL, profile); err != nil {
+		return fmt.Errorf("verify dormant logical exporter: %w", err)
+	}
+	return nil
+}
+
+// RestrictLogicalExporter only removes authority from the fixed staging role.
+// It deliberately does not depend on the transfer schema, profile or generation
+// so a crash can always be reconciled before those wider audits run.
+func RestrictLogicalExporter(ctx context.Context, adminURL string) error {
+	admin, _, _, err := openExporterAdministrator(ctx, adminURL)
+	if err != nil {
+		return err
+	}
+	// Remove login authority first so termination cannot race a new session.
+	if _, err := admin.Exec(ctx, `ALTER ROLE sideyard_staging_logical_exporter NOLOGIN PASSWORD NULL VALID UNTIL 'infinity'`); err != nil {
+		admin.Close()
+		return fmt.Errorf("deactivate logical exporter: %w", err)
+	}
+	if _, err := admin.Exec(ctx, `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename=$1 AND pid<>pg_backend_pid()`, StagingExporterLogin); err != nil {
+		admin.Close()
+		return fmt.Errorf("terminate logical exporter sessions: %w", err)
+	}
+	for {
+		var sessions int
+		if err := admin.QueryRow(ctx, `SELECT COUNT(*) FROM pg_stat_activity WHERE usename=$1`, StagingExporterLogin).Scan(&sessions); err != nil {
+			admin.Close()
+			return fmt.Errorf("verify logical exporter sessions: %w", err)
+		}
+		if sessions == 0 {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			admin.Close()
+			return fmt.Errorf("logical exporter sessions remain active: %w", ctx.Err())
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+	var login, passwordNull bool
+	if err := admin.QueryRow(ctx, `SELECT r.rolcanlogin,a.rolpassword IS NULL FROM pg_roles r JOIN pg_authid a ON a.oid=r.oid WHERE r.rolname=$1`, StagingExporterLogin).Scan(&login, &passwordNull); err != nil {
+		admin.Close()
+		return fmt.Errorf("verify restricted logical exporter: %w", err)
+	}
+	admin.Close()
+	if login || !passwordNull {
+		return fmt.Errorf("logical exporter restriction did not persist")
 	}
 	return nil
 }

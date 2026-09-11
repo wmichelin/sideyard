@@ -730,9 +730,12 @@ for one dormant, passwordless database login whose effective access is column-le
 other databases/schemas, temporary or persistent object creation, extra relation
 or column grants, table writes, large-object access, application-function execution,
 source-schema drift, row-level security and unexpected role membership. Staging
-bootstrap and an independent audit passed on the exact immutable running revision;
-short-lived activation still belongs to the future export command. The application
-selector therefore remains PostgreSQL.
+bootstrap and an independent audit passed on the exact immutable running revision.
+The conditional manual staging command adds server-expiring, memory-only
+activation, a repeatable-read export, verified package creation and revoke-first
+crash reconciliation. It leaves one root-private host package awaiting direct
+operator handoff; it does not publish a backup, run on a timer or change the
+authoritative backup marker. The application selector remains PostgreSQL.
 
 The conditional staging Azure foundation was independently read back on September
 10, 2026. Azure SQL uses the free offer with a 0.5-vCore minimum, 32-GB maximum,

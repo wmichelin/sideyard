@@ -76,6 +76,10 @@ func open(ctx context.Context, databaseURL string, readOnly bool) (*DB, error) {
 	cfg.MinConns = 1
 	cfg.MaxConnLifetime = time.Hour
 	if readOnly {
+		// The logical exporter role has a one-session server limit. Avoid a
+		// background minimum connection racing the explicit readiness ping.
+		cfg.MaxConns = 1
+		cfg.MinConns = 0
 		cfg.ConnConfig.RuntimeParams["default_transaction_read_only"] = "on"
 	}
 

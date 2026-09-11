@@ -73,7 +73,9 @@ func TestLogicalExporterPermissions(t *testing.T) {
 	assertRoleCannotAuthenticate(t, ctx, databaseURLForTest(t, testAdminURL, testDatabase, StagingExporterLogin, "no-password"))
 
 	password := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-	activateExporterForTest(t, ctx, testAdmin, password)
+	if _, err := ActivateLogicalExporter(ctx, testAdminURL, profile, password, func(time.Time) error { return nil }, func(time.Time) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
 	exporterURL := databaseURLForTest(t, testAdminURL, testDatabase, StagingExporterLogin, password)
 	if err := CheckLogicalExporterSession(ctx, exporterURL, profile); err != nil {
 		t.Fatal(err)
@@ -88,9 +90,14 @@ func TestLogicalExporterPermissions(t *testing.T) {
 	assertExporterStatementFails(t, ctx, exporter, `CREATE TABLE public.exporter_escape(id integer)`)
 	assertExporterStatementFails(t, ctx, exporter, `CREATE TEMP TABLE exporter_temp(id integer)`)
 	assertExporterStatementFails(t, ctx, exporter, `SET ROLE clubdue`)
+	if err := DeactivateLogicalExporter(ctx, testAdminURL, profile); err != nil {
+		t.Fatal(err)
+	}
+	if err := exporter.Ping(ctx); err == nil {
+		t.Fatal("logical exporter session survived deactivation")
+	}
 	exporter.Close()
 	assertRoleCannotAuthenticate(t, ctx, databaseURLForTest(t, adminURL, "postgres", StagingExporterLogin, password))
-	deactivateExporterForTest(t, ctx, testAdmin)
 
 	freshOwner, err := pgxpool.New(ctx, testAdminURL)
 	if err != nil {
@@ -226,24 +233,6 @@ func TestExporterCatalogIdentityRequiresExactCurrentProfile(t *testing.T) {
 	profile.Catalog[0].Columns = append(profile.Catalog[0].Columns, transfer.Column{Name: "unexpected", Kind: transfer.Text})
 	if _, err := exporterCatalogIdentity(profile); err == nil {
 		t.Fatal("exporter accepted a different catalog under the current schema name")
-	}
-}
-
-func activateExporterForTest(t *testing.T, ctx context.Context, admin *pgxpool.Pool, password string) {
-	t.Helper()
-	var statement string
-	if err := admin.QueryRow(ctx, `SELECT format('ALTER ROLE sideyard_staging_logical_exporter LOGIN PASSWORD %L VALID UNTIL %L',$1::text,(now()+interval '10 minutes')::text)`, password).Scan(&statement); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := admin.Exec(ctx, statement); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func deactivateExporterForTest(t *testing.T, ctx context.Context, admin *pgxpool.Pool) {
-	t.Helper()
-	if _, err := admin.Exec(ctx, `ALTER ROLE sideyard_staging_logical_exporter NOLOGIN PASSWORD NULL`); err != nil {
-		t.Fatal(err)
 	}
 }
 

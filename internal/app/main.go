@@ -42,7 +42,7 @@ func Run(args []string) error {
 }
 
 func isPostgresExporterCommand(command string) bool {
-	return command == "bootstrap-postgres-exporter" || command == "check-postgres-exporter"
+	return command == "bootstrap-postgres-exporter" || command == "check-postgres-exporter" || command == "export-postgres-logical" || command == "reconcile-postgres-exporter"
 }
 
 func isNativeDatabaseCommand(command string) bool {
