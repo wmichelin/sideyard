@@ -13,13 +13,13 @@ for the distinction between provisioned resources and deployed app behavior.
 
 ## Availability snapshot
 
-Reviewed September 10, 2026 against staging release `8af5371` and the recorded
+Reviewed September 11, 2026 against staging release `a5ed99a` and the recorded
 release verification. These are verified release states, not a live deployment monitor.
 
 | Label | Meaning |
 | --- | --- |
 | **Live** | Available in production at [getsideyard.com](https://getsideyard.com), source `ae6f16a`, and on staging. The legacy ClubDue hostname remains supported. |
-| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), release `db13dc2`: standalone jobs/site surveys, the single-line work-status badge fix, configured private Azure photo storage, native-compatible CSV import behavior, a guarded Azure SQL runtime boundary, retryable outage feedback that retains customer, demo and seasonal-work input, and the verified dormant PostgreSQL logical-export source. The deployed web application still uses PostgreSQL. |
+| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), release `a5ed99a`: standalone jobs/site surveys, the single-line work-status badge fix, configured private Azure photo storage, native-compatible CSV import behavior, a guarded Azure SQL runtime boundary, retryable outage feedback that retains customer, demo and seasonal-work input, and the verified dormant PostgreSQL logical-export source. The deployed web application still uses PostgreSQL. |
 | **Conditional** | Present in the staging artifact but disabled pending its operational gates; this includes the staging-only lazy Azure SQL HTTP runtime, its 80-second total request budget, host-owned scheduled work, durable interest-delivery wake and internal logical transfer/restore contract. Conditional behavior is not a promise of availability to clients. |
 
 Unless marked otherwise, catalog nodes are **Live**. “Signed in” means a user
@@ -747,10 +747,12 @@ fresh exact-version retrieval, decryption and authenticated receipt checks, it
 sends a bounded non-secret authorization through the pinned SSH alias. The host
 uses the shared database lock, verifies the authoritative PostgreSQL generation
 and exact package, then records durable pending/released state around unlink; an
-old retry cannot delete a newer export. A local candidate now mechanically blocks
-handoff, Blob publication and host release unless an HMAC-authenticated final
-owner attestation binds the exact active key set to two independently retrieved
-custody copies; preparation or one verified copy is insufficient. Customer-data
+old retry cannot delete a newer export. A CI-verified operator-local custody
+boundary aligned with the staging-deployed reviewed revision mechanically blocks handoff,
+Blob publication and host release unless
+an HMAC-authenticated final owner attestation binds the exact active key set to two
+independently retrieved custody copies; preparation or one verified copy is
+insufficient. Its immutable key set is locally prepared, while customer-data
 release remains blocked until both recovery keys have verified off-device custody.
 A zero-customer-data
 synthetic droplet rehearsal passed the crash-after-package-delete and exact-retry

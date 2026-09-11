@@ -1,15 +1,15 @@
 # Sideyard delivery status
 
-Status: verified — nine foundational slices in production; Azure logical
-publication and crash-safe host release are verified on staging. The overall
-execution plan remains in progress.
-Last completed: browserless Azure synthetic publication and a disposable droplet
-host-release crash/retry rehearsal without customer data.
-Now: immutable logical-recovery key preparation, two-copy recovery verification
-and mechanical custody gates.
-Next: owner-controlled off-device custody, one retained customer-data staging
-export, then the scheduled seven-day backup and monitoring path.
-Staging: https://clubdue-staging.michelindigitalmedia.com (verified at `d943359`).
+Status: verified — nine foundational slices are in production; Azure logical
+publication and crash-safe host release are verified on staging. The operator-local,
+staging-targeted recovery-key custody gate is CI verified and aligned with the
+current staging source revision. The overall execution plan remains in progress.
+Last completed: deployment and application smoke of reviewed revision `a5ed99a`,
+plus local preparation of its immutable two-key set without exposing key material.
+Now: owner-controlled verification of two independent off-device custody copies.
+Next: one retained customer-data staging export, then the scheduled seven-day
+backup and monitoring path.
+Staging: https://clubdue-staging.michelindigitalmedia.com (verified at `a5ed99a`).
 Blocker: customer-data publication requires the owner's two-copy custody
 attestation. Production requires review and explicit approval.
 
@@ -2032,9 +2032,9 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   off-device custody for both keys. Timers, ordinary backup-success markers,
   runtime selectors and production are unchanged.
 
-### Logical recovery key custody — local candidate
+### Logical recovery key custody — CI verified and staging-aligned; local keys prepared
 
-- Added a staging-only key command that creates two distinct 256-bit values once
+- Added an operator-local, staging-targeted key command that creates two distinct 256-bit values once
   in the existing owner-only configuration directory and emits only domain-separated
   key IDs plus a deterministic key-set ID. Its atomic, fsynced preparation receipt
   remains `local_prepared`; it never claims that a local copy is off-device.
@@ -2042,15 +2042,31 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   use distinct abstract labels. Each exact-compares one descriptor-read canonical
   key set, runs the production AES-256-CBC/PBKDF2-SHA256 and descriptor-bound HMAC
   recovery path on synthetic data, and persists a non-secret copy receipt. The
-  supplied retrieval is retained unless the operator explicitly requests cleanup;
-  cleanup rechecks the verified inode before unlink.
+  supplied retrieval is retained unless the operator explicitly requests cleanup.
+  Explicit cleanup holds the verified descriptor, uses atomic no-clobber quarantine
+  moves, detects replacements, and reconciles a bounded crash residue on retry.
 - The final HMAC-authenticated `custody_verified` receipt requires the owner's
   explicit attestation and binds both exact copy receipts to the active key set.
   Handoff and publisher entrypoints reject absent, partial, stale or mismatched
   custody before SSH or Azure authentication, compare the exact verified key set
   immediately before Blob publication, and check it again before host release.
-- The tool and gates are not deployed, no real recovery keys have been generated,
-  and no custody assertion has been made. The owner must transfer and freshly
+- Reviewed source revision `a5ed99ad514ea041f23b85e2fe05fd69474fc544`
+  deployed the Go application to staging as
+  `ghcr.io/wmichelin/clubdue@sha256:091a74c2d2736d47999648bbf4fabee69cbbceb1f45f49ea0080afbc1ed8fd96`.
+  The custody CLI remains operator-local and targets staging; it is not installed
+  in the scratch application image.
+  Deploy run `34566649257`, CI run `34566649246`, the independent application smoke
+  test and all three delivery reviews passed. The custody suite includes 19 checks,
+  including real SIGKILL recovery and no-clobber collision cases.
+- The owner-only local key file and preparation receipt now exist at mode `0600`.
+  Public identity: kit `84a1677b-eab4-57f1-ad58-7c2f8ab36353`, encryption key ID
+  `41a48e9c9a50038c60bc9b4e71da5b5c00670e7b8fa52cdb8719b36edf5e55fb`, and
+  authentication key ID
+  `14aebb65ae779fb40a50cf466442ccbd39a9aba0a92f725ba01f2bd27ca0d6ee`.
+  Raw keys are absent from the repository, captured command output and this evidence.
+- `check` intentionally fails while the two copy receipts and final owner
+  attestation are absent. No custody assertion has been made and no customer data
+  has been exported, published or released. The owner must transfer and freshly
   retrieve two independent copies before customer-data execution can begin.
 
 ### Azure staging foundation and browserless Terraform — live verified

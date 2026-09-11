@@ -3,17 +3,18 @@
 ## Status update
 
 Status: implementing — user authorized Azure SQL, versioned Blob and seven-day backups.
-Last completed: crash-safe browserless logical Blob publication and explicit host
-release are staging verified, including real Azure synthetic publication and a
-synthetic droplet crash/retry rehearsal. No customer data was used.
-Now: a local key-custody candidate prepares one immutable two-key set, verifies
-two independently retrieved off-device copies with the production crypto path,
-and mechanically gates handoff, Blob publication and host release on an explicit
-owner attestation.
-Next: deploy and verify that custody tool, complete the owner-controlled two-copy
-ceremony, then publish one retained customer-data staging export and automate its
+Last completed: revision `a5ed99a` is staging deployed and application-smoked;
+its operator-local, staging-targeted recovery-key custody gate passed CI and team
+review, and its immutable two-key set is locally prepared. Crash-safe logical Blob
+publication and host release remain staging verified; no customer data was used.
+Now: the locally verified custody tool awaits verification of two independently
+retrieved off-device copies with the production crypto path plus the owner's
+explicit attestation.
+Next: complete the owner-controlled two-copy ceremony, then publish one retained
+customer-data staging export and automate its
 seven-day backup/monitoring window. Azure SQL runtime soak and cutover remain later gates.
-Evidence: host-release staging revision `3f49952` and exact artifacts are in the delivery status.
+Evidence: current staging source revision `a5ed99a`, its custody CI run, the
+host-release rehearsal and exact artifacts are recorded in the delivery status.
 Staging: https://clubdue-staging.michelindigitalmedia.com (verified for Azure Blob; application database remains PostgreSQL).
 Blocker: no sign-in blocker. Customer-data logical publication is blocked only on
 the owner-controlled two-copy custody ceremony; production still requires explicit
@@ -470,8 +471,10 @@ operator commands yet. The internal staging-only Blob contract now binds its
 encrypted package identity, exact object versions and required-photo inventory.
 Browserless authenticated encryption, create-only publication, exact-version
 readback and crash-safe host release are implemented as staging-only manual
-operator commands and have passed synthetic Azure/droplet rehearsals. A local
-two-copy custody candidate now guards customer-data use; Terraform-derived
+operator commands and have passed synthetic Azure/droplet rehearsals. The CI-verified,
+operator-local two-copy custody gate is aligned with the staging-deployed reviewed
+revision and guards customer-data use, and its local immutable key set is
+prepared without a custody claim; Terraform-derived
 disposable restore targets and oldest/newest recovery drills remain implementation
 work. A staging-only lifecycle prepares distinct Blob
 publisher and photo-reader credentials from exact Terraform resource IDs. Separate
