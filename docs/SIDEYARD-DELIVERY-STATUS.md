@@ -1960,7 +1960,7 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   `./scripts/smoke-test.sh staging` run both passed. No customer-data handoff or
   sealing command was run during deployment verification.
 
-### Resumable logical Blob publication — local candidate
+### Resumable logical Blob publication — staging verified
 
 - Added completion format v2, preserving v1 retrieval, so an immutable source
   export can use a separate publication-attempt ID. Exact component and marker
@@ -1978,6 +1978,24 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   marker adoption without duplicate versions, collisions, tampered journals,
   missing photos, stale atomic files, the verification space boundary, v1/v2
   retrieval and rollover at the 55-minute cutoff.
+- Revision `c570fadac3bbd1bdb014addb4989aaed810beb84` deployed to staging as
+  `ghcr.io/wmichelin/clubdue@sha256:55da2143a017a072b28bfd150dbed1b205c9a5c16b2120e5de04d988983c8691`
+  in Actions run `34561394892`; its workflow smoke, independent staging smoke and
+  CI run `34561394927` passed. Certificate-only publication is browserless: the
+  exact reviewed Azure CLI wrapper pins its local Docker daemon, isolates each
+  copied private certificate and token cache, and rejects unsafe crash residue.
+- A zero-customer-data synthetic package completed the real Azure path on
+  September 11, 2026. Export `b5e67cdf-8e9d-48a2-9f41-a009ae102747` published
+  10,272-byte ciphertext and 75-byte authentication sidecar versions before its
+  2,130-byte completion marker under publication
+  `cdc3d08b-8fee-4b37-b0ec-2c4a8ea7fa2a`. The publisher then retrieved those
+  exact versions, authenticated and decrypted them, revalidated the package and
+  committed its authenticated local receipt. An immediate retry returned the
+  same publication and object versions without creating duplicates.
+- This rehearsal contained no customer records and no photo assets. Customer-data
+  execution, host release and scheduling remain disabled until the recovery keys
+  have separately recoverable off-device custody and the release transition is
+  implemented and reviewed.
 
 ### Azure staging foundation and browserless Terraform — live verified
 
