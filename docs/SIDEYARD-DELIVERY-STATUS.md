@@ -1938,7 +1938,7 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   customer-data export was run, and no timer, ordinary backup-success marker,
   Azure runtime selection or production configuration changed in this slice.
 
-### Direct handoff and local sealing — local candidate
+### Direct handoff and local sealing — staging verified
 
 - Added a staging-only host helper that streams only the exact `package_ready`
   journal and its verified single-link package while holding the shared database
@@ -1954,6 +1954,11 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   real runtime OpenSSL decrypt equality, owner-only outputs, exact retry, changed
   key refusal and rejection of unimplemented release. Azure publication and live
   customer data remain disabled; the host package is retained.
+- Revision `460de6a1f76a4f6120e3cb4dbbfe78b9f5052d88` deployed to staging as
+  `ghcr.io/wmichelin/clubdue@sha256:8cd2ca57e0a63fcfeeca154e001edfb0bfe5d7939b370f8b4456ce3119cf6bca`
+  in Actions run `34558570392`; the workflow smoke test and a separate manual
+  `./scripts/smoke-test.sh staging` run both passed. No customer-data handoff or
+  sealing command was run during deployment verification.
 
 ### Azure staging foundation and browserless Terraform — live verified
 

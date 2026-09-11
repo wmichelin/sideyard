@@ -742,7 +742,10 @@ disabled pending the off-host encrypted publication path. A local conditional
 handoff command can stream that fixed package under the database lock, verify its
 journal and manifest, and write only an authenticated encrypted pair plus descriptor
 to an owner-private workstation directory. The host retains its plaintext package;
-Blob publication and host release remain future gates. The application selector
+Blob publication and host release remain future gates. This operator-only handoff
+is available from the staging-deployed revision
+`460de6a1f76a4f6120e3cb4dbbfe78b9f5052d88`; its automated contract and normal
+application smoke checks passed without running it against customer data. The application selector
 remains PostgreSQL.
 
 The conditional staging Azure foundation was independently read back on September
