@@ -26,7 +26,7 @@ TENANT = "22222222-2222-2222-2222-222222222222"
 CLIENT = "33333333-3333-3333-3333-333333333333"
 PRINCIPAL = "44444444-4444-4444-4444-444444444444"
 KEY_ID = "55555555-5555-5555-5555-555555555555"
-THUMBPRINT = "dGVzdC10aHVtYnByaW50"
+THUMBPRINT = "00112233445566778899AABBCCDDEEFF00112233"
 ROLE_ID = "66666666-6666-6666-6666-666666666666"
 RUNNER = "77777777-7777-7777-7777-777777777777"
 EXPIRY = (datetime.now(timezone.utc) + timedelta(days=90)).replace(microsecond=0)
@@ -209,7 +209,7 @@ class RecoveryCertificateTests(unittest.TestCase):
             "azp": CLIENT,
             "oid": PRINCIPAL,
             "tid": TENANT,
-            "aud": "https://storage.azure.com",
+            "aud": "https://storage.azure.com/",
             "nbf": now - 10,
             "exp": now + 3600,
         }

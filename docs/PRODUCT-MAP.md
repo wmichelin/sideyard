@@ -719,8 +719,11 @@ owner directory. A staging-only operator command can now create and rotate two
 separate Entra credentials: a backups-container read/write publisher and a
 photos-container read-only recovery reader. It derives their exact resource IDs
 from protected Terraform state, rejects identity reuse, and never activates them
-without a separately reviewed Terraform assignment and permission canary. No live
-recovery identity or publication/restore command is installed yet. The verified
+without a separately reviewed Terraform assignment and permission canary. No
+recovery publication or restore command is installed yet. The two staging recovery
+identities are live at their exact container scopes: the backup publisher and
+photo reader passed exact-version reads plus delete, write, management and
+cross-container denial canaries. The verified
 staging logical-export source boundary adds a bootstrap/audit command
 for one dormant, passwordless database login whose effective access is column-level
 `SELECT` on the exact current transfer catalog and migration ledger. It rejects
@@ -738,7 +741,8 @@ backup retention has a real restore point. The Hot LRS Blob account uses Entra
 authentication, a deny-by-default firewall, versioning, seven-day blob/container
 soft delete and private `photos` and `backups` containers. Two enabled free-compute
 alerts are configured to route to `wmichelin@gmail.com`; synthetic email delivery
-remains unverified. Terraform reports no drift. These resources
+remains unverified. Terraform reports no drift after the recovery assignments.
+These resources
 remain conditional infrastructure: no product request uses Azure SQL and no
 logical package has been published to Blob yet.
 [Transfer contract](../internal/transfer/catalog.go) ·

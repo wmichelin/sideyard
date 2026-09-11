@@ -390,7 +390,7 @@ interrupted publication with a freshly built export and export ID. Native SQL
 retention is also seven days. Azure lifecycle scheduling and soft delete can retain
 billable backup bytes longer; photo/state versions have no age-deletion rule.
 
-### Logical recovery identities (staging preparation only)
+### Logical recovery identities (staging live boundary)
 
 Logical recovery uses two certificate-only Entra applications instead of the
 runtime photo, Terraform or legacy backup identities. `logical-backup-publisher`
@@ -460,6 +460,13 @@ write/delete only against that synthetic object. Also prove management and
 cross-container requests return authorization failure rather than accepting a
 missing-object response. Do not target customer photos, install either file on
 the host, or activate logical publication until those canaries are recorded.
+
+The September 11, 2026 staging activation assigned publisher principal
+`62b3a12b-af22-4061-aa70-23e48f5610cc` only to `backups` and reader principal
+`6bed7b7a-46c1-4836-8888-491a4934fb31` only to `photos`. Both exact-version read
+canaries passed. Delete, write, management and cross-container probes returned
+authorization denials, and the fresh Terraform plan was empty. This activates
+the credential boundary only; no logical publication service is installed.
 
 Run both verifier commands monthly with `--require-assigned` and alert on failure
 or expiry within 30 days. In the same audit, the owner must repeat and archive the

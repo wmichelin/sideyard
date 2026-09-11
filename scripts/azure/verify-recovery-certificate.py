@@ -176,7 +176,7 @@ def certificate_metadata(root, purpose):
         capture_output=True,
     ).stdout
     fingerprint = hashlib.sha256(der).hexdigest().upper()
-    azure_thumbprint = base64.b64encode(hashlib.sha1(der).digest()).decode()
+    azure_thumbprint = hashlib.sha1(der).hexdigest().upper()
     end_line = run(["openssl", "x509", "-in", str(cert), "-enddate", "-noout"], cwd=root).stdout.strip()
     if not end_line.startswith("notAfter="):
         raise SystemExit("Recovery certificate expiry is unavailable")
@@ -202,7 +202,7 @@ def expected_values(*, purpose, resources, subscription, tenant, client_id, prin
         "AZURE_CLIENT_PRIVATE_KEY_PATH": str(key),
         "AZURE_CLIENT_PUBLIC_CERTIFICATE_PATH": str(cert),
         "AZURE_CERTIFICATE_SHA256": fingerprint,
-        "AZURE_CERTIFICATE_SHA1_BASE64": azure_thumbprint,
+        "AZURE_CERTIFICATE_SHA1": azure_thumbprint,
         "AZURE_CREDENTIAL_KEY_ID": key_id,
         "AZURE_CREDENTIAL_EXPIRES": expiry.isoformat().replace("+00:00", "Z"),
         "AZURE_BLOB_ACCOUNT_URL": str(resources["blob_endpoint"]),
@@ -294,7 +294,7 @@ def authenticate_certificate(root, folder, values):
             or application.lower() != values["AZURE_CLIENT_ID"].lower()
             or str(payload.get("oid", "")).lower() != values["AZURE_PRINCIPAL_OBJECT_ID"].lower()
             or str(payload.get("tid", "")).lower() != values["AZURE_TENANT_ID"].lower()
-            or "https://storage.azure.com" not in (audiences or [])
+            or not any(str(audience).rstrip("/") == "https://storage.azure.com" for audience in (audiences or []))
             or not isinstance(payload.get("nbf"), (int, float))
             or not isinstance(payload.get("exp"), (int, float))
             or payload["nbf"] > now + 60
@@ -452,7 +452,7 @@ def main():
                 raise SystemExit("Supplied certificate IDs do not match the protected binding")
             if args.credential_expires and parse_timestamp(args.credential_expires, "credential expiry") != declared_expiry:
                 raise SystemExit("Supplied credential expiry does not match the protected binding")
-            if args.credential_thumbprint and args.credential_thumbprint != existing.get("AZURE_CERTIFICATE_SHA1_BASE64"):
+            if args.credential_thumbprint and args.credential_thumbprint != existing.get("AZURE_CERTIFICATE_SHA1"):
                 raise SystemExit("Supplied credential thumbprint does not match the protected binding")
         else:
             client_id, principal_id, key_id = supplied[:3]
@@ -460,7 +460,7 @@ def main():
 
         if abs((declared_expiry - certificate_expiry).total_seconds()) > 1:
             raise SystemExit("Azure credential expiry does not match the local certificate")
-        declared_thumbprint = args.credential_thumbprint if existing is None else existing.get("AZURE_CERTIFICATE_SHA1_BASE64")
+        declared_thumbprint = args.credential_thumbprint if existing is None else existing.get("AZURE_CERTIFICATE_SHA1")
         if declared_thumbprint != azure_thumbprint:
             raise SystemExit("Azure credential thumbprint does not match the local certificate")
         values = expected_values(

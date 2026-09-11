@@ -1806,7 +1806,7 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   errors. The runtime backend/generation fence remains on PostgreSQL and production
   is unchanged.
 
-### Staging logical recovery identity boundary — implementation complete, activation pending
+### Staging logical recovery identity boundary — live verified
 
 - Added distinct Terraform variables, custom roles and exact container scopes for
   a logical backup publisher and photo recovery reader. The publisher has only
@@ -1834,9 +1834,23 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   creation, resumes rollback, exercises every post-revocation cleanup state and
   proves the next ordinary audit is clean. Expired tracked replacement/prior keys
   remain removable while the credential retained by revoke or rollback must be live.
-- Activation remains blocked on Azure sign-in, a reviewed staging plan/apply, two
-  live least-privilege canaries, and the later PostgreSQL exporter/disposable SQL
-  importer slices. Staging and production continue to use PostgreSQL.
+- On September 11, 2026, the owner-created certificate-only applications were
+  bound and assigned through an exact saved Terraform plan: publisher principal
+  `62b3a12b-af22-4061-aa70-23e48f5610cc` and photo-reader principal
+  `6bed7b7a-46c1-4836-8888-491a4934fb31`. The plan created only the two expected
+  container-scoped assignments; a fresh post-apply plan reported no changes.
+- Both protected certificates authenticate and bind the expected tenant, client,
+  principal, key ID, expiry and Azure certificate thumbprint. They expire
+  September 11, 2027. The publisher can exactly read its versioned synthetic
+  backup and the reader can exactly read its versioned synthetic photo. Live
+  denial canaries proved the publisher cannot delete, write photos or list
+  containers, and the reader cannot write/delete photos or read backups.
+- The temporary private-state bootstrap prefix contained only the reviewed script
+  and public certificates; its three current blobs were deleted after binding.
+  Storage versioning and retention still govern any retained historical versions.
+- The identities are ready for the later export/publish and restore commands, but
+  no logical customer backup has been published. Staging and production continue
+  to use PostgreSQL.
 - Source `0c130e7733a8ea1a633cae63e9445526acdac6f8` passed all four CI
   jobs [34536382079](https://github.com/wmichelin/clubdue/actions/runs/34536382079),
   including the native SQL Server and production recovery rehearsals, Terraform
@@ -1925,5 +1939,7 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   after eight days; soft-deleted bytes can remain longer. Both free-compute alerts
   and the owner action group are enabled and configured to route to
   `wmichelin@gmail.com`; synthetic email delivery remains unverified.
-- No application data has moved. Staging web traffic remains on PostgreSQL; no
-  logical backup has been uploaded and production is unchanged.
+- The two certificate-only logical-recovery identities are now assigned at their
+  exact container scopes and passed positive and negative permission canaries.
+  No application data has moved. Staging web traffic remains on PostgreSQL; no
+  logical customer backup has been uploaded and production is unchanged.

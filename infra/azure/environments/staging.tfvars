@@ -14,3 +14,11 @@ runtime_object_ids = [
 backup_object_ids = [
   "4a60d3a2-edd0-4af9-9196-0f58801c12d2",
 ]
+
+logical_backup_publisher_object_ids = [
+  "62b3a12b-af22-4061-aa70-23e48f5610cc",
+]
+
+logical_photo_reader_object_ids = [
+  "6bed7b7a-46c1-4836-8888-491a4934fb31",
+]
