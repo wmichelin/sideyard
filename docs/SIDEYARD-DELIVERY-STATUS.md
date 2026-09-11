@@ -1960,6 +1960,25 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   `./scripts/smoke-test.sh staging` run both passed. No customer-data handoff or
   sealing command was run during deployment verification.
 
+### Resumable logical Blob publication — local candidate
+
+- Added completion format v2, preserving v1 retrieval, so an immutable source
+  export can use a separate publication-attempt ID. Exact component and marker
+  paths include both identities; aged incomplete attempts remain immutable and
+  a fresh namespace can finish inside the retention-safe window.
+- Added a durable owner-only publication journal before the first Blob write. Every
+  retry revalidates the sealed pair, source journal, descriptor, two distinct
+  certificate bindings and required exact photo versions. Conditional writes
+  reconcile through current HEAD plus exact-version GET; completion remains last.
+- A completed attempt is retrieved by exact versions, authenticated, decrypted
+  into anonymous storage and opened through the package/manifest validator before
+  an HMAC-authenticated private receipt is committed. Host release, timers and
+  customer-data execution remain disabled.
+- Synthetic tests cover pre-commit and ambiguous committed writes, component and
+  marker adoption without duplicate versions, collisions, tampered journals,
+  missing photos, stale atomic files, the verification space boundary, v1/v2
+  retrieval and rollover at the 55-minute cutoff.
+
 ### Azure staging foundation and browserless Terraform — live verified
 
 - Added a dedicated certificate-authenticated `sideyard-staging-terraform`

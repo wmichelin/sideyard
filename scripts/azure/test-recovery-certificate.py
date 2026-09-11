@@ -224,12 +224,14 @@ class RecoveryCertificateTests(unittest.TestCase):
             "AZURE_TENANT_ID": TENANT,
             "AZURE_CLIENT_CERTIFICATE_PATH": str(self.folder / "combined.pem"),
         }
+        access_token = self.access_token()
         with (
             mock.patch.object(VERIFY.shutil, "which", return_value="/test/az"),
             mock.patch.object(VERIFY, "run") as runner,
-            mock.patch.object(VERIFY, "json_command", return_value=self.access_token()),
+            mock.patch.object(VERIFY, "json_command", return_value=access_token),
         ):
-            VERIFY.authenticate_certificate(self.home, self.folder, values)
+            token = VERIFY.authenticate_certificate(self.home, self.folder, values)
+        self.assertEqual(token, access_token["accessToken"])
         command = runner.call_args.args[0]
         self.assertIn("--service-principal", command)
         self.assertEqual(command[command.index("--username") + 1], CLIENT)
@@ -242,6 +244,34 @@ class RecoveryCertificateTests(unittest.TestCase):
             self.assertRaisesRegex(SystemExit, "bounded Blob access token"),
         ):
             VERIFY.authenticate_certificate(self.home, self.folder, values)
+        with (
+            mock.patch.object(VERIFY.shutil, "which", return_value="/test/az"),
+            mock.patch.object(VERIFY, "run"),
+            mock.patch.object(VERIFY, "json_command", return_value=self.access_token(exp=datetime.now(timezone.utc).timestamp()+300)),
+            self.assertRaisesRegex(SystemExit, "bounded Blob access token"),
+        ):
+            VERIFY.authenticate_certificate(self.home, self.folder, values)
+
+    def test_existing_identity_is_revalidated_and_returns_token(self):
+        purpose="logical-backup-publisher"
+        key=self.folder/f"staging-{purpose}-key.pem"; cert=self.folder/f"staging-{purpose}-cert.pem"; combined=self.folder/f"staging-{purpose}.pem"
+        for path in (key,cert,combined): path.write_text("protected"); path.chmod(0o600)
+        values=VERIFY.expected_values(
+            purpose=purpose,resources=resources(),subscription=SUBSCRIPTION,tenant=TENANT,
+            client_id=CLIENT,principal_id=PRINCIPAL,key_id=KEY_ID,fingerprint="ABCD",
+            azure_thumbprint=THUMBPRINT,expiry=EXPIRY,key=key,cert=cert,combined=combined,
+        )
+        VERIFY.write_values(self.folder/f"staging-{purpose}.env",values)
+        with (
+            mock.patch.object(VERIFY.Path,"home",return_value=self.home),
+            mock.patch.object(VERIFY,"certificate_metadata",return_value=(self.folder,key,cert,combined,"ABCD",THUMBPRINT,EXPIRY)),
+            mock.patch.object(VERIFY,"audit_rbac") as audit,
+            mock.patch.object(VERIFY,"authenticate_certificate",return_value="bounded-token") as authenticate,
+        ):
+            bound,token=VERIFY.authenticate_existing_identity(self.home,resources(),SUBSCRIPTION,TENANT,purpose)
+        self.assertEqual(bound,values); self.assertEqual(token,"bounded-token")
+        audit.assert_called_once_with(self.home,resources(),SUBSCRIPTION,purpose,PRINCIPAL,True)
+        authenticate.assert_called_once_with(self.home,self.folder,values)
 
     def test_subprocess_failure_does_not_repeat_sensitive_stderr(self):
         failure = subprocess.CalledProcessError(1, ["az"], stderr="SENTINEL-SECRET")

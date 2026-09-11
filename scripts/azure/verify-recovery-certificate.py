@@ -298,10 +298,11 @@ def authenticate_certificate(root, folder, values):
             or not isinstance(payload.get("nbf"), (int, float))
             or not isinstance(payload.get("exp"), (int, float))
             or payload["nbf"] > now + 60
-            or payload["exp"] <= now
+            or payload["exp"] < now + 55 * 60
             or payload["exp"] > now + 2 * 60 * 60
         ):
             raise SystemExit("Recovery certificate did not return a bounded Blob access token")
+        return encoded
 
 
 def audit_rbac(root, resources, subscription, purpose, principal_id, require_assigned):
@@ -395,6 +396,45 @@ def audit_rbac(root, resources, subscription, purpose, principal_id, require_ass
     ):
         raise SystemExit("Recovery role definition permissions or scope have drifted")
     return "assigned" if assignments else "unassigned"
+
+
+def authenticate_existing_identity(root, resources, subscription, tenant, purpose):
+    """Revalidate one protected binding and return a short-lived Blob token.
+
+    The caller must hold the recovery-certificate lock for the full call and while
+    constructing the container-scoped client that consumes the returned token.
+    """
+    if purpose not in PURPOSES or not UUID.fullmatch(subscription) or not UUID.fullmatch(tenant):
+        raise SystemExit("Recovery identity context is invalid")
+    folder, key, cert, combined, fingerprint, azure_thumbprint, certificate_expiry = certificate_metadata(root, purpose)
+    target = folder / f"staging-{purpose}.env"
+    if not target.exists():
+        raise SystemExit("Protected recovery certificate binding is missing")
+    existing = read_values(target)
+    declared_expiry = parse_timestamp(existing.get("AZURE_CREDENTIAL_EXPIRES", ""), "stored credential expiry")
+    if abs((declared_expiry - certificate_expiry).total_seconds()) > 1:
+        raise SystemExit("Azure credential expiry does not match the local certificate")
+    if existing.get("AZURE_CERTIFICATE_SHA1") != azure_thumbprint:
+        raise SystemExit("Azure credential thumbprint does not match the local certificate")
+    values = expected_values(
+        purpose=purpose,
+        resources=resources,
+        subscription=subscription,
+        tenant=tenant,
+        client_id=existing.get("AZURE_CLIENT_ID", ""),
+        principal_id=existing.get("AZURE_PRINCIPAL_OBJECT_ID", ""),
+        key_id=existing.get("AZURE_CREDENTIAL_KEY_ID", ""),
+        fingerprint=fingerprint,
+        azure_thumbprint=azure_thumbprint,
+        expiry=certificate_expiry,
+        key=key,
+        cert=cert,
+        combined=combined,
+    )
+    if existing != values:
+        raise SystemExit("Protected recovery certificate binding has drifted")
+    audit_rbac(root, resources, subscription, purpose, values["AZURE_PRINCIPAL_OBJECT_ID"], True)
+    return values, authenticate_certificate(root, folder, values)
 
 
 def main():

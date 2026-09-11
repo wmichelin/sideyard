@@ -33,9 +33,10 @@ UUID = re.compile(r"[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}
 TIMESTAMP = re.compile(r"\d{8}T\d{6}Z")
 ACCOUNT = re.compile(r"sideyard[a-z0-9]{1,16}")
 LOGICAL_KEY = re.compile(
-    r"logical-(components|completions)/(staging)/([a-f0-9-]{36})/"
-    r"(\d{8}T\d{6}Z)-([a-f0-9-]{36})/"
-    r"(recovery\.tar\.enc(?:\.mac)?|completion\.json)"
+    r"logical-(?P<kind>components|completions)/(?P<environment>staging)/(?P<generation>[a-f0-9-]{36})/"
+    r"(?P<created>\d{8}T\d{6}Z)-(?P<export>[a-f0-9-]{36})"
+    r"(?:/(?P<publication>[a-f0-9-]{36}))?/"
+    r"(?P<file>recovery\.tar\.enc(?:\.mac)?|completion\.json)"
 )
 
 
@@ -95,7 +96,16 @@ def validate_ref(ref, suffix, maximum):
         raise ValueError("logical backup object reference has unknown or missing fields")
     match = LOGICAL_KEY.fullmatch(ref["key"]) if isinstance(ref["key"], str) else None
     expected_kind = "completions" if suffix == "completion.json" else "components"
-    if not match or match[1] != expected_kind or not UUID.fullmatch(match[3]) or not UUID.fullmatch(match[5]) or match[6] != suffix or not isinstance(ref["version"], str) or not 1 <= len(ref["version"]) <= 512:
+    if (
+        not match
+        or match["kind"] != expected_kind
+        or not UUID.fullmatch(match["generation"])
+        or not UUID.fullmatch(match["export"])
+        or (match["publication"] is not None and not UUID.fullmatch(match["publication"]))
+        or match["file"] != suffix
+        or not isinstance(ref["version"], str)
+        or not 1 <= len(ref["version"]) <= 512
+    ):
         raise ValueError("logical backup object reference is not version pinned")
     if not isinstance(ref["sha256"], str) or not SHA256.fullmatch(ref["sha256"]):
         raise ValueError("logical backup object reference has an invalid digest")
@@ -106,7 +116,33 @@ def validate_ref(ref, suffix, maximum):
 
 
 def ref_identity(match):
-    return match[2], match[3], match[4], match[5]
+    return (
+        match["environment"], match["generation"], match["created"],
+        match["export"], match["publication"],
+    )
+
+
+def publication_identity(descriptor, publication_id=None):
+    """Return the completion format and immutable remote namespace identity."""
+    if publication_id is None:
+        return 1, None
+    if not isinstance(publication_id, str) or not UUID.fullmatch(publication_id):
+        raise ValueError("invalid logical recovery publication identity")
+    return 2, publication_id
+
+
+def publication_keys(descriptor, publication_id=None):
+    """Build deterministic component and completion keys for one publication attempt."""
+    descriptor = validate_descriptor(descriptor)
+    format_version, path_id = publication_identity(descriptor, publication_id)
+    identity = f"{descriptor['created']}-{descriptor['export_id']}"
+    if path_id is not None:
+        identity += f"/{path_id}"
+    base = f"{descriptor['environment']}/{descriptor['generation']}/{identity}/"
+    return format_version, (
+        f"logical-components/{base}recovery.tar.enc",
+        f"logical-components/{base}recovery.tar.enc.mac",
+    ), f"logical-completions/{base}completion.json"
 
 
 def storage_time(value):
@@ -242,8 +278,13 @@ def open_completion(data, secret, expected, backup):
         "logical_schema", "catalog_sha256", "root_sha256", "package_sha256", "package_bytes",
         "encryption", "backup_source", "photo_source", "asset_count", "required_asset_count", "asset_root_sha256", "files",
     }
-    if set(payload) != fields or type(payload["format"]) is not int or payload["format"] != 1 or payload["encryption"] != ENCRYPTION:
+    format_version = payload.get("format") if isinstance(payload, dict) else None
+    if format_version == 2:
+        fields.add("publication_id")
+    if set(payload) != fields or type(format_version) is not int or format_version not in (1, 2) or payload["encryption"] != ENCRYPTION:
         raise ValueError("invalid logical backup completion payload")
+    if format_version == 2 and (not isinstance(payload["publication_id"], str) or not UUID.fullmatch(payload["publication_id"])):
+        raise ValueError("invalid logical backup publication identity")
     for name in ("environment", "generation", "created", "export_id", "release_artifact", "logical_schema", "catalog_sha256", "root_sha256", "photo_source"):
         if payload[name] != expected[name]:
             raise ValueError(f"logical backup completion {name} mismatch")
@@ -257,7 +298,8 @@ def open_completion(data, secret, expected, backup):
     if ref_identity(first) != ref_identity(second) or files[0]["key"] + ".mac" != files[1]["key"]:
         raise ValueError("logical backup completion object pair mismatch")
     prefix = ref_identity(first)
-    if prefix != (payload["environment"], payload["generation"], payload["created"], payload["export_id"]):
+    path_id = None if format_version == 1 else payload["publication_id"]
+    if prefix != (payload["environment"], payload["generation"], payload["created"], payload["export_id"], path_id):
         raise ValueError("logical backup completion path mismatch")
     if not TIMESTAMP.fullmatch(payload["created"]) or not UUID.fullmatch(payload["export_id"]):
         raise ValueError("invalid logical backup completion identity")
@@ -288,8 +330,11 @@ class AzureBlob:
     def request(self, method, key, version=None, data=None, size=0, content_type="application/octet-stream"):
         if self.container == "backups":
             match = LOGICAL_KEY.fullmatch(key) if isinstance(key, str) else None
-            valid_kind = match and ((match[1] == "components" and match[6] != "completion.json") or (match[1] == "completions" and match[6] == "completion.json"))
-            if not match or match[2] != self.environment or not valid_kind:
+            valid_kind = match and (
+                (match["kind"] == "components" and match["file"] != "completion.json")
+                or (match["kind"] == "completions" and match["file"] == "completion.json")
+            )
+            if not match or match["environment"] != self.environment or not valid_kind:
                 raise ValueError("invalid logical backup object name")
         elif not isinstance(key, str) or not SHA256.fullmatch(key):
             raise ValueError("invalid photo object name")
@@ -300,6 +345,36 @@ class AzureBlob:
         if method == "PUT":
             headers.update({"x-ms-blob-type": "BlockBlob", "If-None-Match": "*", "Content-Length": str(size), "Content-Type": content_type})
         return self.opener.open(urllib.request.Request(url, data=data, method=method, headers=headers), timeout=120)
+
+    def adopt_current(self, key, size, digest, content_type="application/octet-stream"):
+        """Adopt only the current exact object; return None when the key is absent."""
+        if self.container != "backups" or not isinstance(key, str):
+            raise ValueError("logical backup adoption requires the backups container")
+        suffix = key.rsplit("/", 1)[-1]
+        maximum = {
+            "recovery.tar.enc": MAX_CIPHERTEXT,
+            "recovery.tar.enc.mac": len(PAIR_MAGIC) + 64,
+            "completion.json": MAX_COMPLETION,
+        }.get(suffix)
+        if maximum is None or type(size) is not int or not 1 <= size <= maximum or not isinstance(digest, str) or not SHA256.fullmatch(digest):
+            raise ValueError("invalid logical backup adoption expectation")
+        try:
+            with self.request("HEAD", key) as response:
+                version = response.headers.get("x-ms-version-id")
+                stored_at = response.headers.get("Last-Modified")
+        except urllib.error.HTTPError as error:
+            if error.code == 404:
+                error.close()
+                return None
+            code = error.code
+            error.close()
+            raise ValueError(f"Azure logical backup adoption failed (HTTP {code})") from None
+        if not version or not stored_at:
+            raise ValueError("Azure Blob versioning and trusted modification time are required")
+        ref = {"key": key, "version": version, "sha256": digest, "size": size, "stored_at": stored_at}
+        validate_ref(ref, suffix, maximum)
+        self.download(ref, None, content_type)
+        return ref
 
     def put(self, key, source, size, digest, content_type="application/octet-stream", require_new=False):
         try:
@@ -312,13 +387,14 @@ class AzureBlob:
             error.close()
             if require_new:
                 raise ValueError("logical backup component already exists; create a fresh export ID") from None
-            with self.request("HEAD", key) as response:
-                version = response.headers.get("x-ms-version-id")
-                stored_at = response.headers.get("Last-Modified")
+            adopted = self.adopt_current(key, size, digest, content_type)
+            if adopted is None:
+                raise ValueError("logical backup object disappeared during exact adoption") from None
+            return adopted
         if not version or not stored_at:
             raise ValueError("Azure Blob versioning and trusted modification time are required")
         ref = {"key": key, "version": version, "sha256": digest, "size": size, "stored_at": stored_at}
-        self.download(ref, None)
+        self.download(ref, None, content_type)
         return ref
 
     def download(self, ref, destination, expected_type=None):
@@ -339,8 +415,10 @@ class AzureBlob:
             raise ValueError("invalid exact photo reference")
         result, size = hashlib.sha256(), 0
         with self.request("GET", ref["key"], version=ref["version"]) as response:
+            if response.headers.get("x-ms-version-id") != ref["version"]:
+                raise ValueError("Azure Blob response does not match the exact recovery version")
             if self.container == "backups" and response.headers.get("Last-Modified") != ref["stored_at"]:
-                raise ValueError("Azure Blob storage time does not match the exact recovery version")
+                raise ValueError("Azure Blob response does not match the exact recovery version")
             content_type = response.headers.get("Content-Type", "").split(";", 1)[0].lower()
             if expected_type and content_type != expected_type:
                 raise ValueError("Azure Blob content type does not match recovery inventory")
@@ -395,24 +473,25 @@ def verify_remote_pair(backup, refs, secret, descriptor):
         raise ValueError("remote logical backup authentication failed")
 
 
-def publish(backup, photos, ciphertext, secret, descriptor):
+def completion_payload(backup, descriptor, refs, publication_id=None):
+    """Build one deterministic completion payload from exact component references."""
     descriptor = validate_descriptor(descriptor)
-    verify_pair(ciphertext, secret, descriptor)  # No network call before local authentication.
+    format_version, component_keys, _ = publication_keys(descriptor, publication_id)
     storage_source(descriptor["environment"], backup.source["account"], backup.source["resource_id"], "backups")
-    if backup.container != "backups" or photos.container != "photos" or photos.source != {key: descriptor["photo_source"][key] for key in ("account", "container", "resource_id")}:
-        raise ValueError("logical recovery clients do not match their bound storage sources")
+    if backup.container != "backups" or not isinstance(refs, (list, tuple)) or len(refs) != 2:
+        raise ValueError("logical backup completion requires its bound exact component pair")
+    files = [dict(ref) if isinstance(ref, dict) else ref for ref in refs]
+    first = validate_ref(files[0], "recovery.tar.enc", MAX_CIPHERTEXT)
+    second = validate_ref(files[1], "recovery.tar.enc.mac", len(PAIR_MAGIC) + 64)
+    if (
+        tuple(ref["key"] for ref in files) != component_keys
+        or ref_identity(first) != ref_identity(second)
+        or files[0]["key"] + ".mac" != files[1]["key"]
+    ):
+        raise ValueError("logical backup completion component namespace mismatch")
     required = [asset for asset in descriptor["assets"] if asset["required"]]
-    for asset in required:
-        photos.audit_photo(asset)
-    prefix = f"logical-components/{descriptor['environment']}/{descriptor['generation']}/{descriptor['created']}-{descriptor['export_id']}/"
-    refs = []
-    for source, name in ((ciphertext, "recovery.tar.enc"), (Path(str(ciphertext) + ".mac"), "recovery.tar.enc.mac")):
-        with source.open("rb") as content:
-            refs.append(backup.put(prefix + name, content, source.stat().st_size, file_digest(source).hex(), require_new=True))
-    verify_remote_pair(backup, refs, secret, descriptor)
-    validate_completion_start(refs, backup.current_server_time(refs[-1]))
     payload = {
-        "format": 1, "environment": descriptor["environment"], "generation": descriptor["generation"],
+        "format": format_version, "environment": descriptor["environment"], "generation": descriptor["generation"],
         "created": descriptor["created"], "export_id": descriptor["export_id"],
         "release_artifact": descriptor["release_artifact"], "logical_schema": descriptor["logical_schema"],
         "catalog_sha256": descriptor["catalog_sha256"], "root_sha256": descriptor["root_sha256"],
@@ -420,11 +499,32 @@ def publish(backup, photos, ciphertext, secret, descriptor):
         "encryption": ENCRYPTION,
         "backup_source": backup.source, "photo_source": descriptor["photo_source"],
         "asset_count": len(descriptor["assets"]), "required_asset_count": len(required),
-        "asset_root_sha256": asset_root(descriptor["assets"]), "files": refs,
+        "asset_root_sha256": asset_root(descriptor["assets"]), "files": files,
     }
+    if format_version == 2:
+        payload["publication_id"] = publication_id
+    return payload
+
+
+def publish(backup, photos, ciphertext, secret, descriptor, publication_id=None):
+    descriptor = validate_descriptor(descriptor)
+    verify_pair(ciphertext, secret, descriptor)  # No network call before local authentication.
+    _, component_keys, completion_key = publication_keys(descriptor, publication_id)
+    storage_source(descriptor["environment"], backup.source["account"], backup.source["resource_id"], "backups")
+    if backup.container != "backups" or photos.container != "photos" or photos.source != {key: descriptor["photo_source"][key] for key in ("account", "container", "resource_id")}:
+        raise ValueError("logical recovery clients do not match their bound storage sources")
+    required = [asset for asset in descriptor["assets"] if asset["required"]]
+    for asset in required:
+        photos.audit_photo(asset)
+    refs = []
+    for source, key in zip((ciphertext, Path(str(ciphertext) + ".mac")), component_keys):
+        with source.open("rb") as content:
+            refs.append(backup.put(key, content, source.stat().st_size, file_digest(source).hex(), require_new=True))
+    verify_remote_pair(backup, refs, secret, descriptor)
+    validate_completion_start(refs, backup.current_server_time(refs[-1]))
+    payload = completion_payload(backup, descriptor, refs, publication_id)
     marker = seal_completion(payload, secret)
-    key = f"logical-completions/{descriptor['environment']}/{descriptor['generation']}/{descriptor['created']}-{descriptor['export_id']}/completion.json"
-    marker_ref = backup.put(key, io.BytesIO(marker), len(marker), hashlib.sha256(marker).hexdigest(), "application/json")
+    marker_ref = backup.put(completion_key, io.BytesIO(marker), len(marker), hashlib.sha256(marker).hexdigest(), "application/json")
     validate_publication_span(refs, marker_ref)
     return marker_ref
 
@@ -485,8 +585,11 @@ def retrieve(backup, marker_ref, folder, secret, expected):
     if backup.container != "backups":
         raise ValueError("logical restore requires the backups container")
     storage_source(descriptor["environment"], backup.source["account"], backup.source["resource_id"], "backups")
-    identity = (descriptor["environment"], descriptor["generation"], descriptor["created"], descriptor["export_id"])
-    if ref_identity(match) != identity:
+    identity_prefix = (
+        descriptor["environment"], descriptor["generation"], descriptor["created"],
+        descriptor["export_id"],
+    )
+    if ref_identity(match)[:4] != identity_prefix:
         raise ValueError("logical backup marker reference does not match the expected recovery")
     restore_state = inspect_private_restore(folder)
     marker = io.BytesIO()
@@ -500,7 +603,8 @@ def retrieve(backup, marker_ref, folder, secret, expected):
     })
     payload = open_completion(marker.getvalue(), secret, binding, backup)
     validate_publication_span(payload["files"], marker_ref)
-    if ref_identity(match) != (payload["environment"], payload["generation"], payload["created"], payload["export_id"]):
+    path_id = None if payload["format"] == 1 else payload["publication_id"]
+    if ref_identity(match) != (payload["environment"], payload["generation"], payload["created"], payload["export_id"], path_id):
         raise ValueError("logical backup marker reference path mismatch")
     existing = folder / "sideyard-recovery.tar.enc"
     existing_sidecar = Path(str(existing) + ".mac")

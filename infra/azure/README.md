@@ -567,7 +567,7 @@ only the fixed journal-bound package, and retains it. Locally, plaintext exists
 only in an unlinked owner process file. The command checks the stream digest and
 package manifest, encrypts with AES-256-CBC/PBKDF2-SHA256 at 200,000 iterations,
 creates a descriptor-bound HMAC with the separate authentication key, fsyncs the
-private ciphertext pair and descriptor, and verifies the pair. Retries reuse only
+private ciphertext pair, descriptor and exact source journal, and verifies the pair. Retries reuse only
 an exactly matching sealed pair. Back up the two keys outside this workstation;
 losing them makes the encrypted recovery copy unusable. Do not rotate them while
 a retained package depends on them.
@@ -576,6 +576,22 @@ The host helper exposes no release or delete action. Until exact Blob publicatio
 retrieval, durable completion receipt and isolated decryption are wired and
 verified, this sealed local package is not a recoverable Azure backup and the host
 plaintext must remain.
+
+The resumable publication command is staged as an inactive operator tool:
+
+```sh
+python3 scripts/azure/publish-logical-postgres-publication.py staging \
+  --export-id '<sealed-export-uuid>'
+```
+
+It derives the account and private containers only from the reviewed Terraform
+state, reaudits both assigned certificate identities and required photo versions,
+then probes the deterministic component key before attempting its first write. The storage firewall must already allow the
+operator's exact egress IP; HTTP 403 is terminal and the command never changes
+firewall rules or falls back to the application host. Publication state and the
+final receipt are owner-only local files. The command retains the host package
+even after remote retrieval and package validation; host release remains a later
+separately reviewed step.
 
 Download an exact completed backup using protected credentials in the process
 environment (never inline command arguments):

@@ -84,8 +84,9 @@ class PrepareLogicalPublicationTests(unittest.TestCase):
         self.assertEqual(result.returncode,0,result.stderr)
         output=json.loads(result.stdout); self.assertEqual(output["phase"],"sealed")
         folder=self.work/EXPORT
-        self.assertEqual({p.name for p in folder.iterdir()},{"recovery.tar.enc","recovery.tar.enc.mac","descriptor.json"})
+        self.assertEqual({p.name for p in folder.iterdir()},{"recovery.tar.enc","recovery.tar.enc.mac","descriptor.json","source-journal.json"})
         for path in folder.iterdir(): self.assertEqual(path.stat().st_mode&0o777,0o600)
+        self.assertEqual((folder/"source-journal.json").read_bytes(), PREPARE.canonical(self.journal))
         decrypted=self.root/"decrypted.tar"
         subprocess.run(["openssl","enc","-d","-aes-256-cbc","-pbkdf2","-iter","200000","-md","sha256","-pass","env:SIDEYARD_TEST_PASS","-in",str(folder/"recovery.tar.enc"),"-out",str(decrypted)],env={**os.environ,"SIDEYARD_TEST_PASS":self.passphrase},check=True,capture_output=True)
         self.assertEqual(decrypted.read_bytes(),self.package.read_bytes())
@@ -95,6 +96,9 @@ class PrepareLogicalPublicationTests(unittest.TestCase):
         (folder/"descriptor.json").unlink()
         resumed=self.run_prepare(); self.assertEqual(resumed.returncode,0,resumed.stderr)
         self.assertTrue((folder/"descriptor.json").is_file())
+        (folder/"source-journal.json").write_text("{}\n"); (folder/"source-journal.json").chmod(0o600)
+        changed_journal=self.run_prepare(); self.assertNotEqual(changed_journal.returncode,0)
+        self.assertIn("source journal does not match",changed_journal.stderr)
         log=self.log.read_text(); self.assertIn("ServerAliveCountMax=3 pantry-droplet bash -s -- staging claim",log)
         self.assertNotIn(self.passphrase,log); self.assertNotIn(self.auth,log)
         self.keys.write_text(f"SIDEYARD_LOGICAL_ENCRYPTION_PASSPHRASE={'9'*64}\nSIDEYARD_LOGICAL_AUTHENTICATION_KEY={self.auth}\n")

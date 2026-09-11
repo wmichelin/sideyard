@@ -18,6 +18,7 @@ spec.loader.exec_module(store)
 SUBSCRIPTION = "11111111-1111-1111-1111-111111111111"
 GENERATION = "22222222-2222-2222-2222-222222222222"
 EXPORT = "33333333-3333-3333-3333-333333333333"
+PUBLICATION = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
 SHOP = "44444444-4444-4444-4444-444444444444"
 PHOTO = "55555555-5555-5555-5555-555555555555"
 STORED = "Thu, 10 Sep 2026 12:00:00 GMT"
@@ -208,6 +209,9 @@ class LogicalBackupStoreTests(unittest.TestCase):
 
     def test_round_trip_uses_exact_completion_and_component_versions(self):
         marker = self.publish()
+        payload = json.loads(self.backup.versions[marker["key"]][0][1])["payload"]
+        self.assertEqual(payload["format"], 1)
+        self.assertNotIn("publication_id", payload)
         self.backup.inject(marker["key"], b"newer-untrusted-marker", "application/json")
         for ref in json.loads(self.backup.versions[marker["key"]][0][1])["payload"]["files"]:
             self.backup.inject(ref["key"], b"newer-untrusted-object")
@@ -217,6 +221,73 @@ class LogicalBackupStoreTests(unittest.TestCase):
         store.verify_pair(restored, self.secret, self.descriptor)
         self.assertEqual(restored.stat().st_mode & 0o777, 0o600)
         self.assertEqual(Path(str(restored) + ".mac").stat().st_mode & 0o777, 0o600)
+
+    def test_v2_publication_uses_attempt_namespace_and_retains_export_identity(self):
+        marker = store.publish(
+            self.backup, self.photos, self.ciphertext, self.secret, self.descriptor,
+            publication_id=PUBLICATION,
+        )
+        identity = f"{self.descriptor['created']}-{EXPORT}/{PUBLICATION}"
+        self.assertEqual(
+            marker["key"],
+            f"logical-completions/staging/{GENERATION}/{identity}/completion.json",
+        )
+        document = self.backup.versions[marker["key"]][0][1]
+        payload = json.loads(document)["payload"]
+        self.assertEqual(payload["format"], 2)
+        self.assertEqual(payload["publication_id"], PUBLICATION)
+        self.assertEqual(payload["export_id"], EXPORT)
+        self.assertTrue(all(identity in ref["key"] for ref in payload["files"]))
+        self.assertEqual(
+            store.completion_payload(self.backup, self.descriptor, payload["files"], PUBLICATION),
+            payload,
+        )
+        self.assertEqual(
+            store.seal_completion(
+                store.completion_payload(self.backup, self.descriptor, payload["files"], PUBLICATION),
+                self.secret,
+            ),
+            document,
+        )
+
+        folder = self.restore_folder("restore-v2")
+        restored = store.retrieve(self.backup, marker, folder, self.secret, self.descriptor)
+        self.assertEqual(restored.read_bytes(), self.ciphertext.read_bytes())
+
+    def test_new_v2_attempt_can_publish_the_same_sealed_export(self):
+        first = store.publish(
+            self.backup, self.photos, self.ciphertext, self.secret, self.descriptor,
+            publication_id=PUBLICATION,
+        )
+        second_publication = "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff"
+        second = store.publish(
+            self.backup, self.photos, self.ciphertext, self.secret, self.descriptor,
+            publication_id=second_publication,
+        )
+        self.assertNotEqual(first["key"], second["key"])
+        self.assertIn(PUBLICATION, first["key"])
+        self.assertIn(second_publication, second["key"])
+
+    def test_invalid_v2_publication_identity_fails_before_network(self):
+        with self.assertRaisesRegex(ValueError, "publication identity"):
+            store.publish(
+                self.backup, self.photos, self.ciphertext, self.secret, self.descriptor,
+                publication_id="not-a-uuid",
+            )
+        self.assertEqual(self.photos.audits, [])
+        self.assertEqual(self.backup.writes, [])
+
+    def test_completion_payload_rejects_component_refs_from_another_attempt(self):
+        marker = store.publish(
+            self.backup, self.photos, self.ciphertext, self.secret, self.descriptor,
+            publication_id=PUBLICATION,
+        )
+        payload = json.loads(self.backup.versions[marker["key"]][0][1])["payload"]
+        with self.assertRaisesRegex(ValueError, "namespace mismatch"):
+            store.completion_payload(
+                self.backup, self.descriptor, payload["files"],
+                "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
+            )
 
     def test_wrong_secret_and_malformed_descriptor_fail_before_network(self):
         with self.assertRaisesRegex(ValueError, "authentication"):
@@ -513,7 +584,7 @@ class LogicalBackupStoreTests(unittest.TestCase):
                     raise urllib.error.HTTPError(request.full_url, 412, "exists", {}, None)
                 if request.get_method() == "HEAD":
                     return Response(headers={"x-ms-version-id": "exact-v1", "Last-Modified": STORED, "Date": "Thu, 10 Sep 2026 12:01:00 GMT"})
-                return Response(b"x", {"Content-Type": "application/octet-stream", "Last-Modified": STORED})
+                return Response(b"x", {"Content-Type": "application/octet-stream", "Last-Modified": STORED, "x-ms-version-id": "exact-v1"})
 
         transport = Scripted()
         client = store.AzureBlob("staging", "sideyardbackup", "backups", self.backup.source["resource_id"], "token", transport)
@@ -528,6 +599,48 @@ class LogicalBackupStoreTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "fresh export ID"):
             client.put(key, io.BytesIO(b"x"), 1, hashlib.sha256(b"x").hexdigest(), require_new=True)
         self.assertEqual(rejecting.methods, ["PUT"])
+
+        adopting = Scripted()
+        client.opener = adopting
+        adopted = client.adopt_current(key, 1, hashlib.sha256(b"x").hexdigest())
+        self.assertEqual(adopted["version"], "exact-v1")
+        self.assertEqual(adopting.methods, ["HEAD", "GET"])
+
+    def test_transport_adoption_distinguishes_absence_and_rejects_wrong_exact_version(self):
+        class Response(io.BytesIO):
+            def __init__(self, data=b"", headers=None):
+                super().__init__(data)
+                self.headers = headers or {}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        class Missing:
+            def open(self, request, timeout):
+                raise urllib.error.HTTPError(request.full_url, 404, "missing", {}, None)
+
+        key = f"logical-components/staging/{GENERATION}/20260910T120000Z-{EXPORT}/{PUBLICATION}/recovery.tar.enc"
+        digest = hashlib.sha256(b"x").hexdigest()
+        client = store.AzureBlob(
+            "staging", "sideyardbackup", "backups", self.backup.source["resource_id"], "token", Missing(),
+        )
+        self.assertIsNone(client.adopt_current(key, 1, digest))
+
+        class WrongVersion:
+            def open(self, request, timeout):
+                if request.get_method() == "HEAD":
+                    return Response(headers={"x-ms-version-id": "expected-v1", "Last-Modified": STORED})
+                return Response(b"x", {
+                    "x-ms-version-id": "wrong-v2", "Last-Modified": STORED,
+                    "Content-Type": "application/octet-stream",
+                })
+
+        client.opener = WrongVersion()
+        with self.assertRaisesRegex(ValueError, "exact recovery version"):
+            client.adopt_current(key, 1, digest)
 
     def test_transport_rejects_missing_version_and_download_integrity_failures(self):
         class Response(io.BytesIO):
@@ -564,10 +677,20 @@ class LogicalBackupStoreTests(unittest.TestCase):
             ("mime", b"x", "image/jpeg", 1, hashlib.sha256(b"x").hexdigest(), "content type"),
         ):
             with self.subTest(name=name):
-                photo = store.AzureBlob("staging", "sideyardphotos", "photos", photo_source["resource_id"], "token", OneResponse(Response(data, {"Content-Type": mime})))
+                photo = store.AzureBlob("staging", "sideyardphotos", "photos", photo_source["resource_id"], "token", OneResponse(Response(data, {"Content-Type": mime, "x-ms-version-id": "exact-v1"})))
                 ref = {"key": "a" * 64, "version": "exact-v1", "sha256": digest, "size": size}
                 with self.assertRaisesRegex(ValueError, message):
                     photo.download(ref, None, "image/png")
+
+        photo = store.AzureBlob(
+            "staging", "sideyardphotos", "photos", photo_source["resource_id"], "token",
+            OneResponse(Response(b"x", {"Content-Type": "image/png", "x-ms-version-id": "wrong-v2"})),
+        )
+        with self.assertRaisesRegex(ValueError, "exact recovery version"):
+            photo.download(
+                {"key": "a" * 64, "version": "exact-v1", "sha256": hashlib.sha256(b"x").hexdigest(), "size": 1},
+                None, "image/png",
+            )
 
 
 if __name__ == "__main__":

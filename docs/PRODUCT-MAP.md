@@ -748,6 +748,16 @@ is available from the staging-deployed revision
 application smoke checks passed without running it against customer data. The application selector
 remains PostgreSQL.
 
+A staging-only local publication candidate now persists an owner-only intent
+before its first Blob write, uses a distinct publication ID for each immutable
+remote attempt, and reconciles conditional component and completion writes by
+exact Blob version. It audits required photo versions, writes completion last,
+retrieves and decrypts the finished package, validates its manifest, and records
+an authenticated private receipt. An incomplete attempt that reaches the
+55-minute completion cutoff is retained for lifecycle expiry while the same
+sealed export moves to a fresh publication namespace. This command remains local
+only: it has not published customer data, enabled a timer or released a host copy.
+
 The conditional staging Azure foundation was independently read back on September
 10, 2026. Azure SQL uses the free offer with a 0.5-vCore minimum, 32-GB maximum,
 60-minute idle pause and `AutoPause` at free-limit exhaustion. Seven-day native
@@ -762,6 +772,7 @@ logical package has been published to Blob yet.
 [Transfer contract](../internal/transfer/catalog.go) ·
 [Restore implementation](../internal/transfer/restore.go) ·
 [Logical Blob contract](../scripts/azure/logical-backup-store.py) ·
+[Resumable logical publisher](../scripts/azure/publish-logical-postgres-publication.py) ·
 [Recovery certificate verification](../scripts/azure/verify-recovery-certificate.py) ·
 [PostgreSQL exporter boundary](../internal/postgres/exporter_permissions.go) ·
 [Real-engine rehearsal](../internal/app/transfer_sqlserver_test.go).

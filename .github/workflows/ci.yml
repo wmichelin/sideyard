@@ -83,6 +83,7 @@ jobs:
           python3 scripts/azure/test-recovery-certificate.py
           bash scripts/azure/test-logical-export-handoff.sh
           python3 scripts/azure/test-prepare-logical-postgres-publication.py
+          python3 scripts/azure/test-publish-logical-postgres-publication.py
 
   sqlserver-rehearsal:
     runs-on: ubuntu-latest

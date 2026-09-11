@@ -281,9 +281,14 @@ def seal(package, offset, folder, descriptor, passphrase, authentication_key):
     ciphertext = folder / "recovery.tar.enc"
     sidecar = Path(str(ciphertext) + ".mac")
     descriptor_path = folder / "descriptor.json"
-    allowed = {"recovery.tar.enc", "recovery.tar.enc.mac", "descriptor.json", ".recovery.tar.enc.new", ".recovery.tar.enc.mac.new", ".descriptor.json.new"}
+    allowed = {
+        "recovery.tar.enc", "recovery.tar.enc.mac", "descriptor.json", "source-journal.json",
+        "publication-journal.json", "completion-receipt.json",
+        ".recovery.tar.enc.new", ".recovery.tar.enc.mac.new", ".descriptor.json.new", ".source-journal.json.new",
+    }
     for path in folder.iterdir():
-        if path.name not in allowed:
+        abandoned = path.name.removeprefix("publication-abandoned-").removesuffix(".json")
+        if path.name not in allowed and not (path.name.startswith("publication-abandoned-") and path.name.endswith(".json") and UUID.fullmatch(abandoned)):
             raise ValueError("logical publication folder has unexpected contents")
         private_path(path)
         if path.name.startswith("."): path.unlink()
@@ -346,6 +351,7 @@ def verify_decryption(ciphertext, descriptor, passphrase, folder):
                     process.kill(); process.wait()
                     raise ValueError("logical recovery decrypted package exceeds its descriptor")
                 digest.update(block)
+            process.stdout.close()
             return_code=process.wait()
             if return_code:
                 raise ValueError("logical recovery ciphertext does not decrypt with the current key")
@@ -400,6 +406,13 @@ def main():
             folder = args.work_root / journal["export_id"]
             private_directory(folder)
             ciphertext = seal(package, offset, folder, descriptor, passphrase, authentication_key)
+            source_journal = folder / "source-journal.json"
+            if source_journal.exists():
+                private_path(source_journal)
+                if source_journal.read_bytes() != canonical(journal):
+                    raise ValueError("existing logical source journal does not match the host export")
+            else:
+                atomic_write(source_journal, canonical(journal))
     finally:
         lock.close()
     print(json.dumps({"environment":"staging","export_id":journal["export_id"],"phase":"sealed","ciphertext":str(ciphertext)},sort_keys=True,separators=(",",":")))
