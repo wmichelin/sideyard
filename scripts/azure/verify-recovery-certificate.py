@@ -94,22 +94,26 @@ def acquire_recovery_lock(folder):
         handle.close()
         raise SystemExit("Recovery certificate lock must be an owner-only regular file")
     fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-    for candidate in folder.glob(".recovery-auth-*"):
-        details = candidate.lstat()
-        if (
-            stat.S_ISLNK(details.st_mode)
-            or not stat.S_ISDIR(details.st_mode)
-            or details.st_uid != os.getuid()
-            or stat.S_IMODE(details.st_mode) != 0o700
-        ):
-            handle.close()
-            raise SystemExit("Stale recovery authentication path is unsafe")
+    stale_profiles = [*folder.glob(".recovery-auth-*"), *folder.glob(".terraform-runner-*")]
+    for candidate in stale_profiles:
+        paths = [candidate, *candidate.rglob("*")] if candidate.is_dir() and not candidate.is_symlink() else [candidate]
+        for path in paths:
+            details = path.lstat()
+            expected_mode = 0o700 if stat.S_ISDIR(details.st_mode) else 0o600
+            if (
+                stat.S_ISLNK(details.st_mode)
+                or not (stat.S_ISDIR(details.st_mode) or stat.S_ISREG(details.st_mode))
+                or details.st_uid != os.getuid()
+                or stat.S_IMODE(details.st_mode) != expected_mode
+            ):
+                handle.close()
+                raise SystemExit("Stale recovery authentication path is unsafe")
         shutil.rmtree(candidate)
     return handle
 
 
-def terraform_resources(root, terraform_directory):
-    environment = os.environ.copy()
+def terraform_resources(root, terraform_directory, environment=None):
+    environment = dict(environment or os.environ)
     environment["TF_DATA_DIR"] = str(terraform_directory / ".terraform" / "staging")
     backend = terraform_directory / "staging.hcl"
     if not backend.is_file():
@@ -243,14 +247,20 @@ def write_values(target, values):
             temporary.unlink()
 
 
-def authenticate_certificate(root, folder, values):
-    az = shutil.which("az")
+def authenticate_certificate(root, folder, values, environment=None):
+    base_environment = dict(environment or os.environ)
+    az = shutil.which("az", path=base_environment.get("PATH"))
     if not az:
         raise SystemExit("Azure CLI is required to verify the recovery certificate")
     with tempfile.TemporaryDirectory(prefix=".recovery-auth-", dir=folder) as config:
         os.chmod(config, 0o700)
-        environment = os.environ.copy()
-        environment["AZURE_CONFIG_DIR"] = config
+        certificate = Path(config) / "identity.pem"
+        certificate.write_bytes(Path(values["AZURE_CLIENT_CERTIFICATE_PATH"]).read_bytes())
+        certificate.chmod(0o600)
+        allowed = ("HOME", "USER", "LOGNAME", "TMPDIR", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "XDG_RUNTIME_DIR", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy", "PATH")
+        authentication_environment = {key: base_environment[key] for key in allowed if key in base_environment}
+        authentication_environment["AZURE_CONFIG_DIR"] = str(config)
+        reviewed_wrapper = Path(__file__).resolve().parent / "bin" / "az"
         run(
             [
                 az,
@@ -259,20 +269,20 @@ def authenticate_certificate(root, folder, values):
                 "--username",
                 values["AZURE_CLIENT_ID"],
                 "--certificate",
-                values["AZURE_CLIENT_CERTIFICATE_PATH"],
+                "/azure/identity.pem" if Path(az).resolve() == reviewed_wrapper else str(certificate),
                 "--tenant",
                 values["AZURE_TENANT_ID"],
                 "--allow-no-subscriptions",
                 "--output",
                 "none",
             ],
-            cwd=folder,
-            environment=environment,
+            cwd=config,
+            environment=authentication_environment,
         )
         token = json_command(
             [az, "account", "get-access-token", "--resource", "https://storage.azure.com/", "--output", "json"],
-            cwd=folder,
-            environment=environment,
+            cwd=config,
+            environment=authentication_environment,
         )
         expires = token.get("expires_on") or token.get("expiresOn")
         encoded = str(token.get("accessToken", ""))
@@ -305,10 +315,10 @@ def authenticate_certificate(root, folder, values):
         return encoded
 
 
-def audit_rbac(root, resources, subscription, purpose, principal_id, require_assigned):
+def audit_rbac(root, resources, subscription, purpose, principal_id, require_assigned, environment=None):
     if principal_id.lower() == str(resources["terraform_runner_object_id"]).lower():
         raise SystemExit("Recovery principal must not reuse the Terraform runner")
-    subscriptions = json_command(["az", "account", "list", "--all", "--refresh", "--output", "json"], cwd=root)
+    subscriptions = json_command(["az", "account", "list", "--all", "--refresh", "--output", "json"], cwd=root, environment=environment)
     enabled = {
         str(item.get("id", "")).lower()
         for item in subscriptions
@@ -328,7 +338,7 @@ def audit_rbac(root, resources, subscription, purpose, principal_id, require_ass
                 "--fill-role-definition-name", "false",
                 "--output", "json",
             ],
-            cwd=root,
+            cwd=root, environment=environment,
         )
         inherited = json_command(
             [
@@ -341,7 +351,7 @@ def audit_rbac(root, resources, subscription, purpose, principal_id, require_ass
                 "--fill-role-definition-name", "false",
                 "--output", "json",
             ],
-            cwd=root,
+            cwd=root, environment=environment,
         )
         assignments.extend(scoped)
         assignments.extend(inherited)
@@ -375,7 +385,7 @@ def audit_rbac(root, resources, subscription, purpose, principal_id, require_ass
         raise SystemExit("Recovery role definition ID is invalid")
     definitions = json_command(
         ["az", "role", "definition", "list", "--name", role_uuid, "--subscription", subscription, "--output", "json"],
-        cwd=root,
+        cwd=root, environment=environment,
     )
     expected_actions = {"Microsoft.Storage/storageAccounts/blobServices/containers/blobs/read"}
     if purpose == "logical-backup-publisher":
@@ -398,7 +408,7 @@ def audit_rbac(root, resources, subscription, purpose, principal_id, require_ass
     return "assigned" if assignments else "unassigned"
 
 
-def authenticate_existing_identity(root, resources, subscription, tenant, purpose):
+def authenticate_existing_identity(root, resources, subscription, tenant, purpose, audit_environment=None):
     """Revalidate one protected binding and return a short-lived Blob token.
 
     The caller must hold the recovery-certificate lock for the full call and while
@@ -433,8 +443,8 @@ def authenticate_existing_identity(root, resources, subscription, tenant, purpos
     )
     if existing != values:
         raise SystemExit("Protected recovery certificate binding has drifted")
-    audit_rbac(root, resources, subscription, purpose, values["AZURE_PRINCIPAL_OBJECT_ID"], True)
-    return values, authenticate_certificate(root, folder, values)
+    audit_rbac(root, resources, subscription, purpose, values["AZURE_PRINCIPAL_OBJECT_ID"], True, environment=audit_environment)
+    return values, authenticate_certificate(root, folder, values, audit_environment)
 
 
 def main():

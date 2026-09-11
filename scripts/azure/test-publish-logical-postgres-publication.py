@@ -228,6 +228,48 @@ class PublicationTests(unittest.TestCase):
         extra=self.folder/"unreviewed"; extra.write_text("unexpected"); extra.chmod(0o600)
         with self.assertRaisesRegex(ValueError,"unexpected contents"): self.publish()
         self.assertEqual(self.backup.events,[])
+    def test_terraform_runner_binding_requires_exact_private_certificate_pair(self):
+        config=self.root/"config"; config.mkdir(mode=0o700)
+        pfx=config/"staging-terraform.pfx"; pem=config/"staging-terraform.pem"
+        for path in (pfx,pem): path.write_text("certificate"); path.chmod(0o600)
+        values={
+            "ARM_CLIENT_ID":"11111111-1111-1111-1111-111111111111","ARM_TENANT_ID":"22222222-2222-2222-2222-222222222222",
+            "ARM_SUBSCRIPTION_ID":"33333333-3333-3333-3333-333333333333","ARM_CLIENT_CERTIFICATE_PATH":str(pfx),"ARM_USE_AZUREAD":"true",
+        }
+        env=config/"staging-terraform.env"; env.write_text("".join(f"{key}={value}\n" for key,value in values.items())); env.chmod(0o600)
+        self.assertEqual(PUBLISH.terraform_runner_values(config),values)
+        self.assertEqual(PUBLISH.terraform_runner_cli_certificate(values,config),pem)
+        pfx.chmod(0o644)
+        with self.assertRaises(SystemExit): PUBLISH.terraform_runner_values(config)
+
+    def test_certificate_environment_drops_ambient_credentials_and_pins_wrapper(self):
+        runner={
+            "ARM_CLIENT_ID":"11111111-1111-1111-1111-111111111111","ARM_TENANT_ID":"22222222-2222-2222-2222-222222222222",
+            "ARM_SUBSCRIPTION_ID":"33333333-3333-3333-3333-333333333333","ARM_CLIENT_CERTIFICATE_PATH":"/protected/staging-terraform.pfx","ARM_USE_AZUREAD":"true",
+        }
+        config=self.root/"runner"; config.mkdir(mode=0o700)
+        ambient={"PATH":"/untrusted/bin:/usr/bin","ARM_CLIENT_SECRET":"SENTINEL-ARM","AZURE_CLIENT_SECRET":"SENTINEL-AZURE","AZURE_FEDERATED_TOKEN_FILE":"/sentinel-token","DOCKER_HOST":"tcp://sentinel.invalid:2375","DOCKER_CONTEXT":"sentinel-remote","HOME":str(self.root)}
+        with mock.patch.dict(PUBLISH.os.environ,ambient,clear=True):
+            environment=PUBLISH.certificate_only_environment(runner,config)
+            self.assertEqual(PUBLISH.azure_cli_path(),str(PUBLISH.ROOT/"scripts"/"azure"/"bin"/"az"))
+        self.assertEqual(environment["ARM_CLIENT_ID"],runner["ARM_CLIENT_ID"])
+        self.assertEqual(environment["AZURE_CONFIG_DIR"],str(config))
+        self.assertTrue(environment["PATH"].startswith(str(PUBLISH.ROOT/"scripts"/"azure"/"bin")+os.pathsep))
+        self.assertNotIn("ARM_CLIENT_SECRET",environment)
+        self.assertNotIn("AZURE_CLIENT_SECRET",environment)
+        self.assertNotIn("AZURE_FEDERATED_TOKEN_FILE",environment)
+        self.assertNotIn("DOCKER_HOST",environment)
+        self.assertNotIn("DOCKER_CONTEXT",environment)
+
+    def test_review_gate_includes_azure_cli_wrapper(self):
+        source=PUBLISH.reviewed_tooling.__code__.co_consts
+        self.assertTrue(any(isinstance(value,tuple) and "scripts/azure/bin/az" in value for value in source))
+
+    def test_azure_cli_wrapper_pins_local_docker(self):
+        wrapper=(PUBLISH.ROOT/"scripts"/"azure"/"bin"/"az").read_text()
+        self.assertTrue(wrapper.startswith("#!/bin/bash\n"))
+        self.assertIn("exec /usr/bin/docker --host unix:///var/run/docker.sock run",wrapper)
+        self.assertNotIn("exec docker ",wrapper)
 
 
 if __name__=="__main__": unittest.main()

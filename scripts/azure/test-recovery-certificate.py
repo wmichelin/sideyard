@@ -224,6 +224,8 @@ class RecoveryCertificateTests(unittest.TestCase):
             "AZURE_TENANT_ID": TENANT,
             "AZURE_CLIENT_CERTIFICATE_PATH": str(self.folder / "combined.pem"),
         }
+        Path(values["AZURE_CLIENT_CERTIFICATE_PATH"]).write_text("certificate and private key")
+        Path(values["AZURE_CLIENT_CERTIFICATE_PATH"]).chmod(0o600)
         access_token = self.access_token()
         with (
             mock.patch.object(VERIFY.shutil, "which", return_value="/test/az"),
@@ -235,7 +237,8 @@ class RecoveryCertificateTests(unittest.TestCase):
         command = runner.call_args.args[0]
         self.assertIn("--service-principal", command)
         self.assertEqual(command[command.index("--username") + 1], CLIENT)
-        self.assertEqual(command[command.index("--certificate") + 1], values["AZURE_CLIENT_CERTIFICATE_PATH"])
+        self.assertEqual(Path(command[command.index("--certificate") + 1]).name, "identity.pem")
+        self.assertNotEqual(command[command.index("--certificate") + 1], values["AZURE_CLIENT_CERTIFICATE_PATH"])
 
         with (
             mock.patch.object(VERIFY.shutil, "which", return_value="/test/az"),
@@ -270,8 +273,8 @@ class RecoveryCertificateTests(unittest.TestCase):
         ):
             bound,token=VERIFY.authenticate_existing_identity(self.home,resources(),SUBSCRIPTION,TENANT,purpose)
         self.assertEqual(bound,values); self.assertEqual(token,"bounded-token")
-        audit.assert_called_once_with(self.home,resources(),SUBSCRIPTION,purpose,PRINCIPAL,True)
-        authenticate.assert_called_once_with(self.home,self.folder,values)
+        audit.assert_called_once_with(self.home,resources(),SUBSCRIPTION,purpose,PRINCIPAL,True,environment=None)
+        authenticate.assert_called_once_with(self.home,self.folder,values,None)
 
     def test_subprocess_failure_does_not_repeat_sensitive_stderr(self):
         failure = subprocess.CalledProcessError(1, ["az"], stderr="SENTINEL-SECRET")
@@ -281,12 +284,13 @@ class RecoveryCertificateTests(unittest.TestCase):
         self.assertNotIn("SENTINEL-SECRET", str(caught.exception))
 
     def test_retry_removes_safe_stale_auth_profile(self):
-        stale = self.folder / ".recovery-auth-interrupted"
-        stale.mkdir(mode=0o700)
-        (stale / "token-cache").write_text("SENTINEL-TOKEN")
+        stale = self.folder / ".recovery-auth-interrupted"; runner = self.folder / ".terraform-runner-interrupted"
+        for candidate in (stale,runner):
+            candidate.mkdir(mode=0o700); token=candidate / "token-cache"; token.write_text("SENTINEL-TOKEN"); token.chmod(0o600)
         result, _, _ = self.invoke(extra=self.binding_args())
         self.assertEqual(result["assignment_status"], "unassigned")
         self.assertFalse(stale.exists())
+        self.assertFalse(runner.exists())
         lock = self.folder / ".recovery-certificate.lock"
         self.assertEqual(stat.S_IMODE(lock.stat().st_mode), 0o600)
 
@@ -297,6 +301,16 @@ class RecoveryCertificateTests(unittest.TestCase):
         stale.symlink_to(outside, target_is_directory=True)
         with self.assertRaisesRegex(SystemExit, "unsafe"):
             self.invoke(extra=self.binding_args())
+
+    def test_retry_refuses_symlink_inside_stale_auth_profile(self):
+        stale = self.folder / ".terraform-runner-interrupted"
+        stale.mkdir(mode=0o700)
+        outside = self.home / "outside-token"
+        outside.write_text("do not remove")
+        (stale / "token-cache").symlink_to(outside)
+        with self.assertRaisesRegex(SystemExit, "unsafe"):
+            self.invoke(extra=self.binding_args())
+        self.assertEqual(outside.read_text(), "do not remove")
 
 
 if __name__ == "__main__":

@@ -435,7 +435,7 @@ def reviewed_tooling():
     revision=subprocess.run(["git","rev-parse","HEAD"],cwd=ROOT,text=True,capture_output=True,check=True).stdout.strip()
     paths=(
         "scripts/azure/publish-logical-postgres-publication.py", "scripts/azure/prepare-logical-postgres-publication.py",
-        "scripts/azure/logical-backup-store.py", "scripts/azure/verify-recovery-certificate.py",
+        "scripts/azure/logical-backup-store.py", "scripts/azure/verify-recovery-certificate.py", "scripts/azure/bin/az",
     )
     if not re.fullmatch(r"[0-9a-f]{40}",revision): raise ValueError("reviewed publication revision is invalid")
     for path in paths:
@@ -444,6 +444,41 @@ def reviewed_tooling():
         if blob.returncode or not local.is_file() or local.is_symlink() or local.read_bytes()!=blob.stdout:
             raise ValueError("logical publication tooling does not match the reviewed revision")
     return revision
+
+
+def terraform_runner_values(config):
+    values=CERT.read_values(config/"staging-terraform.env")
+    expected={"ARM_CLIENT_ID","ARM_TENANT_ID","ARM_SUBSCRIPTION_ID","ARM_CLIENT_CERTIFICATE_PATH","ARM_USE_AZUREAD"}
+    if set(values)!=expected or any(not CERT.UUID.fullmatch(values[name]) for name in ("ARM_CLIENT_ID","ARM_TENANT_ID","ARM_SUBSCRIPTION_ID")) or values["ARM_USE_AZUREAD"].lower()!="true":
+        raise ValueError("protected staging Terraform runner binding is invalid")
+    certificate=Path(values["ARM_CLIENT_CERTIFICATE_PATH"])
+    CERT.require_private_path(certificate)
+    if certificate.parent.resolve()!=config.resolve() or certificate.name!="staging-terraform.pfx":
+        raise ValueError("staging Terraform runner certificate is outside its protected directory")
+    return values
+
+
+def terraform_runner_cli_certificate(runner, config):
+    certificate=Path(runner["ARM_CLIENT_CERTIFICATE_PATH"]).with_suffix(".pem")
+    CERT.require_private_path(certificate)
+    if certificate.parent.resolve()!=config.resolve():
+        raise ValueError("staging Terraform runner CLI certificate is outside its protected directory")
+    return certificate
+
+
+def azure_cli_path():
+    candidate=ROOT/"scripts"/"azure"/"bin"/"az"
+    if not candidate.is_file() or candidate.is_symlink(): raise ValueError("reviewed Azure CLI wrapper is unavailable")
+    return str(candidate)
+
+
+def certificate_only_environment(runner, runner_config):
+    allowed=("HOME","USER","LOGNAME","TMPDIR","LANG","LC_ALL","LC_CTYPE","TERM","XDG_RUNTIME_DIR","HTTP_PROXY","HTTPS_PROXY","NO_PROXY","http_proxy","https_proxy","no_proxy")
+    environment={key:os.environ[key] for key in allowed if key in os.environ}
+    environment.update(runner)
+    environment["AZURE_CONFIG_DIR"]=str(runner_config)
+    environment["PATH"]=str(ROOT/"scripts"/"azure"/"bin")+os.pathsep+os.environ.get("PATH","/usr/local/bin:/usr/bin:/bin")
+    return environment
 
 
 def main():
@@ -458,17 +493,24 @@ def main():
     config=Path.home()/".config"/"sideyard-azure"; CERT.require_private_path(config,directory=True)
     certificate_lock=CERT.acquire_recovery_lock(config); publication_lock=None
     try:
-        resources,subscription,account=CERT.terraform_resources(ROOT,args.terraform_directory.resolve())
-        ambient=CERT.json_command(["az","account","show","--output","json"],cwd=ROOT)
-        tenant=str(ambient.get("tenantId",""))
-        if str(ambient.get("id","")).lower()!=subscription.lower() or not CERT.UUID.fullmatch(tenant):
-            raise ValueError("Azure runner does not match staging Terraform state")
-        publisher,publisher_token=CERT.authenticate_existing_identity(ROOT,resources,subscription,tenant,"logical-backup-publisher")
-        reader,reader_token=CERT.authenticate_existing_identity(ROOT,resources,subscription,tenant,"logical-photo-reader")
-        backup=STORE.AzureBlob("staging",account,"backups",resources["storage_account_id"],publisher_token)
-        photos=STORE.AzureBlob("staging",account,"photos",resources["storage_account_id"],reader_token)
-        identities={"publisher":identity_record(publisher),"photo_reader":identity_record(reader)}
-        publication_lock=PREPARE.acquire_lock(args.work_root)
+        runner=terraform_runner_values(config); runner_cli_certificate=terraform_runner_cli_certificate(runner,config); az=azure_cli_path()
+        with tempfile.TemporaryDirectory(prefix=".terraform-runner-",dir=config) as runner_config:
+            os.chmod(runner_config,0o700)
+            cli_certificate=Path(runner_config)/"runner.pem"
+            cli_certificate.write_bytes(runner_cli_certificate.read_bytes()); cli_certificate.chmod(0o600)
+            runner_environment=certificate_only_environment(runner,runner_config)
+            CERT.run([az,"login","--service-principal","--username",runner["ARM_CLIENT_ID"],"--certificate","/azure/runner.pem","--tenant",runner["ARM_TENANT_ID"],"--allow-no-subscriptions","--output","none"],cwd=runner_config,environment=runner_environment)
+            resources,subscription,account=CERT.terraform_resources(ROOT,args.terraform_directory.resolve(),runner_environment)
+            ambient=CERT.json_command(["az","account","show","--output","json"],cwd=ROOT,environment=runner_environment)
+            tenant=str(ambient.get("tenantId",""))
+            if str(ambient.get("id","")).lower()!=subscription.lower() or subscription.lower()!=runner["ARM_SUBSCRIPTION_ID"].lower() or tenant.lower()!=runner["ARM_TENANT_ID"].lower():
+                raise ValueError("Azure runner does not match staging Terraform state")
+            publisher,publisher_token=CERT.authenticate_existing_identity(ROOT,resources,subscription,tenant,"logical-backup-publisher",runner_environment)
+            reader,reader_token=CERT.authenticate_existing_identity(ROOT,resources,subscription,tenant,"logical-photo-reader",runner_environment)
+            backup=STORE.AzureBlob("staging",account,"backups",resources["storage_account_id"],publisher_token)
+            photos=STORE.AzureBlob("staging",account,"photos",resources["storage_account_id"],reader_token)
+            identities={"publisher":identity_record(publisher),"photo_reader":identity_record(reader)}
+            publication_lock=PREPARE.acquire_lock(args.work_root)
     finally:
         certificate_lock.close()
     try:
