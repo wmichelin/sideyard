@@ -80,6 +80,7 @@ jobs:
           python3 scripts/azure/test-logical-backup-store.py
           python3 scripts/azure/test-backup-monitor.py
           python3 scripts/azure/test-recovery-identity.py
+          python3 scripts/azure/test-recovery-certificate.py
 
   sqlserver-rehearsal:
     runs-on: ubuntu-latest

@@ -744,7 +744,7 @@ logical package has been published to Blob yet.
 [Transfer contract](../internal/transfer/catalog.go) ·
 [Restore implementation](../internal/transfer/restore.go) ·
 [Logical Blob contract](../scripts/azure/logical-backup-store.py) ·
-[Recovery identity lifecycle](../scripts/azure/provision-recovery-identity.py) ·
+[Recovery certificate verification](../scripts/azure/verify-recovery-certificate.py) ·
 [PostgreSQL exporter boundary](../internal/postgres/exporter_permissions.go) ·
 [Real-engine rehearsal](../internal/app/transfer_sqlserver_test.go).
 The runtime is restricted to the exact staging database and an explicit

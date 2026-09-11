@@ -33,6 +33,7 @@ locals {
   backup_object_ids                   = toset([for id in var.backup_object_ids : lower(id)])
   logical_backup_publisher_object_ids = toset([for id in var.logical_backup_publisher_object_ids : lower(id)])
   logical_photo_reader_object_ids     = toset([for id in var.logical_photo_reader_object_ids : lower(id)])
+  terraform_runner_object_id          = lower(data.azurerm_client_config.current.object_id)
 }
 
 resource "azurerm_resource_group" "app" {
@@ -152,9 +153,9 @@ resource "azurerm_storage_account" "app" {
     precondition {
       condition = length(setintersection(
         setunion(local.logical_backup_publisher_object_ids, local.logical_photo_reader_object_ids),
-        setunion(local.runtime_object_ids, local.backup_object_ids, toset([lower(var.operator_object_id)])),
+        setunion(local.runtime_object_ids, local.backup_object_ids, toset([lower(var.operator_object_id), local.terraform_runner_object_id])),
       )) == 0
-      error_message = "Logical recovery principals must not reuse operator, runtime, or legacy backup identities."
+      error_message = "Logical recovery principals must not reuse operator, Terraform runner, runtime, or legacy backup identities."
     }
   }
 }
@@ -342,6 +343,7 @@ output "resources" {
     blob_endpoint                               = azurerm_storage_account.app.primary_blob_endpoint
     backups_container_id                        = "${azurerm_storage_account.app.id}/blobServices/default/containers/backups"
     photos_container_id                         = "${azurerm_storage_account.app.id}/blobServices/default/containers/photos"
+    terraform_runner_object_id                  = data.azurerm_client_config.current.object_id
     logical_backup_publisher_role_definition_id = try(azurerm_role_definition.logical_backup_publisher["staging"].role_definition_resource_id, null)
     logical_photo_reader_role_definition_id     = try(azurerm_role_definition.logical_photo_reader["staging"].role_definition_resource_id, null)
     backup_retention_days                       = azapi_update_resource.backup_retention.output.properties.retentionDays

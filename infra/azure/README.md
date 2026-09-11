@@ -392,46 +392,66 @@ billable backup bytes longer; photo/state versions have no age-deletion rule.
 
 ### Logical recovery identities (staging preparation only)
 
-Logical recovery uses two Entra applications instead of the runtime photo or
-legacy backup identities. `logical-backup-publisher` receives Blob read/write only
-at the staging `backups` container; `logical-photo-reader` receives Blob read only
-at the staging `photos` container. Neither role includes deletion or management
-actions. Container RBAC cannot itself require a version query or conditional PUT,
-so `logical-backup-store.py` enforces exact versions and create-only writes.
+Logical recovery uses two certificate-only Entra applications instead of the
+runtime photo, Terraform or legacy backup identities. `logical-backup-publisher`
+receives Blob read/write only at the staging `backups` container;
+`logical-photo-reader` receives Blob read only at the staging `photos` container.
+Neither role includes deletion or management actions. Container RBAC cannot itself
+require a version query or conditional PUT, so `logical-backup-store.py` enforces
+exact versions and create-only writes.
 
-First apply the reviewed staging configuration with both new identity sets empty
-so the exact storage and container resource IDs are present in Terraform output.
-Then create each protected credential with an expiry more than 30 days away:
+Generate a distinct RSA client key and public certificate for each purpose under
+the mode-0700 `~/.config/sideyard-azure` directory. Key, certificate and combined
+PEM files must be mode 0600. Upload only the public certificates through the
+signed-in owner's Cloud Shell. Each single-tenant application must have one exact
+human recovery owner, its two purpose tags, no redirect URI, API permission,
+federated credential or password, and one matching certificate. Cloud Shell and
+chat must never receive the private keys, combined PEMs, assertions or tokens.
+
+The owner bootstrap returns only client, principal, certificate-key and expiry
+metadata. Bind each result locally before assigning RBAC:
 
 ```sh
-python3 scripts/azure/provision-recovery-identity.py staging logical-backup-publisher \
-  --require-unassigned --expires 2027-09-01T00:00:00Z
-python3 scripts/azure/provision-recovery-identity.py staging logical-photo-reader \
-  --require-unassigned --expires 2027-09-01T00:00:00Z
+python3 scripts/azure/verify-recovery-certificate.py staging logical-backup-publisher \
+  --client-id '<publisher-client-id>' \
+  --principal-object-id '<publisher-principal-id>' \
+  --credential-key-id '<publisher-key-id>' \
+  --credential-expires '<publisher-expiry>' \
+  --credential-thumbprint '<publisher-thumbprint>' \
+  --require-unassigned
+python3 scripts/azure/verify-recovery-certificate.py staging logical-photo-reader \
+  --client-id '<reader-client-id>' \
+  --principal-object-id '<reader-principal-id>' \
+  --credential-key-id '<reader-key-id>' \
+  --credential-expires '<reader-expiry>' \
+  --credential-thumbprint '<reader-thumbprint>' \
+  --require-unassigned
 ```
 
-The command accepts no storage override. It binds the subscription, tenant,
-client and principal IDs, exact container resource ID, key ID and expiry in
-separate mode-0600 files under a mode-0700 directory. An existing application is
-adopted only when `--expected-client-id` or the protected file identifies it.
-The command also rejects multi-tenant apps, certificates, federated credentials,
-untracked password keys and any effective role assignment outside the exact
-purpose allowlist. Each role accepts zero or one lifecycle-managed principal;
-credential rotation uses two keys on that one application, not a second principal.
-The two principals must remain distinct from each other, the
-operator, runtime photo identity and legacy backup identity. Before assignment,
-rerun each command with `--require-unassigned` and without `--expires`; it must succeed with an empty
-`stale_key_ids` array and no role assignment. Put the printed principal IDs into
-`logical_backup_publisher_object_ids` and `logical_photo_reader_object_ids`, save
-and inspect a staging plan, then apply that exact plan. Terraform preconditions
-reject overlap and reject either assignment in production.
+The Cloud Shell JSON is the owner attestation for the application owner, tags,
+redirect/API/federation/password inventory and certificate key ID; archive its
+non-secret fields with release evidence. The ARM-only verifier cannot independently
+read Microsoft Graph. It does compare the attested Azure certificate thumbprint
+and expiry with the protected local certificate and then proves the client,
+principal and tenant together from the signed Blob-token claims.
 
-After RBAC propagation, rerun each lifecycle command with `--require-assigned`
-until `assignment_status` is `assigned` and its live role definition has the exact
-documented actions and scope. The command inventories effective ARM assignments
-in every enabled subscription visible to the signed-in operator and rejects
-service-principal credentials, directory/group membership, application-role and
-delegated grants. Use the two files separately to prove the
+The verifier accepts no storage override and has no Microsoft Graph write path.
+It derives the exact account, containers and roles from remote Terraform state,
+checks file owner/mode and key/certificate equality, matches the local fingerprint
+and expiry to the protected binding, authenticates with the certificate in an
+ephemeral Azure CLI profile, and audits effective ARM assignments in every enabled
+subscription visible to the ARM-only runner. The two principals must remain
+distinct from each other, the operator, runtime, Terraform, photo and legacy
+backup identities.
+
+Put the verified principal IDs into `logical_backup_publisher_object_ids` and
+`logical_photo_reader_object_ids`, inspect a staging plan, and apply that exact
+plan. Terraform preconditions reject overlap, multiple principals and every
+production recovery assignment. After RBAC propagation, rerun both verifier
+commands without the five binding arguments and with `--require-assigned` until
+each reports `assignment_status=assigned`.
+
+Use the two protected files separately to prove the
 publisher can conditionally create and exactly read back a disposable object only
 under a unique `logical-components/staging/canary-*` key in `backups`; the eight-day
 lifecycle removes the non-deletable test object. The reader can read an exact
@@ -441,33 +461,23 @@ cross-container requests return authorization failure rather than accepting a
 missing-object response. Do not target customer photos, install either file on
 the host, or activate logical publication until those canaries are recorded.
 
-Rotation appends a new key while preserving `<file>.previous`; it requires
-`--require-assigned --rotate --expected-client-id <uuid> --expires <time>`. An
-approaching-expiry key remains eligible for rotation and cleanup. Run the complete positive
-and negative canary before `--revoke-key-id <old-uuid>`. Use
-`--require-assigned --rollback-rotation` before revocation to restore the prior
-protected file and revoke the failed replacement key immediately. If Azure
-revocation fails, the replacement stays recorded in `.rollback` for an exact
-`--require-assigned --rollback-rotation` retry. A
-local persistence failure removes the newly identified Azure key; if cleanup
-itself fails, the command reports its key ID for explicit cleanup without printing
-the secret.
+Run both verifier commands monthly with `--require-assigned` and alert on failure
+or expiry within 30 days. In the same audit, the owner must repeat and archive the
+Cloud Shell Graph inventory for exact owner/tags, no redirects, API permissions,
+federation or passwords, and the expected certificate set; the ARM-only verifier
+cannot detect later Graph-side drift. Rotate with certificate overlap: generate distinct
+`.next` key/certificate files locally, upload only the new public certificate in
+Cloud Shell, authenticate it and run the complete positive and negative canary,
+then atomically replace the protected binding and remove the old public certificate
+by its exact key ID. Keep at most two certificates during that window. If the new
+certificate fails, retain the current binding and remove the replacement. A
+dedicated rotation command and its interruption tests are required before the
+first rotation; do not improvise file replacement.
 
-Rollback writes and fsyncs `<file>.rollback` before changing the current file and
-removes it last. If the process or host stops at any rollback phase, rerun the
-same `--require-assigned --rollback-rotation` command; other actions fail while
-that journal exists. The resumed operation identifies the replacement even after
-Azure already accepted its revocation. If the stop occurs after final journal
-removal, the same command returns `rollback_status=already_complete` after proving
-that the one restored key is the only live credential.
-
-Run both lifecycle commands monthly with `--require-assigned` and alert on any failure or expiry within 30
-days. A pending `.previous` file deliberately makes an ordinary check fail until
-the canary is followed by exact revocation or rollback. To decommission an
-identity, first remove its object ID through a reviewed Terraform apply and verify
-the role assignment is gone; then revoke its keys and delete the service principal
-and application as separate deliberate operations. Never delete an app while RBAC
-still names its principal.
+To decommission an identity, first remove its object ID through a reviewed
+Terraform apply and verify the role assignment is gone. Then remove its public
+certificates and delete the service principal and application as separate owner
+actions. Never delete an app while RBAC still names its principal.
 
 ### Staging PostgreSQL logical-export source
 

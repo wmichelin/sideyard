@@ -3,6 +3,7 @@ mock_provider "azurerm" {
     target = data.azurerm_client_config.current
     values = {
       tenant_id = "22222222-2222-2222-2222-222222222222"
+      object_id = "77777777-7777-7777-7777-777777777777"
     }
   }
 
@@ -153,6 +154,16 @@ run "mixed_case_operator_overlap_fails" {
   variables {
     operator_object_id              = "CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC"
     logical_photo_reader_object_ids = ["cccccccc-cccc-cccc-cccc-cccccccccccc"]
+  }
+
+  expect_failures = [azurerm_storage_account.app]
+}
+
+run "mixed_case_terraform_runner_overlap_fails" {
+  command = plan
+
+  variables {
+    logical_backup_publisher_object_ids = ["77777777-7777-7777-7777-777777777777"]
   }
 
   expect_failures = [azurerm_storage_account.app]
