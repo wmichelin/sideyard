@@ -6,6 +6,7 @@ import io
 import json
 import os
 from pathlib import Path
+import signal
 import subprocess
 import tempfile
 import unittest
@@ -220,6 +221,208 @@ class LogicalRecoveryKeyTests(unittest.TestCase):
                 )
         self.assertTrue(target.exists())
         self.assertTrue(self.copy_a.exists())
+
+    def test_cleanup_never_deletes_a_replacement_after_final_read(self):
+        self.initialize()
+        target = self.retrieved("replace-after-final-read")
+        replacement = b"replacement must survive\n"
+        evidence = KEYS.expected_synthetic_digests()
+        original_read = KEYS.read_private_bytes
+
+        def replace_original_after_quarantine_read(path, **kwargs):
+            result = original_read(path, **kwargs)
+            if path.name.endswith(".sideyard-cleanup"):
+                target.write_bytes(replacement)
+                target.chmod(0o600)
+            return result
+
+        with (
+            mock.patch.object(KEYS, "reviewed_revision", return_value=REVISION),
+            mock.patch.object(KEYS, "synthetic_recovery", return_value=evidence),
+            mock.patch.object(KEYS, "read_private_bytes", side_effect=replace_original_after_quarantine_read),
+        ):
+            KEYS.verify_copy(
+                self.key_file, self.prepared, target, self.copy_a,
+                "a", "manager-copy", True
+            )
+        self.assertEqual(target.read_bytes(), replacement)
+        self.assertTrue(self.copy_a.exists())
+        self.assertFalse(target.with_name(f".{target.name}.sideyard-cleanup").exists())
+
+    def test_cleanup_restores_claimed_file_when_quarantine_validation_fails(self):
+        self.initialize()
+        target = self.retrieved("quarantine-read-failure")
+        original = target.read_bytes()
+        evidence = KEYS.expected_synthetic_digests()
+        original_read = KEYS.read_private_bytes
+
+        def reject_quarantine(path, **kwargs):
+            if path.name.endswith(".sideyard-cleanup"):
+                raise ValueError("simulated quarantine read failure")
+            return original_read(path, **kwargs)
+
+        with (
+            mock.patch.object(KEYS, "reviewed_revision", return_value=REVISION),
+            mock.patch.object(KEYS, "synthetic_recovery", return_value=evidence),
+            mock.patch.object(KEYS, "read_private_bytes", side_effect=reject_quarantine),
+        ):
+            with self.assertRaisesRegex(ValueError, "changed before cleanup"):
+                KEYS.verify_copy(
+                    self.key_file, self.prepared, target, self.copy_a,
+                    "a", "manager-copy", True
+                )
+        self.assertEqual(target.read_bytes(), original)
+        self.assertTrue(self.copy_a.exists())
+        self.assertFalse(target.with_name(f".{target.name}.sideyard-cleanup").exists())
+
+    def test_hard_kill_after_quarantine_fsync_converges_on_retry(self):
+        self.initialize()
+        _,target = self.verify("a", "manager-copy", self.copy_a)
+        quarantine = target.with_name(f".{target.name}.sideyard-cleanup")
+        evidence = KEYS.expected_synthetic_digests()
+        original_fsync = KEYS.fsync_directory
+        child = os.fork()
+        if child == 0:
+            def kill_after_claim(folder):
+                original_fsync(folder)
+                if quarantine.exists() and not target.exists():
+                    os.kill(os.getpid(), signal.SIGKILL)
+            with (
+                mock.patch.object(KEYS, "reviewed_revision", return_value=REVISION),
+                mock.patch.object(KEYS, "synthetic_recovery", return_value=evidence),
+                mock.patch.object(KEYS, "fsync_directory", side_effect=kill_after_claim),
+            ):
+                KEYS.verify_copy(
+                    self.key_file, self.prepared, target, self.copy_a,
+                    "a", "manager-copy", True
+                )
+            os._exit(1)
+        _,status = os.waitpid(child, 0)
+        self.assertTrue(os.WIFSIGNALED(status))
+        self.assertEqual(os.WTERMSIG(status), signal.SIGKILL)
+        self.assertFalse(target.exists())
+        self.assertTrue(quarantine.exists())
+        with (
+            mock.patch.object(KEYS, "reviewed_revision", return_value=REVISION),
+            mock.patch.object(KEYS, "synthetic_recovery", return_value=evidence),
+        ):
+            KEYS.verify_copy(
+                self.key_file, self.prepared, target, self.copy_a,
+                "a", "manager-copy", True
+            )
+        self.assertFalse(target.exists())
+        self.assertFalse(quarantine.exists())
+
+    def test_hard_kill_after_unlink_converges_without_hidden_copy(self):
+        self.initialize()
+        _,target = self.verify("a", "manager-copy", self.copy_a)
+        quarantine = target.with_name(f".{target.name}.sideyard-cleanup")
+        evidence = KEYS.expected_synthetic_digests()
+        original_fsync = KEYS.fsync_directory
+        child = os.fork()
+        if child == 0:
+            saw_claim = False
+            def kill_after_unlink(folder):
+                nonlocal saw_claim
+                original_fsync(folder)
+                if quarantine.exists() and not target.exists():
+                    saw_claim = True
+                elif saw_claim and not quarantine.exists() and not target.exists():
+                    os.kill(os.getpid(), signal.SIGKILL)
+            with (
+                mock.patch.object(KEYS, "reviewed_revision", return_value=REVISION),
+                mock.patch.object(KEYS, "synthetic_recovery", return_value=evidence),
+                mock.patch.object(KEYS, "fsync_directory", side_effect=kill_after_unlink),
+            ):
+                KEYS.verify_copy(
+                    self.key_file, self.prepared, target, self.copy_a,
+                    "a", "manager-copy", True
+                )
+            os._exit(1)
+        _,status = os.waitpid(child, 0)
+        self.assertTrue(os.WIFSIGNALED(status))
+        self.assertEqual(os.WTERMSIG(status), signal.SIGKILL)
+        self.assertFalse(target.exists())
+        self.assertFalse(quarantine.exists())
+        result = KEYS.verify_copy(
+            self.key_file, self.prepared, target, self.copy_a,
+            "a", "manager-copy", True
+        )
+        self.assertEqual(result["phase"], "copy_verified")
+        self.assertFalse(target.exists())
+        self.assertFalse(quarantine.exists())
+
+    def test_reconciliation_retains_ambiguous_or_malformed_quarantine(self):
+        self.initialize()
+        target = self.retrieved("ambiguous-cleanup")
+        quarantine = target.with_name(f".{target.name}.sideyard-cleanup")
+        quarantine.write_bytes(target.read_bytes())
+        quarantine.chmod(0o600)
+        with self.assertRaisesRegex(ValueError, "manual repair"):
+            KEYS.verify_copy(
+                self.key_file, self.prepared, target, self.copy_a,
+                "a", "manager-copy", True
+            )
+        self.assertTrue(target.exists())
+        self.assertTrue(quarantine.exists())
+        target.unlink()
+        quarantine.write_bytes(b"not a canonical key file\n")
+        quarantine.chmod(0o600)
+        with self.assertRaisesRegex(ValueError, "invalid"):
+            KEYS.verify_copy(
+                self.key_file, self.prepared, target, self.copy_a,
+                "a", "manager-copy", True
+            )
+        self.assertFalse(target.exists())
+        self.assertTrue(quarantine.exists())
+
+    def test_atomic_claim_and_restore_never_clobber_competing_files(self):
+        self.initialize()
+        target = self.retrieved("claim-collision")
+        original = target.read_bytes()
+        quarantine = target.with_name(f".{target.name}.sideyard-cleanup")
+        competitor = b"competing quarantine survives\n"
+        evidence = KEYS.expected_synthetic_digests()
+        original_rename = KEYS.rename_no_replace
+
+        def collide_with_claim(source, destination):
+            if source == target and destination == quarantine and not quarantine.exists():
+                quarantine.write_bytes(competitor)
+                quarantine.chmod(0o600)
+            return original_rename(source, destination)
+
+        with (
+            mock.patch.object(KEYS, "reviewed_revision", return_value=REVISION),
+            mock.patch.object(KEYS, "synthetic_recovery", return_value=evidence),
+            mock.patch.object(KEYS, "rename_no_replace", side_effect=collide_with_claim),
+        ):
+            with self.assertRaisesRegex(ValueError, "changed before cleanup"):
+                KEYS.verify_copy(
+                    self.key_file, self.prepared, target, self.copy_a,
+                    "a", "manager-copy", True
+                )
+        self.assertEqual(target.read_bytes(), original)
+        self.assertEqual(quarantine.read_bytes(), competitor)
+
+        target.unlink()
+        quarantine.write_bytes(original)
+        quarantine.chmod(0o600)
+        live_competitor = b"competing live path survives\n"
+
+        def collide_with_restore(source, destination):
+            if source == quarantine and destination == target and not target.exists():
+                target.write_bytes(live_competitor)
+                target.chmod(0o600)
+            return original_rename(source, destination)
+
+        with mock.patch.object(KEYS, "rename_no_replace", side_effect=collide_with_restore):
+            with self.assertRaisesRegex(ValueError, "manual repair"):
+                KEYS.verify_copy(
+                    self.key_file, self.prepared, target, self.copy_a,
+                    "a", "manager-copy", True
+                )
+        self.assertEqual(target.read_bytes(), live_competitor)
+        self.assertEqual(quarantine.read_bytes(), original)
 
     def test_stale_exact_write_converges_and_conflict_fails(self):
         target = self.config / "state"

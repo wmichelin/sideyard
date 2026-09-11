@@ -2,6 +2,7 @@
 """Prepare and verify the staging logical-recovery key custody boundary."""
 
 import argparse
+import ctypes
 from datetime import datetime, timezone
 import fcntl
 import hashlib
@@ -118,6 +119,20 @@ def fsync_directory(folder):
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
+
+
+def rename_no_replace(source, destination):
+    libc = ctypes.CDLL(None, use_errno=True)
+    renameat2 = getattr(libc, "renameat2", None)
+    if renameat2 is None:
+        raise OSError("atomic no-replace rename is unavailable")
+    renameat2.argtypes = (
+        ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint,
+    )
+    renameat2.restype = ctypes.c_int
+    if renameat2(-100, os.fsencode(source), -100, os.fsencode(destination), 1) != 0:
+        code = ctypes.get_errno()
+        raise OSError(code, os.strerror(code), destination)
 
 
 def write_once(path, content):
@@ -441,14 +456,58 @@ def validate_copy_receipt(document, authentication_key):
     return document
 
 
-def cleanup_retrieved(path, verified_details):
+def cleanup_retrieved(path, verified_details, verified_raw):
+    quarantine = path.with_name(f".{path.name}.sideyard-cleanup")
+    claimed = False
     try:
-        current = path.lstat()
-    except OSError:
+        rename_no_replace(path, quarantine)
+        claimed = True
+        fsync_directory(path.parent)
+        current_raw, current = read_private_bytes(quarantine, maximum=1024)
+        if (
+            (current.st_dev, current.st_ino) != (verified_details.st_dev, verified_details.st_ino)
+            or not hmac.compare_digest(current_raw, verified_raw)
+        ):
+            try:
+                rename_no_replace(quarantine, path)
+            except FileExistsError:
+                pass
+            else:
+                claimed = False
+            fsync_directory(path.parent)
+            raise ValueError("retrieved custody file changed before cleanup")
+        quarantine.unlink()
+        claimed = False
+        fsync_directory(path.parent)
+    except (OSError, ValueError):
+        if claimed and (quarantine.exists() or quarantine.is_symlink()) and not (path.exists() or path.is_symlink()):
+            try:
+                rename_no_replace(quarantine, path)
+            except OSError:
+                pass
+            else:
+                claimed = False
+                fsync_directory(path.parent)
         raise ValueError("retrieved custody file changed before cleanup") from None
-    if (current.st_dev, current.st_ino) != (verified_details.st_dev, verified_details.st_ino):
-        raise ValueError("retrieved custody file changed before cleanup")
-    path.unlink()
+
+
+def reconcile_cleanup(path):
+    quarantine = path.with_name(f".{path.name}.sideyard-cleanup")
+    quarantine_present = quarantine.exists() or quarantine.is_symlink()
+    path_present = path.exists() or path.is_symlink()
+    if not quarantine_present:
+        return
+    if path_present:
+        raise ValueError(
+            f"retrieved custody cleanup requires manual repair; retain both {path} and {quarantine}"
+        )
+    read_keys(quarantine)
+    try:
+        rename_no_replace(quarantine, path)
+    except FileExistsError:
+        raise ValueError(
+            f"retrieved custody cleanup requires manual repair; retain both {path} and {quarantine}"
+        ) from None
     fsync_directory(path.parent)
 
 
@@ -460,6 +519,8 @@ def verify_copy(key_file, prepared_receipt, retrieved_key_file, copy_receipt, sl
     current = key_metadata(values, raw)
     if any(current[name] != prepared[name] for name in current):
         raise ValueError("prepared receipt does not match the active key kit")
+    private_directory(retrieved_key_file.parent)
+    reconcile_cleanup(retrieved_key_file)
     existing = None
     if copy_receipt.exists() or copy_receipt.is_symlink():
         existing = read_document(copy_receipt, COPY_FIELDS, "copy_verified")
@@ -471,54 +532,68 @@ def verify_copy(key_file, prepared_receipt, retrieved_key_file, copy_receipt, sl
         validate_copy_receipt(existing, bytes.fromhex(values[KEY_NAMES[1]]))
         if not retrieved_key_file.exists() and not retrieved_key_file.is_symlink():
             return existing
-    private_directory(retrieved_key_file.parent)
-    retrieved_values, retrieved_raw, retrieved = read_keys(retrieved_key_file, with_details=True)
-    if (primary.st_dev, primary.st_ino) == (retrieved.st_dev, retrieved.st_ino):
-        raise ValueError("retrieved custody file must be independent from the active key file")
-    if not hmac.compare_digest(raw, retrieved_raw):
-        raise ValueError("retrieved custody file does not match the active key file")
-    metadata = key_metadata(retrieved_values, retrieved_raw)
-    if any(metadata[name] != prepared[name] for name in metadata):
-        raise ValueError("retrieved custody file does not match the prepared key kit")
-    revision = reviewed_revision()
-    package_sha, descriptor_sha = synthetic_recovery(retrieved_values)
-    if existing is not None:
-        if (
-            existing["synthetic_package_sha256"] != package_sha
-            or existing["synthetic_descriptor_sha256"] != descriptor_sha
-        ):
-            raise ValueError("custody copy receipt conflicts with the recovery check")
+    guard = None
+    try:
         if delete_retrieved:
-            cleanup_retrieved(retrieved_key_file, retrieved)
-        return existing
-    payload = {
-        **prepared,
-        "phase": "copy_verified",
-        "revision": revision,
-        "custody_slot": slot,
-        "custody_label": label,
-        "retrieved_at": now(),
-        "synthetic_package_sha256": package_sha,
-        "synthetic_descriptor_sha256": descriptor_sha,
-    }
-    candidate = {
-        **payload,
-        "copy_hmac": hmac.new(
-            bytes.fromhex(retrieved_values[KEY_NAMES[1]]),
-            COPY_MAGIC + canonical(payload),
-            hashlib.sha256,
-        ).hexdigest(),
-    }
-    document = stable_receipt(
-        copy_receipt,
-        candidate,
-        COPY_FIELDS,
-        "copy_verified",
-        "retrieved_at",
-    )
-    if delete_retrieved:
-        cleanup_retrieved(retrieved_key_file, retrieved)
-    return document
+            flags = os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
+            try:
+                guard = os.open(retrieved_key_file, flags)
+            except OSError:
+                raise ValueError("logical recovery file is unavailable") from None
+        retrieved_values, retrieved_raw, retrieved = read_keys(retrieved_key_file, with_details=True)
+        if guard is not None:
+            guarded = os.fstat(guard)
+            if (guarded.st_dev, guarded.st_ino) != (retrieved.st_dev, retrieved.st_ino):
+                raise ValueError("retrieved custody file changed while it was opened")
+        if (primary.st_dev, primary.st_ino) == (retrieved.st_dev, retrieved.st_ino):
+            raise ValueError("retrieved custody file must be independent from the active key file")
+        if not hmac.compare_digest(raw, retrieved_raw):
+            raise ValueError("retrieved custody file does not match the active key file")
+        metadata = key_metadata(retrieved_values, retrieved_raw)
+        if any(metadata[name] != prepared[name] for name in metadata):
+            raise ValueError("retrieved custody file does not match the prepared key kit")
+        revision = reviewed_revision()
+        package_sha, descriptor_sha = synthetic_recovery(retrieved_values)
+        if existing is not None:
+            if (
+                existing["synthetic_package_sha256"] != package_sha
+                or existing["synthetic_descriptor_sha256"] != descriptor_sha
+            ):
+                raise ValueError("custody copy receipt conflicts with the recovery check")
+            if delete_retrieved:
+                cleanup_retrieved(retrieved_key_file, retrieved, retrieved_raw)
+            return existing
+        payload = {
+            **prepared,
+            "phase": "copy_verified",
+            "revision": revision,
+            "custody_slot": slot,
+            "custody_label": label,
+            "retrieved_at": now(),
+            "synthetic_package_sha256": package_sha,
+            "synthetic_descriptor_sha256": descriptor_sha,
+        }
+        candidate = {
+            **payload,
+            "copy_hmac": hmac.new(
+                bytes.fromhex(retrieved_values[KEY_NAMES[1]]),
+                COPY_MAGIC + canonical(payload),
+                hashlib.sha256,
+            ).hexdigest(),
+        }
+        document = stable_receipt(
+            copy_receipt,
+            candidate,
+            COPY_FIELDS,
+            "copy_verified",
+            "retrieved_at",
+        )
+        if delete_retrieved:
+            cleanup_retrieved(retrieved_key_file, retrieved, retrieved_raw)
+        return document
+    finally:
+        if guard is not None:
+            os.close(guard)
 
 
 def attest(key_file, prepared_receipt, copy_a_receipt, copy_b_receipt, attestation, owner_confirmed):
