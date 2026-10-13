@@ -847,3 +847,9 @@ owner sign-in and automatic upload/download/restore acceptance; it is not yet
 claimed live. These are operator services, not product pages or new public routes.
 See [backup runbook](SIDEYARD-BACKUPS.md) and the dated
 [delivery evidence](SIDEYARD-DELIVERY-STATUS.md).
+
+October 13 follow-up: the owner confirmed Google Drive as the backup destination;
+the old Azure backup jobs are retired. Remote operator sign-in uses an SSH
+tunnel from the browser computer to G5's loopback OAuth callback. G5 backups
+and mutual monitoring stay active while that login is pending. This operator
+procedure adds no product route or page.

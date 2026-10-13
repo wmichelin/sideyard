@@ -2178,3 +2178,17 @@ loss without contacting G5. Both source monitor units pass with fresh receipts,
 and their timers are enabled. No GitHub hosted-runner minutes or new monitoring
 subscription is needed. The finite SSH surface now also includes `receipt`
 operations; it exposes no shell, forwarding or arbitrary filesystem writes.
+
+#### Google Drive choice and remote sign-in — October 13, 2026
+
+- Owner explicitly confirmed: stop using Azure for backups and use Google Drive.
+  Disabled/stopped the two Azure backup timers, their two monitor timers and the
+  corresponding services. Both source receipt-monitor timers remain active;
+  all four G5 backup/watch timers and the Drive activation path remain active.
+- Scheduled G5 production/staging runs at 03:30 EDT completed successfully.
+- Screenshots showed Safari on the Mac trying to access the loopback callback
+  running on G5. Verified the G5 listener at 127.0.0.1:53682 and SSH forwarding
+  enabled. Added remote-tunnel instructions to the helper and backup runbook.
+  The user can forward the existing waiting login without restarting it.
+- Google sign-in and automatic Drive acceptance remain pending. No stored
+  archive deletion, application deployment or photo-provider change occurred.

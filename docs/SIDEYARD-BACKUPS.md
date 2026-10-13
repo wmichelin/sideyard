@@ -18,6 +18,19 @@ on G5:
 ./connect-backup-drive.sh
 ```
 
+When accessing G5 over SSH from a Mac or another computer, first open a second
+**local** terminal on the computer running the browser:
+
+```bash
+ssh -N -o ExitOnForwardFailure=yes -L 53682:127.0.0.1:53682 g5
+```
+
+Use the same SSH destination you normally use for G5 if it differs from `g5`.
+Keep this tunnel and the original G5 terminal open. Choose **Y** for browser
+authentication, then open or reload the printed localhost link on your computer.
+The tunnel carries both the sign-in page and Google's callback to G5. It also
+works with an already-running helper waiting for its code; no restart is needed.
+
 The helper copies Pantry's existing OAuth client configuration privately and
 renews only Sideyard's login. It verifies the existing dedicated folder ID
 `1CZlgUMeimavN-IyLKZ2Do9T2IaHjFkxL` before saving
@@ -87,11 +100,12 @@ and G5 separately; an offline/password-manager recovery copy remains advisable.
 The unrelated operator-local Azure logical-key custody ceremony was not performed
 or claimed by this PostgreSQL backup work.
 
-Existing Azure uploads fail with HTTP 403; their last recorded success was
-October 9, 2026. Their old jobs and stored archives were preserved during this
-transition. Retire their timers only after the replacement Drive route is
-verified. This setup does not decommission Azure resources or change application
-photo providers.
+The owner explicitly confirmed the move from Azure to Google Drive on October
+13, 2026. Both Azure backup timers and their associated monitor timers/services
+are now disabled/stopped. The verified twelve-hour G5 jobs and mutual monitors
+remain active while Google sign-in is completed. Old Azure uploads failed with
+HTTP 403; their last recorded success was October 9. Historical archives and
+application photo providers are separate from retiring these backup jobs.
 
 ## Status and recovery
 
