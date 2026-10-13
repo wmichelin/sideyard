@@ -1,0 +1,10 @@
+[Unit]
+Description=Verify and activate Sideyard Drive backups after Google sign-in
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+UMask=0077
+ExecStart=/usr/bin/python3 /opt/sideyard-backup/activate-drive.py
+TimeoutStartSec=35min

@@ -115,6 +115,39 @@ class BackupAuthenticationTests(unittest.TestCase):
                 self.assertIn(b"tmpfs-only", result.stderr)
                 self.assertFalse(sentinel.exists())
 
+    def test_wrong_passphrase_does_not_access_target_database(self):
+        encrypted = subprocess.run(
+            ["openssl", "enc", "-aes-256-cbc", "-salt", "-pbkdf2", "-pass",
+             "env:CLUBDUE_BACKUP_PASSPHRASE", "-out", str(self.file)],
+            input=b"--\n-- PostgreSQL database dump\n--\n" + b"CREATE TABLE recovery_test (id integer);\n" * 1000,
+            env={**os.environ, "CLUBDUE_BACKUP_PASSPHRASE": "correct-passphrase"},
+            capture_output=True,
+        )
+        self.assertEqual(encrypted.returncode, 0, encrypted.stderr)
+        self.sign()
+        bin_dir = Path(self.temp.name) / "restore-bin"
+        bin_dir.mkdir()
+        sentinel = Path(self.temp.name) / "target-accessed"
+        docker = bin_dir / "docker"
+        docker.write_text('#!/bin/sh\ncat >"$SENTINEL"\n')
+        docker.chmod(0o700)
+        env = {**os.environ, "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"],
+               "SENTINEL": str(sentinel), "CLUBDUE_RESTORE_DB_CONTAINER": "fixture-restore",
+               "CLUBDUE_BACKUP_PASSPHRASE": "wrong-passphrase",
+               "CLUBDUE_BACKUP_HMAC_KEY": "fixture-key-one"}
+        failed = subprocess.run(["bash", str(ROOT / "postgres-restore.sh"), str(self.file)],
+                                env=env, capture_output=True)
+        self.assertNotEqual(failed.returncode, 0)
+        self.assertIn(b"target database was not accessed", failed.stderr)
+        self.assertFalse(sentinel.exists())
+        env["CLUBDUE_BACKUP_PASSPHRASE"] = "correct-passphrase"
+        restored = subprocess.run(["bash", str(ROOT / "postgres-restore.sh"), str(self.file)],
+                                  env=env, capture_output=True)
+        self.assertEqual(restored.returncode, 0, restored.stderr)
+        self.assertTrue(sentinel.exists())
+        self.assertEqual(sentinel.read_bytes(),
+                         b"--\n-- PostgreSQL database dump\n--\n" + b"CREATE TABLE recovery_test (id integer);\n" * 1000)
+
 
 if __name__ == "__main__":
     unittest.main()

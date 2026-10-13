@@ -1,0 +1,10 @@
+[Unit]
+Description=Hourly independent Sideyard %i backup monitoring on G5
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=3m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

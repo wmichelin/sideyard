@@ -1,17 +1,16 @@
 # Sideyard delivery status
 
-Status: verified — nine foundational slices are in production; Azure logical
-publication and crash-safe host release are verified on staging. The operator-local,
-staging-targeted recovery-key custody gate is CI verified and aligned with the
-current staging source revision. The overall execution plan remains in progress.
-Last completed: deployment and application smoke of reviewed revision `a5ed99a`,
-plus local preparation of its immutable two-key set without exposing key material.
-Now: owner-controlled verification of two independent off-device custody copies.
-Next: one retained customer-data staging export, then the scheduled seven-day
-backup and monitoring path.
-Staging: https://clubdue-staging.michelindigitalmedia.com (verified at `a5ed99a`).
-Blocker: customer-data publication requires the owner's two-copy custody
-attestation. Production requires review and explicit approval.
+Status: PostgreSQL recovery verified on G5; Google Drive activation awaits owner login.
+Last completed: fresh production/staging encrypted exports, isolated restores with
+matching binaries, owner authentication, tenant denial and staging photo hashes.
+Now: twelve-hour G5 backups and hourly independent source-host monitoring are active.
+Next: owner runs `./connect-backup-drive.sh`; the installed watcher verifies Drive
+retry/collision/delete behavior and downloaded restores before switching the jobs.
+Staging: https://clubdue-staging.michelindigitalmedia.com (existing application verified).
+Blocker: Google requires interactive sign-in; no account tokens are requested in chat.
+The older Azure logical migration/custody record below is historical and separate
+from the current PostgreSQL recovery work. Product production promotion remains
+subject to the existing release approval gate.
 
 The user explicitly authorized continued building on September 8, 2026, and
 production promotion through visit-linked notes on September 9. The earlier
@@ -2104,3 +2103,67 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   exact container scopes and passed positive and negative permission canaries.
   No application data has moved. Staging web traffic remains on PostgreSQL; no
   logical customer backup has been uploaded and production is unchanged.
+
+
+### Sideyard backup completion — October 12, 2026
+
+- Refreshed this stale checkout from `4c126f9` to the existing remote `cdc5c91`;
+  the app had already been renamed and an Azure backup implementation existed.
+  Read-only live inspection found both Azure uploads failing HTTP 403 since
+  October 10; last successful markers were October 9.
+- Preserved October 12 encrypted production/staging pairs and matching backup/
+  application recovery secrets in separate root-only G5 locations. No secrets
+  or customer record contents were included in captured evidence.
+- Installed a finite-command SSH exporter, twelve-hour G5 jobs and independent
+  hourly source-host/freshness monitoring. Initial unattended service runs passed
+  for both environments; all four timers and the Drive activation watcher are
+  enabled. Unexpected SSH commands were rejected.
+- Fresh production archive: `20261013T014117Z-8232d9cbf6bb4df498f8d896fcdeeacc`,
+  source `ae6f16ae9f9feaf52bf58093cf1f0c3b8c7a7c34`. Restored 2 shops, 2 users,
+  30 customers, 0 photos and 29 migrations; owner login and cross-tenant denial
+  passed with the matching source binary. Restore/application checks: 3.06 s.
+- Fresh staging archive: `20261013T014117Z-28f7811fd09e4f83b68bd21d283e29ae`,
+  source `cdc5c9106c605696d07e9847939745f796903532`. Restored 2 shops, 2 users,
+  4 customers, 4 photos and 31 migrations; every retained photo hash, owner login
+  and cross-tenant denial passed. Restore/application checks: 2.95 s.
+- Both restore targets used internal networks without outbound access and
+  memory-backed PostgreSQL data. Containers/networks were removed on exit.
+  Credentials were changed only inside the disposable restored databases.
+- Actual restore exposed a dormant exporter-role ACL dependency; portable new
+  dumps omit owners/grants. Actual restore and the full production-mode rehearsal
+  subsequently passed. Wrong-passphrase/decryption failure is rejected before DB
+  access; the complete plaintext remains in anonymous memory.
+- Initial installation verification caught an empty systemd argument and Docker
+  DNS alias differences; both were corrected before timer activation. The actual
+  failure and recovery notification paths were accepted by Resend. Inbox delivery
+  is not asserted.
+- Nine focused backup contracts plus seven authentication tests pass; systemd
+  verifies all six service/timer units and the path unit. Full production backup/
+  restore/demo rehearsal passes. CI now runs the new contracts.
+- Drive login remains required. The prepared path activates only after pinned
+  folder/quota checks, real immutable retry/collision/deletion probes, both initial
+  complete uploads, downloaded authentication and isolated restores pass.
+  Candidate failures leave scheduled G5 mode active. Scoped retention preserves
+  unknown/incomplete directories. No Drive upload or restore is claimed yet.
+- [Runbook](SIDEYARD-BACKUPS.md) documents source/G5 key custody, seven-day
+  retention semantics and the remaining lack of third-host monitoring for G5 loss.
+
+#### Six-role delivery review
+
+- Product manager: recoverability and current freshness define completion;
+  existing seven-day policy supersedes the old 30-day proposal. Clearly distinguish
+  actual G5 backups from pending Drive and historical Azure logical work.
+- Architect: canonical database-operation lock, authoritative source generation
+  and exact connection/container binding; fixed-command SSH and signed complete
+  sets. Drive activation must prove both fresh destinations before config commit.
+- Staff engineer: small stdlib helpers; no general backup framework or Pantry
+  mutation. Fsync publication before success; allow OAuth token persistence only
+  in the dedicated protected configuration directory.
+- Unit-testing expert: wrong-key/password, modified/partial sets, traversal,
+  failure-preserved success/pruning, scope-aware retention and boundary freshness.
+  Verify full decrypted input reaches psql, not a buffered-file suffix.
+- DevOps: bounded source time/size, disk ciphertext spool, timer/path validation,
+  independent G5 alerts and root-only key recovery. Google remains interactive.
+- QA: actual production/staging restores with matching binaries, source count
+  reconciliation, photo hashes, owner login, foreign-tenant denial and cleanup.
+  Provider acceptance and downloaded Drive restores remain gated on real login.

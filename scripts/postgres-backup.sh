@@ -48,7 +48,7 @@ hmac_file() {
 }
 
 docker exec "$CLUBDUE_BACKUP_DB_CONTAINER" \
-  pg_dump --username="$CLUBDUE_BACKUP_DB_USER" --dbname="$CLUBDUE_BACKUP_DB_NAME" --format=plain \
+  pg_dump --username="$CLUBDUE_BACKUP_DB_USER" --dbname="$CLUBDUE_BACKUP_DB_NAME" --format=plain --no-owner --no-acl \
   | openssl enc -aes-256-cbc -salt -pbkdf2 -pass env:CLUBDUE_BACKUP_PASSPHRASE -out "$temporary_backup_file"
 hmac_file "$temporary_backup_file" "$temporary_mac_file"
 chmod 600 "$temporary_backup_file" "$temporary_mac_file"

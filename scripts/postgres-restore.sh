@@ -55,8 +55,33 @@ else
   python3 "$SCRIPT_DIR/backup-auth.py" verify "$backup_file"
 fi
 
-openssl enc -d -aes-256-cbc -pbkdf2 -pass env:CLUBDUE_BACKUP_PASSPHRASE -in "$backup_file" \
-  | docker exec -i "$CLUBDUE_RESTORE_DB_CONTAINER" \
-    psql --set ON_ERROR_STOP=1 --username="$CLUBDUE_RESTORE_DB_USER" --dbname="$CLUBDUE_RESTORE_DB_NAME" >/dev/null
+# Finish decryption before opening the target database. A wrong passphrase can
+# otherwise stream partial SQL to psql before OpenSSL rejects its final block.
+# TemporaryFile is owner-only and unlinked; no plaintext pathname is published.
+python3 - "$backup_file" "$CLUBDUE_RESTORE_DB_CONTAINER" "$CLUBDUE_RESTORE_DB_USER" "$CLUBDUE_RESTORE_DB_NAME" <<'PY'
+import subprocess
+import sys
+import os
+
+source, container, user, database = sys.argv[1:]
+with os.fdopen(os.memfd_create("sideyard-restore", flags=os.MFD_CLOEXEC), "w+b", buffering=0) as plaintext:
+    result = subprocess.run(
+        ["openssl", "enc", "-d", "-aes-256-cbc", "-pbkdf2", "-pass",
+         "env:CLUBDUE_BACKUP_PASSPHRASE", "-in", source],
+        stdout=plaintext, stderr=subprocess.DEVNULL,
+    )
+    if result.returncode:
+        sys.exit("backup decryption failed; target database was not accessed")
+    plaintext.seek(0)
+    if not plaintext.read(4096).startswith(b"--\n-- PostgreSQL database dump\n--\n"):
+        sys.exit("backup plaintext is not a PostgreSQL dump; target database was not accessed")
+    plaintext.seek(0)
+    result = subprocess.run(
+        ["docker", "exec", "-i", container, "psql", "--set", "ON_ERROR_STOP=1",
+         "--username=" + user, "--dbname=" + database],
+        stdin=plaintext, stdout=subprocess.DEVNULL,
+    )
+    sys.exit(result.returncode)
+PY
 
 echo "backup restore completed"

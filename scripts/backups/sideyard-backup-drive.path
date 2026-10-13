@@ -1,0 +1,9 @@
+[Unit]
+Description=Finish Sideyard Drive backup activation after Google sign-in
+
+[Path]
+PathChanged=/etc/sideyard-backup/rclone.conf
+Unit=sideyard-backup-drive.service
+
+[Install]
+WantedBy=multi-user.target

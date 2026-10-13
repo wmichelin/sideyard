@@ -71,6 +71,12 @@ jobs:
       - name: Production-mode backup and restore rehearsal
         run: ./scripts/production-rehearsal.sh
 
+      - name: Sideyard off-host backup security and failure checks
+        run: |
+          python3 scripts/test-backup-auth.py
+          python3 scripts/backups/test-backups.py
+          systemd-analyze verify scripts/backups/*.service scripts/backups/*.timer scripts/backups/*.path
+
       - name: PostgreSQL logical exporter permission rehearsal
         run: ./scripts/postgres-exporter-rehearsal.sh
 

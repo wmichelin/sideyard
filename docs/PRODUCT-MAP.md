@@ -834,3 +834,15 @@ access; testing — check routes, links and graph/catalog consistency; engineeri
 — keep this one canonical map with source links; operations — record verified
 release states without deploying documentation; QA — validate graph rendering
 and clearly flag staged jobs and unavailable billing/provider workflows.
+
+
+### PostgreSQL recovery operations — October 12, 2026
+
+Production and staging remain on PostgreSQL. Encrypted copies on G5 are verified
+with matching application binaries, owner login and tenant isolation. The new
+backup jobs run every twelve hours and have independent source-host failure/
+freshness monitoring on G5. The dedicated Google Drive route is conditional on
+owner sign-in and automatic upload/download/restore acceptance; it is not yet
+claimed live. These are operator services, not product pages or new public routes.
+See [backup runbook](SIDEYARD-BACKUPS.md) and the dated
+[delivery evidence](SIDEYARD-DELIVERY-STATUS.md).

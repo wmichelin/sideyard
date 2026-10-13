@@ -121,7 +121,11 @@ The current backup scripts use AES-256-CBC with PBKDF2 plus a distinct SHA-256
 HMAC key, both supplied at runtime, and a root-only destination. Each encrypted
 `*.sql.enc` file has a required 39-byte `*.sql.enc.mac` sidecar: `SYMAC2` plus a
 newline and a 32-byte HMAC authenticating the format marker and ciphertext.
-Restore verifies that sidecar before decrypting or opening a database connection.
+Restore verifies that sidecar, finishes decryption into anonymous Linux memory,
+and validates the PostgreSQL dump header before opening a database connection.
+New dumps omit deployment-specific owners/grants; reinstall operational role
+permissions separately after recovery. See [Sideyard backups](SIDEYARD-BACKUPS.md)
+for the active G5 jobs, Drive activation and isolated recovery command.
 Deploy `backup-auth.py` beside both shell scripts; Python 3 is required on the
 backup operator host. See [delivery status](SIDEYARD-DELIVERY-STATUS.md) for the
 verified deployment state of this correction.

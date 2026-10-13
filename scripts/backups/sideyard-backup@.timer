@@ -1,0 +1,10 @@
+[Unit]
+Description=Sideyard %i backup every twelve hours
+
+[Timer]
+OnCalendar=*-*-* 07,19:30:00 UTC
+RandomizedDelaySec=5m
+Persistent=true
+
+[Install]
+WantedBy=timers.target
