@@ -1,0 +1,10 @@
+[Unit]
+Description=Hourly Sideyard %i off-host receipt monitoring
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=3m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -153,7 +153,10 @@ def run(environment, drive, candidate=False):
             now = int(time.time())
             if drive:
                 prune_drive(environment, payload['id'], key, now)
-            marker = {'environment': environment, 'archive': payload['id'], 'verified_at': now, 'source_revision': payload['source_revision'], 'destination': 'google-drive' if drive else 'g5', 'folder_id': FOLDER_ID if drive else None}
+            marker = {'environment': environment, 'archive': payload['id'], 'verified_at': now, 'source_revision': payload['source_revision'], 'data_generation': payload['data_generation'], 'destination': 'google-drive' if drive else 'g5', 'folder_id': FOLDER_ID if drive else None}
+            signed = {'payload': marker, 'hmac': hmac.new(key, b'Sideyard off-host delivery receipt v1\n'+canonical(marker), hashlib.sha256).hexdigest()}
+            subprocess.run(ssh[:-1]+['receipt '+environment], input=canonical(signed), check=True,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
             marker_name = f'{environment}.drive-candidate.json' if candidate else f'{environment}.last-success.json'
             atomic_json(state/marker_name, marker)
             # Prune only after the selected off-host destination verifies.

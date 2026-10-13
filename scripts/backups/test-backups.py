@@ -20,6 +20,7 @@ def module(name):
     item=importlib.util.module_from_spec(spec);spec.loader.exec_module(item);return item
 runner=module('run-backup')
 monitor=module('monitor')
+receipt=module('record-receipt')
 
 
 class BackupTests(unittest.TestCase):
@@ -153,6 +154,15 @@ class BackupTests(unittest.TestCase):
         with patch.object(runner.subprocess,'run',remote):
             runner.prune_drive('staging','current',self.key,2000000)
         self.assertFalse(any(x[0]=='purge' for x in commands))
+
+    def test_source_receipts_bind_environment_generation_and_time(self):
+        import hashlib,hmac
+        payload={'environment':'production','destination':'g5','archive':'20261012T000000Z-'+'a'*32,'source_revision':'a'*40,'data_generation':'current','verified_at':2000000}
+        signature=hmac.new(self.key,receipt.DOMAIN+archive.canonical(payload),hashlib.sha256).hexdigest()
+        data=archive.canonical({'payload':payload,'hmac':signature})
+        self.assertEqual(receipt.open_receipt(data,self.key,'production',2000000)['data_generation'],'current')
+        for key,environment,now in [(b'wrong-key','production',2000000),(self.key,'staging',2000000),(self.key,'production',1900000)]:
+            with self.assertRaises(ValueError):receipt.open_receipt(data,key,environment,now)
 
 
 if __name__=='__main__':unittest.main()

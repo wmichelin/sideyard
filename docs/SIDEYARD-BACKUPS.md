@@ -6,7 +6,9 @@ G5 receives fresh encrypted production and staging PostgreSQL backups through a
 restricted SSH exporter on the shared droplet. The installed jobs run every
 12 hours, at 07:30 and 19:30 UTC with up to five minutes of jitter. An independent
 hourly monitor on G5 emails the configured Sideyard owner for failed jobs,
-staleness beyond 26 hours, and recovery. Notifications use the existing Resend
+staleness beyond 26 hours, and recovery. The source droplet independently
+checks signed off-host receipts hourly and alerts after 15 hours without a
+current-generation delivery, catching G5 outages before the 24-hour objective. Notifications use the existing Resend
 configuration; acceptance by Resend is verified, not inbox delivery.
 
 Google Drive activation awaits the owner's Google sign-in. Run from the project
@@ -44,7 +46,8 @@ No further deployment approval is needed for this already requested backup setup
   the pinned child folder. Never operate recursively on Pantry's parent.
 
 The G5 key's source authorization uses OpenSSH `restrict` and one fixed exporter.
-It accepts only `backup production` or `backup staging`: no interactive shell,
+It accepts finite `backup` and authenticated `receipt` operations for production
+or staging: no interactive shell,
 forwarding, caller-selected paths, database names or commands. Source scripts
 are root-owned and protected. The exporter acquires the existing deployment/
 database-operation lock and matches the authoritative PostgreSQL generation,
@@ -76,9 +79,10 @@ authenticate for that environment. Unknown/incomplete sets are preserved for
 operator inspection. This is not a promise that every historical or partial
 artifact is erased at exactly seven days.
 
-G5 monitoring detects source-droplet outages and failed/missed backup jobs. Loss
-of G5 itself requires a third independent monitor; this deployment does not
-claim that additional failure-domain coverage. Recovery keys exist on the source
+The two hosts monitor each other: G5 catches source-droplet/job failure; the
+droplet verifies signed G5 delivery receipts and catches G5/job loss. Simultaneous
+loss of both hosts still requires an external uptime monitor and independently
+recoverable credentials. No new hosted monitoring vendor is configured. Recovery keys exist on the source
 and G5 separately; an offline/password-manager recovery copy remains advisable.
 The unrelated operator-local Azure logical-key custody ceremony was not performed
 or claimed by this PostgreSQL backup work.

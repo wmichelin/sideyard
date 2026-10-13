@@ -92,8 +92,15 @@ def export(environment, output):
 if __name__ == '__main__':
     try:
         command = os.environ.get('SSH_ORIGINAL_COMMAND', '').split()
-        if len(command) != 2 or command[0] != 'backup':
-            raise ValueError('Only backup production or backup staging is allowed')
-        export(command[1], sys.stdout.buffer)
+        if len(command) != 2 or command[1] not in ('production', 'staging') or command[0] not in ('backup', 'receipt'):
+            raise ValueError('Only fixed backup or receipt operations are allowed')
+        if command[0] == 'backup':
+            export(command[1], sys.stdout.buffer)
+        else:
+            import importlib.util
+            spec = importlib.util.spec_from_file_location('receipt', Path(__file__).with_name('record-receipt.py'))
+            receipt = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(receipt)
+            receipt.record(command[1], sys.stdin.buffer)
     except (ValueError, OSError, KeyError, subprocess.SubprocessError):
         sys.exit('Sideyard encrypted export failed; inspect protected source configuration')

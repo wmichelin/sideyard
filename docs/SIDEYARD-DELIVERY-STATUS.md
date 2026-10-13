@@ -2137,7 +2137,7 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   DNS alias differences; both were corrected before timer activation. The actual
   failure and recovery notification paths were accepted by Resend. Inbox delivery
   is not asserted.
-- Nine focused backup contracts plus seven authentication tests pass; systemd
+- Ten focused backup contracts plus seven authentication tests pass; systemd
   verifies all six service/timer units and the path unit. Full production backup/
   restore/demo rehearsal passes. CI now runs the new contracts.
 - Drive login remains required. The prepared path activates only after pinned
@@ -2146,7 +2146,7 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
   Candidate failures leave scheduled G5 mode active. Scoped retention preserves
   unknown/incomplete directories. No Drive upload or restore is claimed yet.
 - [Runbook](SIDEYARD-BACKUPS.md) documents source/G5 key custody, seven-day
-  retention semantics and the remaining lack of third-host monitoring for G5 loss.
+  retention semantics and mutual monitoring and the remaining simultaneous-host-loss boundary.
 
 #### Six-role delivery review
 
@@ -2167,3 +2167,14 @@ The request, read/write, shutdown and browser/proxy/probe envelopes are 80, 90,
 - QA: actual production/staging restores with matching binaries, source count
   reconciliation, photo hashes, owner login, foreign-tenant denial and cleanup.
   Provider acceptance and downloaded Drive restores remain gated on real login.
+
+#### Mutual monitoring follow-up
+
+The source droplet now accepts bounded, HMAC-authenticated off-host delivery
+receipts through the existing restricted SSH key. A separate hourly source
+monitor compares them with the authoritative data generation and reports missing
+delivery after 15 hours. G5 detects droplet/job loss; the droplet detects G5/job
+loss without contacting G5. Both source monitor units pass with fresh receipts,
+and their timers are enabled. No GitHub hosted-runner minutes or new monitoring
+subscription is needed. The finite SSH surface now also includes `receipt`
+operations; it exposes no shell, forwarding or arbitrary filesystem writes.

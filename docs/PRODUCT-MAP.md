@@ -841,7 +841,8 @@ and clearly flag staged jobs and unavailable billing/provider workflows.
 Production and staging remain on PostgreSQL. Encrypted copies on G5 are verified
 with matching application binaries, owner login and tenant isolation. The new
 backup jobs run every twelve hours and have independent source-host failure/
-freshness monitoring on G5. The dedicated Google Drive route is conditional on
+freshness monitoring on G5 plus signed-receipt monitoring on the droplet for G5
+outages. The dedicated Google Drive route is conditional on
 owner sign-in and automatic upload/download/restore acceptance; it is not yet
 claimed live. These are operator services, not product pages or new public routes.
 See [backup runbook](SIDEYARD-BACKUPS.md) and the dated
