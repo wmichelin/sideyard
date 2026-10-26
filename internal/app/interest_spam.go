@@ -18,8 +18,7 @@ func interestSpamReason(in interestSignup) string {
 	// Require website targeting, a sales category, and a solicitation. This
 	// avoids rejecting contractors who genuinely ask for help organizing
 	// marketing or website work.
-	if strings.TrimSpace(in.Trade) != "" ||
-		!interestContainsAny(message, "getsideyard.com", "your website", "your business") ||
+	if !interestContainsAny(message, "getsideyard.com", "your website", "your business") ||
 		!interestContainsAny(message, "seo", "search engine", "search index", "google rankings", "google 1st page", "geo visibility", "ai search visibility", "website design", "website redesign", "digital marketing", "website outreach", "accessibility audit", "accessibility-compliant", "video") ||
 		!interestContainsAny(message, "we offer", "we provide", "our team", "our videos", "would you", "may i", "i can", "i'll", "pricing", "price list", "proposal", "send you", "quote", "packages", "list getsideyard.com", "we help businesses") {
 		return ""

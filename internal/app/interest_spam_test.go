@@ -39,6 +39,17 @@ func TestInterestSpamMatchesObservedCampaigns(t *testing.T) {
 	}
 }
 
+func TestInterestSpamCannotBeBypassedByFillingTrade(t *testing.T) {
+	in := interestSignup{
+		Name:    "Sales",
+		Trade:   "Plumbing",
+		Message: "Hello getsideyard.com. We offer SEO services. May I send a proposal?",
+	}
+	if got := interestSpamReason(in); got != "unsolicited_marketing" {
+		t.Fatalf("marketing spam with trade was classified %q", got)
+	}
+}
+
 func TestInterestSpamPreservesLegitimateInterest(t *testing.T) {
 	tests := []struct{ name, trade, message string }{
 		{"plumbing workflow", "Plumbing", "Scheduling repeat plumbing calls and invoices is difficult."},
@@ -60,7 +71,7 @@ func TestInterestSpamPreservesLegitimateInterest(t *testing.T) {
 func TestInterestSpamSuppressedWithoutPersistence(t *testing.T) {
 	tests := []struct {
 		name, person, message string
-		wantSaves int
+		wantSaves             int
 	}{
 		{"marketing spam", "Taylor", "Hi getsideyard.com. We offer SEO services. May I send you a quote?", 0},
 		{"random identifier", "NATREGTEGH2948352NERTYTRY", "MEYJTJ2948352MARETRYTR", 0},
@@ -92,7 +103,7 @@ func TestInterestSpamStillValidatesInput(t *testing.T) {
 	values := url.Values{
 		"name": {"Taylor"}, "email": {"invalid"},
 		"csrf_token": {"test-csrf-token"},
-		"message": {"Hi getsideyard.com. We offer SEO services. May I send you a quote?"},
+		"message":    {"Hi getsideyard.com. We offer SEO services. May I send you a quote?"},
 	}
 	w := httptest.NewRecorder()
 	s.handler(fstest.MapFS{}).ServeHTTP(w, interestRequest(values))
