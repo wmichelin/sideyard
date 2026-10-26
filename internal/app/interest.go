@@ -114,6 +114,14 @@ func (s *Server) handleInterest(w http.ResponseWriter, r *http.Request) {
 		s.renderLanding(w, r, in, message, http.StatusUnprocessableEntity)
 		return
 	}
+	// A small set of high-confidence outreach patterns is silently discarded,
+	// just like the existing honeypot. Do not send these to the owner or store
+	// them as leads; never include the submitted PII in the diagnostic log.
+	if reason := interestSpamReason(in); reason != "" {
+		log.Printf("interest signup filtered spam_reason=%s request_id=%s", reason, w.Header().Get("X-Request-ID"))
+		http.Redirect(w, r, "/interest/thanks", http.StatusSeeOther)
+		return
+	}
 	if s.interest == nil {
 		s.interestThrottle.refund(ticket)
 		w.Header().Set("Retry-After", "15")
