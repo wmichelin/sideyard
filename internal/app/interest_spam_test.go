@@ -39,6 +39,17 @@ func TestInterestSpamMatchesObservedCampaigns(t *testing.T) {
 	}
 }
 
+func TestInterestSpamCannotBeBypassedByFillingTrade(t *testing.T) {
+	in := interestSignup{
+		Name: "Sales",
+		Trade: "Plumbing",
+		Message: "Hello getsideyard.com. We offer SEO services. May I send a proposal?",
+	}
+	if got := interestSpamReason(in); got != "unsolicited_marketing" {
+		t.Fatalf("marketing spam with trade was classified %q", got)
+	}
+}
+
 func TestInterestSpamPreservesLegitimateInterest(t *testing.T) {
 	tests := []struct{ name, trade, message string }{
 		{"plumbing workflow", "Plumbing", "Scheduling repeat plumbing calls and invoices is difficult."},
