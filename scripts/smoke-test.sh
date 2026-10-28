@@ -296,7 +296,22 @@ if [ "$CLUBDUE_ENV" = "staging" ]; then
   echo "  ✓ bounded import, service outcome, renewal note, and CSV export"
 else
   OWNER_DEMO_HEADERS="$WORK_DIR/owner-demo.headers"
-  OWNER_DEMO_STATUS="$(curl -sS -D "$OWNER_DEMO_HEADERS" -b "$OWNER_COOKIE_JAR" -c "$OWNER_COOKIE_JAR" -o /dev/null -w '%{http_code}' "${CLUBDUE_URL}/demo")"
+  OWNER_DEMO_ENTRY="$WORK_DIR/owner-demo.html"
+  OWNER_DEMO_STATUS="$(curl -sS -D "$OWNER_DEMO_HEADERS" -b "$OWNER_COOKIE_JAR" -c "$OWNER_COOKIE_JAR" -o "$OWNER_DEMO_ENTRY" -w '%{http_code}' "${CLUBDUE_URL}/demo")"
+  # GET stays database-free for every visitor. The CSRF-protected POST checks
+  # the existing owner session before considering a new demo workspace.
+  [ "$OWNER_DEMO_STATUS" = "200" ]
+  grep -q 'action="/demo/session"' "$OWNER_DEMO_ENTRY"
+  grep -Eiq '^Cache-Control:.*no-store' "$OWNER_DEMO_HEADERS"
+  grep -Eiq '^X-Robots-Tag:.*noindex' "$OWNER_DEMO_HEADERS"
+  if grep -Eiq '^Set-Cookie:[[:space:]]*clubdue_session=' "$OWNER_DEMO_HEADERS"; then
+    echo "authenticated owner demo entry replaced the owner session" >&2
+    exit 1
+  fi
+  OWNER_DEMO_CSRF_TOKEN="$(csrf_from_file "$OWNER_DEMO_ENTRY")"
+  [ -n "$OWNER_DEMO_CSRF_TOKEN" ]
+  OWNER_DEMO_STATUS="$(curl -sS -D "$OWNER_DEMO_HEADERS" -b "$OWNER_COOKIE_JAR" -c "$OWNER_COOKIE_JAR" -o /dev/null -w '%{http_code}' \
+    --data-urlencode "csrf_token=$OWNER_DEMO_CSRF_TOKEN" "${CLUBDUE_URL}/demo/session")"
   [ "$OWNER_DEMO_STATUS" = "303" ]
   grep -Eiq '^Location:[[:space:]]*/dashboard' "$OWNER_DEMO_HEADERS"
   if grep -Eiq '^Set-Cookie:[[:space:]]*clubdue_session=' "$OWNER_DEMO_HEADERS"; then
