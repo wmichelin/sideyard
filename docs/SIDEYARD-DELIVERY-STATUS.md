@@ -1,5 +1,45 @@
 # Sideyard delivery status
 
+## Spam-defense production attempt — October 28, 2026
+
+- The user explicitly approved production deployment of the reviewed spam-defense
+  release. The latest successful [staging run 40373282348](https://github.com/wmichelin/clubdue/actions/runs/40373282348)
+  records source `22cb2f3ce1e7e5ce34bbc3fdfa98e7984a189e12` and immutable image
+  `ghcr.io/wmichelin/clubdue@sha256:820c691eba7fc2e39c1622addc6a38442287d75b723d8fce082ee4fae00ee4e4`.
+  CI run `40373282340`, its workflow smoke and a fresh manual staging smoke passed.
+- [Production promotion 40679177911](https://github.com/wmichelin/clubdue/actions/runs/40679177911)
+  validated the digest and revision label, promoted that exact image and completed
+  droplet deployment with public demo enabled. Production smoke passed health,
+  readiness, owner login and isolated demo checks, then failed because its final
+  owner check expects authenticated GET `/demo` to redirect. The reviewed handler
+  and integration test intentionally return the database-free entry page on GET
+  and preserve the owner session through CSRF-protected POST `/demo/session`.
+- [First official rollback 40679461856](https://github.com/wmichelin/clubdue/actions/runs/40679461856)
+  failed before traffic switching because Docker exposes no runtime port mapping
+  for a stopped retained container. [PR #14](https://github.com/wmichelin/clubdue/pull/14)
+  repairs stopped-binding discovery, restricts bindings to the selected environment
+  and rechecks the actual port after startup. All four CI jobs passed for tooling
+  revision `0462db85bbc28506280e646e0dd25c8136816bae` in run `40685095603`.
+- [Recovery rollback 40685794643](https://github.com/wmichelin/clubdue/actions/runs/40685794643)
+  used the unchanged official `deploy-production.yml` workflow from that tested
+  tooling revision in rollback mode. It restored the retained previous application
+  and the full production smoke passed, including unchanged owner session and
+  tenant isolation. Independent public health/readiness probes passed and the
+  runtime marker returned `demo-sandbox-v1`. The prior confirmed production source
+  is `ae6f16ae9f9feaf52bf58093cf1f0c3b8c7a7c34`, image
+  `sha256:a57a268f081b8f2c96550eb2d61b00e36faae855757662c0a62b27162f5d319c`.
+- The production gate was closed after each workflow and read back as `false`
+  after recovery. Rollback restores the application only; additive migrations
+  030/031 remain. Their old columns and inline photo recovery bytes are retained
+  for previous-binary compatibility. No database downgrade was attempted.
+- The spam-defense release is **staging-only again**. [PR #15](https://github.com/wmichelin/clubdue/pull/15)
+  aligns the smoke check with GET entry plus CSRF-protected POST while retaining
+  owner-session and tenant checks. Neither tooling PR is merged by this record;
+  a subsequent artifact still needs successful staging verification and explicit
+  approval under the release workflow before a new production promotion.
+
+## Backup status (historical workstream)
+
 Status: PostgreSQL recovery verified on G5; Google Drive activation awaits owner login.
 Last completed: fresh production/staging encrypted exports, isolated restores with
 matching binaries, owner authentication, tenant denial and staging photo hashes.

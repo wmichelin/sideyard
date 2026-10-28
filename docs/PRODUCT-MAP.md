@@ -13,13 +13,19 @@ for the distinction between provisioned resources and deployed app behavior.
 
 ## Availability snapshot
 
-Reviewed September 11, 2026 against staging release `a5ed99a` and the recorded
-release verification. These are verified release states, not a live deployment monitor.
+Release identifiers rechecked October 28, 2026: staging is `22cb2f3`. Its approved
+production promotion failed a stale smoke assertion and was rolled back to the
+retained previous release; the full production smoke then passed and the gate
+was closed. The prior confirmed production source is `ae6f16a`. See the
+[release evidence](SIDEYARD-DELIVERY-STATUS.md#spam-defense-production-attempt--october-28-2026).
+The broader feature walkthrough below was reviewed September 11, 2026, with
+spam-defense availability corrected here. These are recorded release states,
+not a live deployment monitor.
 
 | Label | Meaning |
 | --- | --- |
 | **Live** | Available in production at [getsideyard.com](https://getsideyard.com), source `ae6f16a`, and on staging. The legacy ClubDue hostname remains supported. |
-| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), release `a5ed99a`: standalone jobs/site surveys, the single-line work-status badge fix, configured private Azure photo storage, native-compatible CSV import behavior, a guarded Azure SQL runtime boundary, retryable outage feedback that retains customer, demo and seasonal-work input, and the verified dormant PostgreSQL logical-export source. The deployed web application still uses PostgreSQL. |
+| **Staging** | Available only on [staging](https://clubdue-staging.michelindigitalmedia.com), release `22cb2f3`: interest-form spam defense, standalone jobs/site surveys, the single-line work-status badge fix, configured private Azure photo storage, native-compatible CSV import behavior, a guarded Azure SQL runtime boundary, retryable outage feedback that retains customer, demo and seasonal-work input, and the verified dormant PostgreSQL logical-export source. The deployed web application still uses PostgreSQL. |
 | **Conditional** | Present in the staging artifact but disabled pending its operational gates; this includes the staging-only lazy Azure SQL HTTP runtime, its 80-second total request budget, host-owned scheduled work, durable interest-delivery wake and internal logical transfer/restore contract. Conditional behavior is not a promise of availability to clients. |
 
 Unless marked otherwise, catalog nodes are **Live**. “Signed in” means a user
@@ -43,7 +49,7 @@ Orange nodes explicitly marked “staging” are not yet production features.
 ```mermaid
 flowchart TB
   subgraph PUBLIC["Public entry"]
-    LAND["LAND · Landing / interest<br/>Owner notification queue"]
+    LAND["LAND · Landing / interest<br/>Owner notification queue<br/>Spam defense on staging"]
     THANKS["THANKS · Interest saved"]
     LOGIN["LOGIN · Sign in<br/>Availability feedback on staging"]
     DEMO["DEMO · Start isolated demo<br/>Public entry availability on staging"]
@@ -149,7 +155,7 @@ shop; it is not a client-facing identifier to invent during onboarding.
 
 - Introduces Sideyard, links to sign-in and the enabled demo, and collects early-access interest.
 - Required name and email; optional business, trade and free-text needs. Trade accepts free text; marketing suggestions are separate from business presets.
-- The interest handler silently suppresses a small set of high-confidence repeated-identifier and unsolicited-outreach spam patterns before persistence or notification. It logs only the matched reason and request ID, not submitted contact details. Ordinary tradespeople may still omit the optional trade or discuss SEO/marketing work; suspicious submissions see the standard confirmation rather than a public detection explanation. This is heuristic filtering, not a general bot-proof guarantee.
+- **Staging:** the interest handler silently suppresses a small set of high-confidence repeated-identifier and unsolicited-outreach spam patterns before persistence or notification. It logs only the matched reason and request ID, not submitted contact details. Ordinary tradespeople may still omit the optional trade or discuss SEO/marketing work; suspicious submissions see the standard confirmation rather than a public detection explanation. This is heuristic filtering, not a general bot-proof guarantee. The October 28 production attempt was rolled back after its smoke check failed.
 - Saves interest and queues an owner email through Resend. Production notification delivery is configured; duplicate email submissions do not create repeated alerts. Failed delivery retries without losing the signup.
 - **Staging:** if a database acknowledgement is lost, the form keeps the submitted details and explains that the save is unconfirmed. The dependency failure does not consume the public submission throttle; confirmed validation and rate-limit failures remain 422 and 429.
 - **Staging worker; delivery requires Resend configuration:** successful saves wake delivery after commit; empty queues stop polling. Startup and daily maintenance reconcile durable work, while known pending failures keep their retry timers. A lost process handoff can delay recovery until reconciliation; prolonged outages can produce a duplicate beyond the provider's deduplication window. This does not enable SQL Server for the application.
