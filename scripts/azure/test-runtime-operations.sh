@@ -223,10 +223,13 @@ try:
     if args[:2] == ["container", "inspect"]:
         resolve(args[-1])
     elif args[0] == "port":
-        _, item = resolve(args[1]); print("127.0.0.1:" + item["port"])
+        _, item = resolve(args[1])
+        if item["running"]: print("127.0.0.1:" + item["port"])
     elif args[:2] == ["inspect", "-f"]:
         name, item = resolve(args[-1]); template = args[2]
         if ".State.Running" in template: print(str(item["running"]).lower())
+        elif ".HostConfig.PortBindings" in template:
+            print(os.environ.get("SIDEYARD_TEST_STOPPED_BINDING", "127.0.0.1:" + item["port"]))
         elif "sideyard.backend" in template: print(item["backend"])
         elif "sideyard.generation" in template: print(item["generation"])
         elif ".Id" in template: print(item["id"])
@@ -302,6 +305,27 @@ if grep -Eq '^(start|rename|update|stop) ' "$WORK/docker.log"; then
   echo 'cross-backend rollback mutated a retained container' >&2
   exit 1
 fi
+
+# A stopped release exposes only configured bindings. Reject missing, public,
+# reserved, cross-environment and ambiguous bindings before starting it.
+for binding in '' '0.0.0.0:18082' '127.0.0.1:8080' '127.0.0.1:8081' '127.0.0.1:28083' $'127.0.0.1:18082\n127.0.0.1:8082'; do
+  : > "$WORK/docker.log"
+  rm -f "$WORK/docker-state.json" "$WORK/docker-state.json.failure"
+  if SIDEYARD_TEST_STOPPED_BINDING="$binding" \
+    SIDEYARD_TEST_PREVIOUS_BACKEND=azure_sql SIDEYARD_TEST_PREVIOUS_GENERATION="$generation" \
+    PATH="$WORK/bin:$PATH" CONTAINER=clubdue-staging PORT=8082 DOMAIN=staging.test CLUBDUE_DEPLOY_MODE=rollback \
+    SIDEYARD_STATE_ROOT="$WORK/state" SIDEYARD_STATE_TEST_OWNER=1 SIDEYARD_LOCK_ROOT="$WORK/lock" \
+    SIDEYARD_SITE_PATH="$WORK/site/staging.conf" SIDEYARD_ENABLED_PATH="$WORK/site/enabled.conf" \
+    SIDEYARD_TEST_DOCKER_LOG="$WORK/docker.log" SIDEYARD_TEST_DOCKER_STATE="$WORK/docker-state.json" \
+    bash "$ROOT/scripts/droplet-deploy.sh" >/dev/null 2>&1; then
+    echo "unsafe retained release binding was accepted: $binding" >&2
+    exit 1
+  fi
+  if grep -Eq '^(start|rename|update|stop) ' "$WORK/docker.log"; then
+    echo 'unsafe retained release binding mutated a container' >&2
+    exit 1
+  fi
+done
 
 : > "$WORK/docker.log"
 rm -f "$WORK/docker-state.json" "$WORK/docker-state.json.failure"

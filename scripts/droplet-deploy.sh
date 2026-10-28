@@ -103,8 +103,14 @@ STATE_VALIDATED=0
 container_port() {
   local mapping
   mapping="$(docker port "$1" 8080/tcp 2>/dev/null || true)"
+  # Docker omits runtime port mappings while the retained release is stopped.
+  # Read its configured binding only in that state; running containers must
+  # still expose the actual loopback listener. Multiple bindings fail below.
+  if [ -z "$mapping" ] && [ "$(docker inspect -f '{{.State.Running}}' "$1")" = false ]; then
+    mapping="$(docker inspect -f '{{range (index .HostConfig.PortBindings "8080/tcp")}}{{.HostIp}}:{{.HostPort}}{{println}}{{end}}' "$1")"
+  fi
   case "$mapping" in
-    127.0.0.1:8082|127.0.0.1:18082|127.0.0.1:8083|127.0.0.1:28083) printf '%s\n' "${mapping##*:}" ;;
+    "127.0.0.1:${PORT}"|"127.0.0.1:${ALT_PORT}") printf '%s\n' "${mapping##*:}" ;;
     *) fail "$1 does not expose a supported ClubDue loopback port" ;;
   esac
 }
@@ -501,6 +507,7 @@ if [ "$DEPLOY_MODE" = rollback ]; then
     docker start "$PREVIOUS_CONTAINER" >/dev/null
   fi
   rollback_started=1
+  [ "$(container_port "$PREVIOUS_CONTAINER")" = "$previous_port" ] || fail "retained release runtime port does not match its configured binding"
   wait_for_ready "$previous_port" || fail "retained previous ClubDue release is not ready"
   rollback_marker="$(curl -fsS "http://127.0.0.1:${previous_port}/rollback-safetyz" 2>/dev/null || true)"
   if ! marker_matches "$rollback_marker" "$SELECTED_BACKEND" "$SELECTED_GENERATION"; then
